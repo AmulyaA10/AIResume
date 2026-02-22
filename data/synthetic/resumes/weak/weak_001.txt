@@ -1,0 +1,14 @@
+Carmen Smith
+ybaker@example.com
+
+Skills: Vue.js, Python
+
+Work Experience:
+DevOps Engineer at Datadog
+- Worked on various projects
+- Helped with development tasks
+- Attended team meetings and sprint planning
+- Fixed bugs and resolved issues
+
+Education:
+B.A. in Computer Science

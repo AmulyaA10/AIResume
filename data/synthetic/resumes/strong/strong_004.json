@@ -1,0 +1,64 @@
+{
+  "contact": {
+    "name": "Maria Thomas",
+    "email": "johnhoffman@example.com",
+    "phone": "001-496-496-5328x7101",
+    "location": "Carlsonfurt, MS",
+    "linkedin": "linkedin.com/in/maria-thomas",
+    "github": "github.com/jrice"
+  },
+  "summary": "Results-driven site reliability engineer with 13+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about data-intensive applications.",
+  "skills": [
+    "TensorFlow",
+    "Ruby on Rails",
+    "AWS",
+    "PostgreSQL",
+    "Go",
+    "Python",
+    "Agile",
+    "Apache Kafka",
+    "GraphQL",
+    "C++",
+    "Linux",
+    "GitHub Actions",
+    "Node.js",
+    "Mentoring",
+    "Communication",
+    "Cross-functional teamwork",
+    "Leadership"
+  ],
+  "experience": [
+    {
+      "title": "Site Reliability Engineer",
+      "company": "Coinbase",
+      "period": "2023 - Present",
+      "bullets": [
+        "Developed event-driven system, reducing deploy time by 95%",
+        "Led migration of data pipeline",
+        "Refactored API gateway"
+      ]
+    },
+    {
+      "title": "Engineering Manager",
+      "company": "Salesforce",
+      "period": "2018 - 2023",
+      "bullets": [
+        "Launched mobile application",
+        "Mentored microservices architecture",
+        "Optimized microservices architecture"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "M.S. Computer Science",
+      "school": "Stanford University",
+      "year": "2021"
+    }
+  ],
+  "certifications": [
+    "AWS Solutions Architect Professional",
+    "HashiCorp Certified Terraform Associate",
+    "Certified Kubernetes Administrator (CKA)"
+  ]
+}

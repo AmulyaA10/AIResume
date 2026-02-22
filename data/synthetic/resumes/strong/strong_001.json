@@ -1,0 +1,63 @@
+{
+  "contact": {
+    "name": "Allison Hill",
+    "email": "donaldgarcia@example.net",
+    "phone": "+1-219-560-0133",
+    "location": "Robinsonshire, KY",
+    "linkedin": "linkedin.com/in/allison-hill",
+    "github": "github.com/blakeerik"
+  },
+  "summary": "Results-driven full-stack developer with 7+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about data-intensive applications.",
+  "skills": [
+    "C#",
+    "Java",
+    "Git",
+    "Flask",
+    "FastAPI",
+    "Express",
+    "React",
+    "C++",
+    "GitHub Actions",
+    "Rust",
+    "REST",
+    "Kubernetes",
+    "TypeScript",
+    "Team collaboration",
+    "Problem-solving"
+  ],
+  "experience": [
+    {
+      "title": "Engineering Manager",
+      "company": "DataFlow Systems",
+      "period": "2021 - Present",
+      "bullets": [
+        "Increased customer-facing dashboard, cutting latency from 363ms to 74ms",
+        "Implemented customer-facing dashboard, saving $23K annually",
+        "Mentored authentication system"
+      ]
+    },
+    {
+      "title": "Data Engineer",
+      "company": "Apple",
+      "period": "2022 - 2023",
+      "bullets": [
+        "Increased CI/CD pipeline, saving $83K annually",
+        "Architected event-driven system",
+        "Led migration of mobile application",
+        "Optimized monitoring stack",
+        "Reduced data pipeline, processing 95M+ events daily"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.A. Computer Science",
+      "school": "Georgia Tech",
+      "year": "2021"
+    }
+  ],
+  "certifications": [
+    "Certified Kubernetes Administrator (CKA)",
+    "HashiCorp Certified Terraform Associate"
+  ]
+}

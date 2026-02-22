@@ -27,7 +27,7 @@ async def login(request: LoginRequest):
 @router.get("/google")
 async def auth_google():
     return RedirectResponse(
-        url=f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/v1/auth/google/callback&scope=openid%20email%20profile"
+        url=f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/auth/google/callback&scope=openid%20email%20profile"
     )
 
 
@@ -42,7 +42,7 @@ async def auth_google_callback(code: str):
 async def auth_linkedin():
     print("--- [Auth] Redirecting to LinkedIn OAuth ---")
     return RedirectResponse(
-        url=f"https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id={LINKEDIN_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/v1/auth/linkedin/callback&scope=openid%20profile%20email"
+        url=f"https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id={LINKEDIN_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/auth/linkedin/callback&scope=openid%20profile%20email"
     )
 
 
@@ -65,7 +65,7 @@ async def auth_linkedin_callback(code: str, background_tasks: BackgroundTasks):
             payload = {
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": f"{BACKEND_URL}/api/v1/auth/linkedin/callback",
+                "redirect_uri": f"{BACKEND_URL}/api/auth/linkedin/callback",
                 "client_id": LINKEDIN_CLIENT_ID,
                 "client_secret": LINKEDIN_CLIENT_SECRET
             }

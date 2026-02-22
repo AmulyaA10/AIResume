@@ -1,0 +1,39 @@
+{
+  "contact": {
+    "name": "Crystal Robinson",
+    "email": "zimmermanbrian@example.org",
+    "phone": "4519834738"
+  },
+  "summary": "Software Engineer with 4 years of experience in software development. Skilled in Agile, Ruby on Rails, DynamoDB.",
+  "skills": [
+    "Ruby on Rails",
+    "Agile",
+    "DynamoDB",
+    "Docker",
+    "GitHub Actions",
+    "Linux",
+    "gRPC",
+    "Stakeholder management"
+  ],
+  "experience": [
+    {
+      "title": "Software Engineer",
+      "company": "Oracle",
+      "period": "2022 - Present",
+      "bullets": [
+        "Launched event-driven system, serving 69K+ daily active users",
+        "Increased machine learning model, reducing deploy time by 20%",
+        "Implemented microservices architecture",
+        "Automated authentication system, increasing test coverage to 45%",
+        "Automated microservices architecture, reducing deploy time by 54%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. Information Technology",
+      "school": "State University",
+      "year": "2022"
+    }
+  ]
+}

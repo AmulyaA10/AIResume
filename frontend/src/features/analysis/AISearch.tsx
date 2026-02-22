@@ -87,7 +87,7 @@ const AISearch = () => {
                             </div>
                             <button
                                 onClick={() => {
-                                    window.open(`http://localhost:8000/api/v1/resumes/download/${res.filename}`, '_blank');
+                                    window.open(`${api.defaults.baseURL}/resumes/download/${res.filename}`, '_blank');
                                 }}
                                 className="flex items-center gap-2 text-slate-400 hover:text-primary-600 transition-colors text-sm font-bold"
                             >

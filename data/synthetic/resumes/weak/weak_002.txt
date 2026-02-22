@@ -1,0 +1,14 @@
+Michael Cross
+smoore@example.org
+
+Skills: TypeScript, Express, Spring Boot, NumPy
+
+Work Experience:
+Frontend Engineer at ByteForge
+- Worked on various projects
+- Helped with development tasks
+- Attended team meetings and sprint planning
+- Fixed bugs and resolved issues
+
+Education:
+B.A. in Computer Science

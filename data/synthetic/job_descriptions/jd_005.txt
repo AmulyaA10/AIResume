@@ -1,0 +1,34 @@
+Senior Full-Stack Engineer at Stripe
+
+About Us:
+Stripe is a leading technology company focused on building innovative solutions.
+We are looking for talented engineers to join our growing team.
+
+Role:
+As a Senior Full-Stack Engineer, you will be responsible for designing, building, and maintaining
+scalable software systems that serve millions of users.
+
+Requirements:
+- 10+ years of professional software development experience
+- Strong proficiency in Redis
+- Strong proficiency in Apache Kafka
+- Strong proficiency in Agile
+- Strong proficiency in Azure
+- Strong proficiency in RabbitMQ
+- Strong proficiency in Terraform
+- Strong proficiency in JavaScript
+- Strong proficiency in Node.js
+- Excellent problem-solving and communication skills
+- Experience working in an Agile environment
+
+Nice to Have:
+- Experience with PyTorch
+- Experience with Angular
+- Experience with PostgreSQL
+
+Benefits:
+- Competitive salary (244K - 281K)
+- Remote-friendly
+- Health, dental, and vision insurance
+- 401(k) matching
+- Unlimited PTO

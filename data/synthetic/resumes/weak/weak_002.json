@@ -1,0 +1,12 @@
+{
+  "contact": {
+    "name": "Michael Cross",
+    "email": "smoore@example.org"
+  },
+  "skills": [
+    "TypeScript",
+    "Express",
+    "Spring Boot",
+    "NumPy"
+  ]
+}

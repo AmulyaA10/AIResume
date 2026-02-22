@@ -1,0 +1,18 @@
+{
+  "title": "Senior Full-Stack Engineer",
+  "company": "Meta",
+  "required_skills": [
+    "Scikit-learn",
+    "GraphQL",
+    "REST",
+    "Java",
+    "Agile"
+  ],
+  "nice_to_have": [
+    "Spring Boot",
+    "Apache Kafka",
+    "JavaScript",
+    "Next.js"
+  ],
+  "min_years": 10
+}

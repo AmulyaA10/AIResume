@@ -2,6 +2,7 @@ import React from 'react';
 import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../api';
 
 const Dashboard = () => {
     const { persona, user } = useAuth();
@@ -11,16 +12,8 @@ const Dashboard = () => {
     React.useEffect(() => {
         const fetchStats = async () => {
             try {
-                const token = localStorage.getItem('token') || 'mock-token-123';
-                const response = await fetch('http://localhost:8000/api/v1/dashboard/stats', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setStats(data);
-                }
+                const response = await api.get('/dashboard/stats');
+                setStats(response.data);
             } catch (error) {
                 console.error("Failed to fetch dashboard stats", error);
             } finally {

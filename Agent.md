@@ -105,15 +105,29 @@ ResumeIntelligenceV2-main/
 │   ├── raw_resumes/
 │   └── lancedb/
 │
-├── tests/                           # Test files
-│   ├── test_gemini.py
+├── tests/                           # Pytest test suite
+│   ├── conftest.py                  # Shared fixtures (app, auth, mocks)
+│   ├── unit/                        # Unit tests — one file per route domain
+│   │   ├── test_health.py
+│   │   ├── test_auth.py
+│   │   ├── test_resumes.py
+│   │   ├── test_dashboard.py
+│   │   ├── test_search.py
+│   │   ├── test_analyze.py
+│   │   ├── test_generate.py
+│   │   ├── test_linkedin.py
+│   │   └── test_user.py
+│   ├── integration/                 # Integration tests — cross-cutting workflows
+│   │   └── test_app_lifecycle.py
+│   ├── test_gemini.py               # Legacy ad-hoc tests (preserved)
 │   ├── test_semantic_search.py
 │   ├── test_dynamic_config.py
 │   └── check_db_state.py
 │
 ├── scripts/                         # Developer tooling
 │   ├── reindex_resumes.py
-│   └── start_dev.sh                 # macOS/Linux startup script
+│   ├── start_dev.sh                 # macOS/Linux startup script
+│   └── generate_synthetic_data.py   # Synthetic resumes + JDs generator
 │
 ├── legacy/                          # Frozen Streamlit interface (do NOT modify)
 │   ├── app.py
@@ -122,9 +136,14 @@ ResumeIntelligenceV2-main/
 │
 ├── Wireframe/                       # UI prototype
 │
+├── data/synthetic/                  # Generated test data (via make synth-data)
+│
 ├── .env.example                     # Onboarding template (no real secrets)
 ├── .gitignore                       # Comprehensive ignore rules
-├── requirements.txt                 # Python dependencies
+├── requirements.txt                 # Python production dependencies
+├── requirements-dev.txt             # Dev/test dependencies (pytest, httpx, faker)
+├── pytest.ini                       # Pytest configuration
+├── Makefile                         # Build/test/dev targets
 ├── README.md                        # Project documentation
 ├── start_app.bat                    # Windows dev startup script
 └── Agent.md                         # THIS FILE
@@ -738,6 +757,8 @@ Before merging, verify:
 - [ ] New Pydantic models in `backend/app/models.py`
 - [ ] New pages use `api` instance (not raw `fetch`)
 - [ ] New routes added to `App.tsx` with `<ProtectedRoute>`
+- [ ] Unit tests added/updated for new endpoints (`tests/unit/`)
+- [ ] All tests pass: `make test`
 - [ ] No hardcoded secrets or localhost URLs in committed code
 - [ ] No new dependencies added without approval
 - [ ] Legacy code (`legacy/`) untouched
@@ -816,13 +837,16 @@ See section 7.1 for the component table and usage examples.
 ### Starting the App
 
 ```bash
-# Option 1: Automated (macOS/Linux)
+# Option 1: Makefile (recommended)
+make dev
+
+# Option 2: Automated (macOS/Linux)
 ./scripts/start_dev.sh
 
-# Option 2: Automated (Windows)
+# Option 3: Automated (Windows)
 start_app.bat
 
-# Option 3: Manual
+# Option 4: Manual
 # Terminal 1 — Backend
 cd backend && uvicorn main:app --reload
 
@@ -831,6 +855,56 @@ cd frontend && npm run dev
 ```
 
 Backend runs on `http://localhost:8000`, frontend on `http://localhost:5173`.
+When the frontend is built (`make build`), the backend also serves the SPA from port 8000.
+
+### Running Tests
+
+```bash
+# Install dev dependencies first
+make install-dev
+
+# Run all tests (unit + integration)
+make test
+
+# Run only unit tests
+make test-unit
+
+# Run only integration tests
+make test-integration
+
+# Verbose output
+make test-verbose
+```
+
+### Generating Synthetic Data
+
+```bash
+# Generate default (20 resumes, 5 JDs)
+make synth-data
+
+# Custom counts
+python scripts/generate_synthetic_data.py --resumes 50 --jds 10
+
+# Custom output directory
+python scripts/generate_synthetic_data.py --output data/my_test_set
+```
+
+Output: `data/synthetic/` with `resumes/{strong,good,weak,invalid,not_resume}/` and `job_descriptions/`.
+
+### Makefile Targets
+
+| Target | Description |
+|---|---|
+| `make install` | Install all dependencies (Python + Node) |
+| `make test` | Run ALL tests (unit + integration) |
+| `make test-unit` | Run unit tests only |
+| `make test-integration` | Run integration tests only |
+| `make test-verbose` | Run all tests with verbose output |
+| `make lint` | Run Python linter (ruff) |
+| `make build` | Build the React frontend |
+| `make dev` | Start backend + frontend dev servers |
+| `make synth-data` | Generate synthetic test data |
+| `make clean` | Remove generated artifacts |
 
 ### Adding a New Feature (Checklist)
 
@@ -876,7 +950,6 @@ These are acknowledged issues. Do NOT fix them unless explicitly tasked:
 
 | Issue | Location | Notes |
 |---|---|---|
-| `Dashboard.tsx` uses raw `fetch()` | `frontend/src/features/dashboard/Dashboard.tsx` | Should use `api` instance |
 | Mock auth with hardcoded users | `backend/app/dependencies.py` | Real JWT planned |
 | `print()` instead of structured logging | Everywhere | Migration to `loguru` planned |
 | CORS set to `allow_origins=["*"]` | `backend/app/config.py` | Must restrict for production |

@@ -1,0 +1,32 @@
+Backend Engineer (Python) at Datadog
+
+About Us:
+Datadog is a leading technology company focused on building innovative solutions.
+We are looking for talented engineers to join our growing team.
+
+Role:
+As a Backend Engineer (Python), you will be responsible for designing, building, and maintaining
+scalable software systems that serve millions of users.
+
+Requirements:
+- 9+ years of professional software development experience
+- Strong proficiency in Pandas
+- Strong proficiency in Elasticsearch
+- Strong proficiency in Flask
+- Strong proficiency in CI/CD
+- Strong proficiency in GitHub Actions
+- Strong proficiency in Azure
+- Excellent problem-solving and communication skills
+- Experience working in an Agile environment
+
+Nice to Have:
+- Experience with Rust
+- Experience with Scikit-learn
+- Experience with TypeScript
+
+Benefits:
+- Competitive salary (202K - 314K)
+- Remote-friendly
+- Health, dental, and vision insurance
+- 401(k) matching
+- Unlimited PTO

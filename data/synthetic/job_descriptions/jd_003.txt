@@ -1,0 +1,33 @@
+Frontend Engineer (React) at Acme Corp
+
+About Us:
+Acme Corp is a leading technology company focused on building innovative solutions.
+We are looking for talented engineers to join our growing team.
+
+Role:
+As a Frontend Engineer (React), you will be responsible for designing, building, and maintaining
+scalable software systems that serve millions of users.
+
+Requirements:
+- 8+ years of professional software development experience
+- Strong proficiency in RabbitMQ
+- Strong proficiency in Azure
+- Strong proficiency in Rust
+- Strong proficiency in GCP
+- Strong proficiency in MongoDB
+- Strong proficiency in Docker
+- Strong proficiency in MySQL
+- Excellent problem-solving and communication skills
+- Experience working in an Agile environment
+
+Nice to Have:
+- Experience with Scrum
+- Experience with C#
+- Experience with Svelte
+
+Benefits:
+- Competitive salary (225K - 376K)
+- Remote-friendly
+- Health, dental, and vision insurance
+- 401(k) matching
+- Unlimited PTO

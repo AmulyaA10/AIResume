@@ -1,0 +1,20 @@
+{
+  "title": "Senior Full-Stack Engineer",
+  "company": "Stripe",
+  "required_skills": [
+    "Redis",
+    "Apache Kafka",
+    "Agile",
+    "Azure",
+    "RabbitMQ",
+    "Terraform",
+    "JavaScript",
+    "Node.js"
+  ],
+  "nice_to_have": [
+    "PyTorch",
+    "Angular",
+    "PostgreSQL"
+  ],
+  "min_years": 10
+}

@@ -1,0 +1,42 @@
+Donald Lewis
+curtis61@example.com | (794)507-8161x849 | North Donnaport, CO
+LinkedIn: linkedin.com/in/donald-lewis | GitHub: github.com/michellejames
+
+PROFESSIONAL SUMMARY
+Results-driven frontend engineer with 15+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about data-intensive applications.
+
+TECHNICAL SKILLS
+GitLab CI, Express, Scikit-learn, PostgreSQL, JavaScript, Scrum, TypeScript, Git, Elasticsearch, Flask, Go, Node.js, GraphQL, Cross-functional teamwork, Problem-solving, Stakeholder management, Technical writing
+
+EXPERIENCE
+
+Staff Engineer | Uber | 2024 - Present
+- Scaled real-time notification system, increasing test coverage to 84%
+- Implemented API gateway, reducing deploy time by 24%
+- Launched search infrastructure
+- Increased search infrastructure, reducing error rate by 77%
+
+Product Engineer | DataFlow Systems | 2024 - 2025
+- Optimized search infrastructure
+- Refactored distributed cache layer
+- Scaled event-driven system
+- Mentored ETL workflow
+
+Product Engineer | Netflix | 2020 - 2022
+- Deployed API gateway, saving $72K annually
+- Mentored event-driven system, reducing deploy time by 40%
+- Automated mobile application
+- Deployed API gateway
+
+Data Engineer | Netflix | 2018 - 2020
+- Mentored machine learning model, processing 79M+ events daily
+- Launched ETL workflow, reducing error rate by 25%
+- Designed and built machine learning model
+- Developed customer-facing dashboard
+- Designed and built customer-facing dashboard
+
+EDUCATION
+B.S. Computer Science | Georgia Tech | 2013
+
+CERTIFICATIONS
+- Google Cloud Professional Engineer

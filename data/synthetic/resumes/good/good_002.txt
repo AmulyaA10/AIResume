@@ -1,0 +1,19 @@
+Paula Moreno
+georgetracy@example.org | (443)903-9117x182
+
+SUMMARY
+Data Engineer with 8 years of experience in software development. Skilled in Python, NumPy, Django.
+
+SKILLS
+Django, TypeScript, NumPy, Kubernetes, Python, Jenkins, Problem-solving, Cross-functional teamwork, Strategic planning
+
+EXPERIENCE
+
+Cloud Architect | Apple | 2021 - Present
+- Optimized API gateway, increasing test coverage to 51%
+- Architected search infrastructure, increasing test coverage to 32%
+- Mentored microservices architecture, processing 65M+ events daily
+- Automated monitoring stack, processing 75M+ events daily
+
+EDUCATION
+B.S. Information Technology | State University | 2014

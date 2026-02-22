@@ -1,0 +1,19 @@
+{
+  "title": "Staff Engineer",
+  "company": "CloudNine Solutions",
+  "required_skills": [
+    "Agile",
+    "GitLab CI",
+    "TypeScript",
+    "AWS",
+    "Rust",
+    "PostgreSQL",
+    "Django"
+  ],
+  "nice_to_have": [
+    "Angular",
+    "GCP",
+    "gRPC"
+  ],
+  "min_years": 3
+}

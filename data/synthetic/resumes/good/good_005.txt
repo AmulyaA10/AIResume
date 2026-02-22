@@ -1,0 +1,29 @@
+John Russell
+davisryan@example.com | (870)410-6513x33872
+
+SUMMARY
+Full-Stack Developer with 5 years of experience in software development. Skilled in GCP, C#, React.
+
+SKILLS
+FastAPI, React, GCP, PyTorch, C#, GraphQL, Stakeholder management
+
+EXPERIENCE
+
+Machine Learning Engineer | TechStart Inc | 2023 - Present
+- Refactored CI/CD pipeline, serving 49K+ daily active users
+- Optimized machine learning model
+- Increased search infrastructure, processing 19M+ events daily
+
+Product Engineer | Acme Corp | 2018 - 2023
+- Reduced API gateway, saving $18K annually
+- Increased mobile application
+
+Backend Engineer | DataFlow Systems | 2017 - 2018
+- Automated distributed cache layer
+- Scaled ETL workflow
+- Deployed API gateway, reducing error rate by 65%
+- Mentored CI/CD pipeline
+- Deployed monitoring stack, increasing test coverage to 53%
+
+EDUCATION
+B.S. Information Systems | University of Washington | 2017

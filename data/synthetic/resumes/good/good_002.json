@@ -1,0 +1,39 @@
+{
+  "contact": {
+    "name": "Paula Moreno",
+    "email": "georgetracy@example.org",
+    "phone": "(443)903-9117x182"
+  },
+  "summary": "Data Engineer with 8 years of experience in software development. Skilled in Python, NumPy, Django.",
+  "skills": [
+    "Django",
+    "TypeScript",
+    "NumPy",
+    "Kubernetes",
+    "Python",
+    "Jenkins",
+    "Problem-solving",
+    "Cross-functional teamwork",
+    "Strategic planning"
+  ],
+  "experience": [
+    {
+      "title": "Cloud Architect",
+      "company": "Apple",
+      "period": "2021 - Present",
+      "bullets": [
+        "Optimized API gateway, increasing test coverage to 51%",
+        "Architected search infrastructure, increasing test coverage to 32%",
+        "Mentored microservices architecture, processing 65M+ events daily",
+        "Automated monitoring stack, processing 75M+ events daily"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. Information Technology",
+      "school": "State University",
+      "year": "2014"
+    }
+  ]
+}

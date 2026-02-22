@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import api from '../api';
 
 type Persona = 'jobseeker' | 'recruiter' | 'manager' | null;
 
@@ -88,11 +89,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = React.useCallback((method: string) => {
         if (method === 'gmail') {
-            window.location.href = 'http://localhost:8000/api/v1/auth/google';
+            window.location.href = `${api.defaults.baseURL}/auth/google`;
             return;
         }
         if (method === 'linkedin') {
-            window.location.href = 'http://localhost:8000/api/v1/auth/linkedin';
+            window.location.href = `${api.defaults.baseURL}/auth/linkedin`;
             return;
         }
 
