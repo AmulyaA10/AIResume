@@ -1,0 +1,15 @@
+streamlit
+langgraph
+pypdf
+lancedb
+python-docx
+python-dotenv
+langchain-openai
+langchain-core
+google-generativeai
+pyarrow
+selenium
+webdriver-manager
+fastapi
+uvicorn
+python-multipart
