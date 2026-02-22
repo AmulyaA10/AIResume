@@ -1,13 +1,9 @@
 from typing import TypedDict, Optional
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
-import os
-from dotenv import load_dotenv
-from services.ai.skill_gap_graph import clean_json_output
 
-load_dotenv()
+from services.ai.common import get_llm, clean_json_output
 
 class ScreeningState(TypedDict):
     resume_text: str
@@ -16,23 +12,6 @@ class ScreeningState(TypedDict):
     score: Optional[dict]
     config: Optional[dict]
     threshold: int
-
-def get_llm(config: Optional[dict]):
-    """Helper to initialize LLM from config or environment."""
-    if config and config.get("api_key"):
-        return ChatOpenAI(
-            model=config.get("model", "gpt-4o-mini"),
-            temperature=config.get("temperature", 0),
-            api_key=config.get("api_key"),
-            base_url=config.get("base_url", "https://openrouter.ai/api/v1")
-        )
-    # Fallback to .env
-    return ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
-        base_url="https://openrouter.ai/api/v1"
-    )
 
 def screening_agent(state: ScreeningState):
     llm = get_llm(state.get("config"))

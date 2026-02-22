@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck } from 'lucide-react';
 import api from '../api';
 import { motion } from 'framer-motion';
+import { PageHeader } from '../common';
 import { useAuth } from '../context/AuthContext';
 
 const LinkedInScraper = () => {
@@ -122,10 +123,10 @@ const LinkedInScraper = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">LinkedIn Scraper</h1>
-                <p className="text-slate-500 font-medium tracking-tight">Convert public LinkedIn profiles into structured professional resumes instantly.</p>
-            </header>
+            <PageHeader
+                title="LinkedIn Scraper"
+                subtitle="Convert public LinkedIn profiles into structured professional resumes instantly."
+            />
 
             <div className="glass-card p-12 max-w-4xl mx-auto border-blue-100 bg-white/80 shadow-lg shadow-blue-500/5">
                 <div className="flex flex-col items-center gap-8">

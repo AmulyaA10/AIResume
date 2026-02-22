@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 
 from app.models import GenerateRequest
+from app.common import build_llm_config
 from services.agent_controller import run_resume_pipeline
 from services.export_service import generate_docx
 
@@ -15,7 +16,7 @@ async def generate_resume_endpoint(
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None)
 ):
-    llm_config = {"api_key": x_openrouter_key, "model": x_llm_model} if x_openrouter_key else None
+    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
     output = run_resume_pipeline(task="generate", query=request.profile, llm_config=llm_config)
     return output
 

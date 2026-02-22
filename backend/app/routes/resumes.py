@@ -7,7 +7,8 @@ import shutil
 from app.dependencies import get_current_user
 from app.config import UPLOAD_DIR
 from services.resume_parser import extract_text
-from services.db.lancedb_client import store_resume, log_activity
+from services.db.lancedb_client import store_resume
+from app.common import safe_log_activity
 
 router = APIRouter()
 
@@ -36,8 +37,7 @@ async def upload_resumes(
                 store_resume(file.filename, text, user_id, api_key=x_openrouter_key)
 
             results.append({"filename": file.filename, "status": "indexed"})
-            # Log activity
-            log_activity(user_id, "upload", file.filename, 0, "N/A")
+            safe_log_activity(user_id, "upload", file.filename, 0, "N/A")
 
             print(f"Completed: {file.filename}")
         except Exception as e:

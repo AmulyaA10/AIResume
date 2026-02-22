@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Loader2, Download, Sparkles, Send, User } from 'lucide-react';
 import api from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
 
 const ResumeGenerator = () => {
     const [profile, setProfile] = useState('');
@@ -42,31 +43,29 @@ const ResumeGenerator = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">AI Resume Generator</h1>
-                <p className="text-slate-500 font-medium">Transform profile descriptions into professionally formatted, structured resumes.</p>
-            </header>
+            <PageHeader
+                title="AI Resume Generator"
+                subtitle="Transform profile descriptions into professionally formatted, structured resumes."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-6">
                     <div className="glass-card p-8 flex flex-col gap-6 bg-white/70 border-slate-100 shadow-sm">
-                        <div className="flex flex-col gap-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Candidate Profile & Highlights</span>
-                            <textarea
-                                value={profile}
-                                onChange={(e) => setProfile(e.target.value)}
-                                className="w-full h-80 bg-white border border-slate-200 rounded-xl p-4 outline-none focus:border-primary-500 transition-all resize-none text-sm leading-relaxed font-medium text-slate-800 shadow-inner"
-                                placeholder="Describe the candidate's experience, skills, and achievements in detail..."
-                            />
-                        </div>
-                        <button
+                        <FormTextarea
+                            label="Candidate Profile & Highlights"
+                            value={profile}
+                            onChange={setProfile}
+                            placeholder="Describe the candidate's experience, skills, and achievements in detail..."
+                            height="h-80"
+                        />
+                        <ActionButton
                             onClick={handleGenerate}
-                            disabled={generating || !profile.trim()}
-                            className="w-full bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary-500/20 disabled:opacity-50 transition-all"
-                        >
-                            {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                            {generating ? 'Crafting Professional Content...' : 'Generate AI Resume'}
-                        </button>
+                            loading={generating}
+                            disabled={!profile.trim()}
+                            icon={<Sparkles className="w-5 h-5" />}
+                            label="Generate AI Resume"
+                            loadingLabel="Crafting Professional Content..."
+                        />
                     </div>
 
                     <div className="glass-card p-8 border-primary-100 bg-primary-50/50 shadow-sm">
@@ -92,24 +91,18 @@ const ResumeGenerator = () => {
 
                 <div className="flex flex-col min-h-[600px]">
                     {!resume && !generating && (
-                        <div className="flex-1 glass-card border-dashed border-2 border-slate-200 flex flex-col items-center justify-center p-12 text-center bg-slate-50/30">
-                            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 border border-slate-100 shadow-sm text-slate-200">
-                                <FileText className="w-10 h-10" />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-400">Preview Engine Standby</h3>
-                            <p className="text-slate-400 text-sm mt-2 max-w-xs font-medium">Your AI-generated resume preview will materialize here once processed.</p>
-                        </div>
+                        <EmptyState
+                            icon={<FileText className="w-10 h-10" />}
+                            heading="Preview Engine Standby"
+                            description="Your AI-generated resume preview will materialize here once processed."
+                        />
                     )}
 
                     {generating && (
-                        <div className="flex-1 glass-card flex flex-col items-center justify-center p-12 bg-white/80 border-primary-100">
-                            <div className="w-24 h-24 relative">
-                                <div className="absolute inset-0 rounded-2xl border-4 border-primary-100 animate-pulse" />
-                                <div className="absolute inset-0 rounded-2xl border-t-4 border-primary-500 animate-spin" />
-                                <FileText className="absolute inset-0 m-auto w-10 h-10 text-primary-200" />
-                            </div>
-                            <p className="mt-8 text-primary-600 font-black uppercase tracking-[0.2em] text-xs">Architecting Sections...</p>
-                        </div>
+                        <LoadingOverlay
+                            icon={<FileText className="w-10 h-10 text-primary-200" />}
+                            message="Architecting Sections..."
+                        />
                     )}
 
                     {resume && (

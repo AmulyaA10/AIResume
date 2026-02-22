@@ -7,7 +7,7 @@ import os
 from app.dependencies import get_current_user
 from app.models import SearchRequest
 from services.db.lancedb_client import search_resumes_semantic
-from services.ai.skill_gap_graph import clean_json_output
+from services.ai.common import clean_json_output
 
 router = APIRouter()
 

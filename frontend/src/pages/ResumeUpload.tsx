@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Upload, File, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import api from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageHeader } from '../common';
 
 const ResumeUpload = () => {
     const [files, setFiles] = useState<any[]>([]);
@@ -45,10 +46,10 @@ const ResumeUpload = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">Resume Manager</h1>
-                <p className="text-slate-500 font-medium">Upload candidate resumes to your private vector search database.</p>
-            </header>
+            <PageHeader
+                title="Resume Manager"
+                subtitle="Upload candidate resumes to your private vector search database."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">

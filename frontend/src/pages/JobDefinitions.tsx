@@ -1,18 +1,19 @@
 import React from 'react';
 import { Briefcase, Plus, Search } from 'lucide-react';
+import { PageHeader } from '../common';
 
 const JobDefinitions = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <header className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">Job Definitions</h1>
-                    <p className="text-slate-500 font-medium">Manage job descriptions and screening criteria.</p>
-                </div>
-                <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all">
-                    <Plus size={18} /> New Job Definition
-                </button>
-            </header>
+            <PageHeader
+                title="Job Definitions"
+                subtitle="Manage job descriptions and screening criteria."
+                action={
+                    <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all">
+                        <Plus size={18} /> New Job Definition
+                    </button>
+                }
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Mock Data for now as per user request to map 'existing' which might mean the concept */}

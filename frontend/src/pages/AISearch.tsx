@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText } from 'lucide-react';
 import api from '../api';
 import { motion } from 'framer-motion';
+import { PageHeader } from '../common';
 
 const AISearch = () => {
     const [query, setQuery] = useState('');
@@ -24,10 +25,10 @@ const AISearch = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">Semantic AI Search</h1>
-                <p className="text-slate-500 font-medium">Find the best candidates using natural language reasoning powered by GPT-4o.</p>
-            </header>
+            <PageHeader
+                title="Semantic AI Search"
+                subtitle="Find the best candidates using natural language reasoning powered by GPT-4o."
+            />
 
             <form onSubmit={handleSearch} className="relative">
                 <div className="relative">

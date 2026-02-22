@@ -1,12 +1,12 @@
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 
-import os, json
-from dotenv import load_dotenv
-load_dotenv()
+import json
+
+from services.ai.common import get_llm
+
 # -----------------------------
 # State
 # -----------------------------
@@ -15,25 +15,6 @@ class ResumeQualityState(TypedDict):
     parsed: Optional[str]
     score: Optional[dict]
     config: Optional[dict]
-
-def get_llm(config: Optional[dict]):
-    """Helper to initialize LLM from config or environment."""
-    if config and config.get("api_key"):
-        return ChatOpenAI(
-            model=config.get("model", "gpt-4o-mini"),
-            temperature=config.get("temperature", 0),
-            api_key=config.get("api_key"),
-            base_url=config.get("base_url", "https://openrouter.ai/api/v1")
-        )
-    # Fallback to .env
-    return ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
-        base_url="https://openrouter.ai/api/v1"
-    )
-
-print(os.getenv("OPENAI_API_KEY"))
 # -----------------------------ssss
 # Agents
 # -----------------------------

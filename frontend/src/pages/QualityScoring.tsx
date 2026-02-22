@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { motion } from 'framer-motion';
+import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../common';
 
 const ScoreRing = ({ value, label, color }: any) => (
     <div className="flex flex-col items-center">
@@ -52,42 +53,39 @@ const QualityScoring = () => {
 
     return (
         <div className="space-y-8 text-slate-900">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 tracking-tight">AI Quality Scoring</h1>
-                <p className="text-slate-500 font-medium">Deep audit of resume structure, impact, and formatting using LLM reasoning.</p>
-            </header>
+            <PageHeader
+                title="AI Quality Scoring"
+                subtitle="Deep audit of resume structure, impact, and formatting using LLM reasoning."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Resume</label>
-                        <span className="text-xs text-slate-400 font-medium">{text.length} characters</span>
-                    </div>
-                    <textarea
+                    <FormTextarea
+                        label="Candidate Resume"
                         value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        className="w-full h-[450px] bg-white border border-slate-200 rounded-xl p-6 outline-none focus:border-primary-500 transition-all resize-none text-slate-800 text-sm leading-relaxed shadow-sm"
+                        onChange={setText}
                         placeholder="Paste the resume content here for deep analysis..."
+                        height="h-[450px]"
+                        extra={<span className="text-xs text-slate-400 font-medium">{text.length} characters</span>}
                     />
-                    <button
+                    <ActionButton
                         onClick={handleScore}
-                        disabled={analyzing || !text.trim()}
-                        className="w-full bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary-500/20 disabled:opacity-50 transition-all"
-                    >
-                        {analyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                        {analyzing ? 'Scanning Resume Architecture...' : 'Trigger Quality Audit'}
-                    </button>
+                        loading={analyzing}
+                        disabled={!text.trim()}
+                        icon={<Zap className="w-5 h-5" />}
+                        label="Trigger Quality Audit"
+                        loadingLabel="Scanning Resume Architecture..."
+                    />
                 </div>
 
                 <div className="glass-card flex flex-col items-center justify-center min-h-[500px] border-slate-100 bg-white/80">
                     {!hasData && !analyzing && (
-                        <div className="text-center p-12">
-                            <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-slate-100">
-                                <Target className="w-10 h-10 text-slate-200" />
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-400 mb-2">Ready for Analysis</h3>
-                            <p className="text-sm text-slate-400 font-medium">Input a resume on the left to generate <br />a comprehensive quality scorecard.</p>
-                        </div>
+                        <EmptyState
+                            icon={<Target className="w-10 h-10" />}
+                            heading="Ready for Analysis"
+                            description="Input a resume on the left to generate a comprehensive quality scorecard."
+                            className="border-0"
+                        />
                     )}
 
                     {analyzing && (

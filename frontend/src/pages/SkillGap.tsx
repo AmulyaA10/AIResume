@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import api from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../common';
 
 const SkillGap = () => {
     const [resumeText, setResumeText] = useState('');
@@ -28,55 +29,45 @@ const SkillGap = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">Skill Gap Analysis</h1>
-                <p className="text-slate-500 font-medium">Identify missing competencies by comparing candidate resumes against job requirements.</p>
-            </header>
+            <PageHeader
+                title="Skill Gap Analysis"
+                subtitle="Identify missing competencies by comparing candidate resumes against job requirements."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="glass-card p-8 flex flex-col gap-6 bg-white/70 border-slate-100 shadow-sm">
-                    <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Candidate Profile</span>
-                        <textarea
-                            value={resumeText}
-                            onChange={(e) => setResumeText(e.target.value)}
-                            className="w-full h-48 bg-white border border-slate-200 rounded-xl p-4 outline-none focus:border-primary-500 transition-all resize-none text-sm font-medium text-slate-800 shadow-inner"
-                            placeholder="Paste resume text here..."
-                        />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Job Description</span>
-                        <textarea
-                            value={jdText}
-                            onChange={(e) => setJdText(e.target.value)}
-                            className="w-full h-48 bg-white border border-slate-200 rounded-xl p-4 outline-none focus:border-primary-500 transition-all resize-none text-sm font-medium text-slate-800 shadow-inner"
-                            placeholder="Paste job description here..."
-                        />
-                    </div>
-                    <button
+                    <FormTextarea
+                        label="Candidate Profile"
+                        value={resumeText}
+                        onChange={setResumeText}
+                        placeholder="Paste resume text here..."
+                    />
+                    <FormTextarea
+                        label="Job Description"
+                        value={jdText}
+                        onChange={setJdText}
+                        placeholder="Paste job description here..."
+                    />
+                    <ActionButton
                         onClick={handleAnalyze}
-                        disabled={analyzing || !resumeText.trim() || !jdText.trim()}
-                        className="bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary-500/20 disabled:opacity-50 transition-all mt-2"
-                    >
-                        {analyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <BrainCircuit className="w-5 h-5 shadow-sm" />}
-                        Analyze Skill Alignment
-                    </button>
+                        loading={analyzing}
+                        disabled={!resumeText.trim() || !jdText.trim()}
+                        icon={<BrainCircuit className="w-5 h-5" />}
+                        label="Analyze Skill Alignment"
+                        loadingLabel="Analyzing..."
+                        className="mt-2"
+                    />
                 </div>
 
                 <div className="flex flex-col h-full min-h-[500px]">
                     <AnimatePresence mode="wait">
                         {!gaps && !analyzing && (
-                            <motion.div
-                                key="empty"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="flex-1 glass-card flex flex-col items-center justify-center p-12 text-center bg-slate-50/50 border-dashed border-2 border-slate-200"
-                            >
-                                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-sm border border-slate-100">
-                                    <Sparkles className="w-10 h-10 text-slate-200" />
-                                </div>
-                                <h3 className="text-xl font-bold text-slate-400">Ready to Compare</h3>
-                                <p className="text-slate-400 text-sm mt-2 max-w-xs font-medium">Fill in both inputs to start the AI-powered competency analysis.</p>
+                            <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                                <EmptyState
+                                    icon={<Sparkles className="w-10 h-10" />}
+                                    heading="Ready to Compare"
+                                    description="Fill in both inputs to start the AI-powered competency analysis."
+                                />
                             </motion.div>
                         )}
 

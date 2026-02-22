@@ -1,9 +1,10 @@
 from typing import TypedDict, Optional, Dict
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-import os, json
-from dotenv import load_dotenv
-load_dotenv()
+from langgraph.graph import StateGraph, END
+import json
+
+from services.ai.common import get_llm, clean_json_output
+from services.linkedin_scraper import scrape_linkedin_profile
 
 class LinkedInResumeState(TypedDict):
     linkedin_url: str
@@ -12,26 +13,6 @@ class LinkedInResumeState(TypedDict):
     resume: Optional[str]
     config: Optional[Dict]
     linkedin_creds: Optional[Dict]
-
-
-def get_llm(config: Optional[Dict]):
-    """Helper to initialize LLM from config or environment."""
-    if config and config.get("api_key"):
-        return ChatOpenAI(
-            model=config.get("model", "gpt-4o-mini"),
-            temperature=config.get("temperature", 0.3),
-            api_key=config.get("api_key"),
-            base_url=config.get("base_url", "https://openrouter.ai/api/v1")
-        )
-    # Fallback to .env
-    return ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.3,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
-        base_url="https://openrouter.ai/api/v1"
-    )
-
-from services.linkedin_scraper import scrape_linkedin_profile
 
 def linkedin_fetch_agent(state: LinkedInResumeState):
     url = state["linkedin_url"]
@@ -48,17 +29,6 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
         print(f"Error scraping LinkedIn: {e}")
         return {"raw_profile": f"Error: {str(e)}"}
 
-
-def clean_json_output(content: str) -> str:
-    """Removes markdown code blocks (```json ... ```) from the string."""
-    content = content.strip()
-    if content.startswith("```"):
-        # Remove first line (```json or ```)
-        content = content.split("\n", 1)[1]
-        # Remove last line (```)
-        if content.endswith("```"):
-            content = content.rsplit("\n", 1)[0]
-    return content.strip()
 
 def profile_parser_agent(state: LinkedInResumeState):
     llm = get_llm(state.get("config"))
@@ -161,12 +131,6 @@ Return ONLY valid JSON with this exact structure:
             "experience": profile.get("experience", []),
             "education": profile.get("education", [])
         }}
-
-
-
-
-from langgraph.graph import StateGraph, END
-
 def build_linkedin_resume_graph():
     graph = StateGraph(LinkedInResumeState)
 

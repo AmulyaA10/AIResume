@@ -25,10 +25,17 @@
 
 ```
 ResumeIntelligenceV2-main/
-├── frontend/                        # React + Vite + TypeScript (UNCHANGED)
+├── frontend/                        # React + Vite + TypeScript
 │   ├── src/
 │   │   ├── pages/                   # One file per route (PascalCase.tsx)
 │   │   ├── components/              # Layout.tsx, Sidebar.tsx, SettingsSidebar.tsx
+│   │   ├── common/                  # Shared reusable UI components
+│   │   │   ├── index.ts             # Barrel export
+│   │   │   ├── PageHeader.tsx       # Page title + subtitle + optional action
+│   │   │   ├── EmptyState.tsx       # Dashed-border placeholder
+│   │   │   ├── LoadingOverlay.tsx   # Spinner ring with centered icon
+│   │   │   ├── ActionButton.tsx     # Primary button with loading state
+│   │   │   └── FormTextarea.tsx     # Labeled textarea
 │   │   ├── context/                 # AuthContext.tsx
 │   │   ├── api.ts                   # Axios instance + interceptors
 │   │   ├── App.tsx                  # Route definitions
@@ -48,6 +55,10 @@ ResumeIntelligenceV2-main/
 │       ├── config.py                # All env vars and constants
 │       ├── models.py                # Pydantic request/response models
 │       ├── dependencies.py          # get_current_user() and shared deps
+│       ├── common/                  # Shared route utilities
+│       │   ├── __init__.py          # Barrel export
+│       │   ├── llm_helpers.py       # build_llm_config(), build_linkedin_creds()
+│       │   └── activity.py          # safe_log_activity()
 │       └── routes/                  # One file per API domain
 │           ├── __init__.py          # Exports all routers
 │           ├── auth.py              # /api/auth/* (login, OAuth)
@@ -68,6 +79,10 @@ ResumeIntelligenceV2-main/
 │   ├── linkedin_scraper.py          # Selenium-based LinkedIn scraper
 │   ├── ai/                          # LangGraph workflow definitions
 │   │   ├── __init__.py
+│   │   ├── common/                  # Shared AI utilities
+│   │   │   ├── __init__.py          # Barrel: get_llm, clean_json_output
+│   │   │   ├── llm_factory.py       # Canonical get_llm() — single source of truth
+│   │   │   └── parsers.py           # clean_json_output()
 │   │   ├── resume_quality_graph.py  # Quality scoring graph
 │   │   ├── skill_gap_graph.py       # Skill gap analysis graph
 │   │   ├── screening_graph.py       # Auto-screening graph
@@ -117,6 +132,9 @@ ResumeIntelligenceV2-main/
 - New DB operations go in `services/db/lancedb_client.py` (extend, don't create new files).
 - Pydantic models go in `backend/app/models.py`.
 - Environment variables go in `backend/app/config.py`.
+- Shared backend helpers go in `backend/app/common/` (e.g., `build_llm_config`, `safe_log_activity`).
+- Shared AI utilities go in `services/ai/common/` (e.g., `get_llm`, `clean_json_output`).
+- Shared frontend components go in `frontend/src/common/` (e.g., `PageHeader`, `EmptyState`).
 
 ---
 
@@ -210,8 +228,8 @@ from typing import Optional
 
 from app.dependencies import get_current_user
 from app.models import AnalyzeRequest
+from app.common import build_llm_config, safe_log_activity
 from services.agent_controller import run_resume_pipeline
-from services.db.lancedb_client import log_activity
 
 router = APIRouter()
 
@@ -223,8 +241,10 @@ async def analyze_quality(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
-    llm_config = {"api_key": x_openrouter_key, "model": x_llm_model} if x_openrouter_key else None
+    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
     output = run_resume_pipeline(task="score", resumes=[request.resume_text], llm_config=llm_config)
+    score = output.get("score", {}).get("overall", 0)
+    safe_log_activity(user_id, "quality", score=score)
     return output
 ```
 
@@ -277,10 +297,12 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from app.dependencies import get_current_user
 from app.models import AnalyzeRequest
 from app.config import UPLOAD_DIR
+from app.common import build_llm_config, safe_log_activity
 
 # 4. Service imports
 from services.agent_controller import run_resume_pipeline
 from services.db.lancedb_client import store_resume
+from services.ai.common import get_llm, clean_json_output
 ```
 
 ### 5.5 Error Handling Pattern
@@ -311,13 +333,11 @@ Every new LangGraph workflow goes in `services/ai/` and follows this template:
 ```python
 # services/ai/<feature>_graph.py
 from typing import TypedDict, Optional
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
-import os
-from dotenv import load_dotenv
-load_dotenv()
+
+from services.ai.common import get_llm, clean_json_output
 
 
 # ---------- State ----------
@@ -327,27 +347,9 @@ class FeatureState(TypedDict):
     config: Optional[dict]          # ALWAYS include config for dynamic LLM
 
 
-# ---------- LLM Helper ----------
-def get_llm(config: Optional[dict]):
-    """Helper to initialize LLM from config or environment."""
-    if config and config.get("api_key"):
-        return ChatOpenAI(
-            model=config.get("model", "gpt-4o-mini"),
-            temperature=config.get("temperature", 0),
-            api_key=config.get("api_key"),
-            base_url=config.get("base_url", "https://openrouter.ai/api/v1")
-        )
-    return ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
-        base_url="https://openrouter.ai/api/v1"
-    )
-
-
 # ---------- Agents ----------
 def feature_agent(state: FeatureState):
-    llm = get_llm(state.get("config"))
+    llm = get_llm(state.get("config"), temperature=0)
     prompt = PromptTemplate(
         input_variables=["input"],
         template="""
@@ -367,7 +369,6 @@ Return ONLY valid JSON:
     )
     try:
         response = llm.invoke(prompt.format(input=state["input_field"]))
-        from services.ai.skill_gap_graph import clean_json_output
         result = json.loads(clean_json_output(response.content))
         return {"output_field": result}
     except Exception as e:
@@ -401,9 +402,10 @@ def run_resume_pipeline(task: str, ...):
 **Rules:**
 - Compile graphs at module load (top-level `_var = build_*_graph()`). Never compile per-request.
 - Every state TypedDict MUST include `config: Optional[dict]`.
-- Every agent function MUST use `get_llm(state.get("config"))`.
+- Every agent function MUST use `get_llm(state.get("config"), temperature=<value>)`.
+- Import `get_llm` and `clean_json_output` from `services.ai.common` (NOT duplicated per file).
 - Prompt templates MUST escape braces in JSON examples: `{{` and `}}`.
-- Always use `clean_json_output()` from `services.ai.skill_gap_graph` before `json.loads()`.
+- Always use `clean_json_output()` before `json.loads()` on LLM responses.
 
 ### 6.3 Prompt Template Rules
 
@@ -447,6 +449,7 @@ import React, { useState } from 'react';
 import { IconName } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
 
 const FeaturePage = () => {
     const { persona, user } = useAuth();
@@ -467,12 +470,7 @@ const FeaturePage = () => {
 
     return (
         <div className="space-y-8">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">
-                    Page Title
-                </h1>
-                <p className="text-slate-500 font-medium">Description.</p>
-            </header>
+            <PageHeader title="Page Title" subtitle="Description." />
             {/* content */}
         </div>
     );
@@ -480,6 +478,16 @@ const FeaturePage = () => {
 
 export default FeaturePage;
 ```
+
+**Available common components** (import from `'../common'`):
+
+| Component | Props | Usage |
+|---|---|---|
+| `PageHeader` | `title`, `subtitle`, `action?` | Every page header |
+| `EmptyState` | `icon`, `heading`, `description`, `className?` | Placeholder when no data |
+| `LoadingOverlay` | `icon`, `message`, `className?` | Full-panel loading spinner |
+| `ActionButton` | `onClick`, `loading`, `disabled?`, `icon`, `label`, `loadingLabel?` | Primary action buttons |
+| `FormTextarea` | `label`, `value`, `onChange`, `placeholder?`, `height?`, `extra?` | Labeled textareas |
 
 ### 7.2 API Calls
 
@@ -705,26 +713,68 @@ Before merging, verify:
 
 ## 12. Common Utilities
 
-### `clean_json_output()` — JSON Extraction
+### 12.1 AI Layer (`services/ai/common/`)
 
-Located in `services/ai/skill_gap_graph.py`. Import and use whenever parsing LLM responses:
+**`get_llm()`** — Canonical LLM factory. Single source of truth for all graph files:
 
 ```python
-from services.ai.skill_gap_graph import clean_json_output
+from services.ai.common import get_llm, clean_json_output
+
+llm = get_llm(state.get("config"), temperature=0)   # scoring
+llm = get_llm(state.get("config"), temperature=0.7)  # generation
+```
+
+**`clean_json_output()`** — Strip markdown fences from LLM JSON responses:
+
+```python
+from services.ai.common import clean_json_output
 
 raw = response.content           # might have ```json ... ```
 clean = clean_json_output(raw)   # strips markdown fences
 data = json.loads(clean)
 ```
 
-### `get_llm()` — LLM Initialization
+### 12.2 Backend Route Helpers (`backend/app/common/`)
 
-Duplicated in every graph file (by design — keeps graphs self-contained). Follow the
-exact pattern: check `config` dict first, fall back to `.env`.
+**`build_llm_config()`** — Build LLM config dict from HTTP headers:
 
-### `get_or_create_table()` — Table Access
+```python
+from app.common import build_llm_config, safe_log_activity
 
-Always use this. Never call `db.open_table()` or `db.create_table()` directly.
+llm_config = build_llm_config(x_openrouter_key, x_llm_model)
+# Returns {"api_key": ..., "model": ...} or None
+```
+
+**`build_linkedin_creds()`** — Build LinkedIn credential dict:
+
+```python
+from app.common import build_linkedin_creds
+
+creds = build_linkedin_creds(x_linkedin_user, x_linkedin_pass)
+# Returns {"email": ..., "password": ...} or None
+```
+
+**`safe_log_activity()`** — Fire-and-forget activity logging (never crashes the request):
+
+```python
+safe_log_activity(user_id, "quality", score=85)
+safe_log_activity(user_id, "screen", score=72, decision="REJECTED")
+```
+
+### 12.3 Frontend Components (`frontend/src/common/`)
+
+Import shared UI components from `'../common'`:
+
+```tsx
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
+```
+
+See section 7.1 for the component table and usage examples.
+
+### 12.4 Database Helpers
+
+**`get_or_create_table()`** — Table Access. Always use this. Never call
+`db.open_table()` or `db.create_table()` directly.
 
 ---
 
@@ -792,8 +842,6 @@ These are acknowledged issues. Do NOT fix them unless explicitly tasked:
 
 | Issue | Location | Notes |
 |---|---|---|
-| `get_llm()` duplicated in every graph | `services/ai/*_graph.py` | Intentional — keeps graphs self-contained |
-| `clean_json_output()` duplicated | `skill_gap_graph.py`, `linkedin_resume_graph.py` | Other files import from `skill_gap_graph` |
 | `Dashboard.tsx` uses raw `fetch()` | `frontend/src/pages/Dashboard.tsx` | Should use `api` instance |
 | Mock auth with hardcoded users | `backend/app/dependencies.py` | Real JWT planned |
 | `print()` instead of structured logging | Everywhere | Migration to `loguru` planned |

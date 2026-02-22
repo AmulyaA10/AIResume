@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, Key, User, Lock, Save, Database, Cpu } from 'lucide-react';
+import { PageHeader } from '../common';
 
 const Settings = () => {
     const [config, setConfig] = useState({
@@ -27,10 +28,10 @@ const Settings = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <header>
-                <h1 className="text-3xl font-bold mb-2 text-slate-900 tracking-tight">System Configuration</h1>
-                <p className="text-slate-500 font-medium">Manage AI models, API keys, and integration credentials.</p>
-            </header>
+            <PageHeader
+                title="System Configuration"
+                subtitle="Manage AI models, API keys, and integration credentials."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* AI Configuration */}
