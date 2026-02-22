@@ -4,12 +4,14 @@ from services.ai.linkedin_resume_graph import build_linkedin_resume_graph
 from services.ai.langgraph_workflow import build_resume_graph
 from services.ai.screening_graph import build_screening_graph
 from services.ai.resume_generator_graph import build_resume_generator_graph
+from services.ai.resume_validation_graph import build_resume_validation_graph
 
 _quality_graph = build_resume_quality_graph()
 _skill_gap_graph = build_skill_gap_graph()
 _linkedin_graph = build_linkedin_resume_graph()
 _screening_graph = build_screening_graph()
 _generator_graph = build_resume_generator_graph()
+_validation_graph = build_resume_validation_graph()
 graph = build_resume_graph()
 
 def run_resume_pipeline(task: str, resumes: list = None, query: str = None, llm_config: dict = None, threshold: int = 75):
@@ -37,6 +39,19 @@ def run_resume_pipeline(task: str, resumes: list = None, query: str = None, llm_
         })
 
     raise ValueError(f"Unknown task: {task}")
+
+def run_resume_validation(file_name: str, file_type: str, extracted_text: str,
+                          target_role: str = None, llm_config: dict = None) -> dict:
+    """Validate a resume document and return a structured validation report."""
+    result = _validation_graph.invoke({
+        "file_name": file_name,
+        "file_type": file_type,
+        "extracted_text": extracted_text,
+        "target_role": target_role or "",
+        "config": llm_config
+    })
+    return result.get("validation_result", {})
+
 
 def generate_resume_from_linkedin(url: str, llm_config: dict = None, linkedin_creds: dict = None):
     return _linkedin_graph.invoke({

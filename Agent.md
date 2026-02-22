@@ -91,6 +91,7 @@ ResumeIntelligenceV2-main/
 │   │   │   ├── llm_factory.py       # Canonical get_llm() — single source of truth
 │   │   │   └── parsers.py           # clean_json_output()
 │   │   ├── resume_quality_graph.py  # Quality scoring graph
+│   │   ├── resume_validation_graph.py # Upload-time document validation graph
 │   │   ├── skill_gap_graph.py       # Skill gap analysis graph
 │   │   ├── screening_graph.py       # Auto-screening graph
 │   │   ├── resume_generator_graph.py # Resume generation graph
