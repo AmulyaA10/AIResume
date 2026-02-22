@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader } from '../common';
+import { PageHeader } from '../../common';
 
 const AISearch = () => {
     const [query, setQuery] = useState('');
@@ -87,7 +87,7 @@ const AISearch = () => {
                             </div>
                             <button
                                 onClick={() => {
-                                    window.open(`http://localhost:8000/api/resumes/download/${res.filename}`, '_blank');
+                                    window.open(`http://localhost:8000/api/v1/resumes/download/${res.filename}`, '_blank');
                                 }}
                                 className="flex items-center gap-2 text-slate-400 hover:text-primary-600 transition-colors text-sm font-bold"
                             >

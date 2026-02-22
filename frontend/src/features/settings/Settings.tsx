@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, Key, User, Lock, Save, Database, Cpu } from 'lucide-react';
-import { PageHeader } from '../common';
+import { PageHeader } from '../../common';
 
 const Settings = () => {
     const [config, setConfig] = useState({

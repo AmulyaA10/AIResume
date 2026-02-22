@@ -42,14 +42,15 @@ def create_app() -> FastAPI:
         health_router,
     )
 
-    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-    app.include_router(resumes_router, prefix="/api/resumes", tags=["Resumes"])
-    app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
-    app.include_router(search_router, prefix="/api", tags=["Search"])
-    app.include_router(analyze_router, prefix="/api/analyze", tags=["Analysis"])
-    app.include_router(generate_router, prefix="/api/generate", tags=["Generation"])
-    app.include_router(linkedin_router, prefix="/api/linkedin", tags=["LinkedIn"])
-    app.include_router(user_router, prefix="/api/user", tags=["User"])
+    # --- API v1 routes ---
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["v1 — Authentication"])
+    app.include_router(resumes_router, prefix="/api/v1/resumes", tags=["v1 — Resumes"])
+    app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["v1 — Dashboard"])
+    app.include_router(search_router, prefix="/api/v1", tags=["v1 — Search"])
+    app.include_router(analyze_router, prefix="/api/v1/analyze", tags=["v1 — Analysis"])
+    app.include_router(generate_router, prefix="/api/v1/generate", tags=["v1 — Generation"])
+    app.include_router(linkedin_router, prefix="/api/v1/linkedin", tags=["v1 — LinkedIn"])
+    app.include_router(user_router, prefix="/api/v1/user", tags=["v1 — User"])
     app.include_router(health_router, tags=["Health"])
 
     return app

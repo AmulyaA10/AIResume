@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Loader2, UserCheck, UserX, Info, Target } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
 
 const AutoScreening = () => {
     const [resumeText, setResumeText] = useState('');

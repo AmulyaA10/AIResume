@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader } from '../common';
-import { useAuth } from '../context/AuthContext';
+import { PageHeader } from '../../common';
+import { useAuth } from '../../context/AuthContext';
 
 const LinkedInScraper = () => {
     const [url, setUrl] = useState('');

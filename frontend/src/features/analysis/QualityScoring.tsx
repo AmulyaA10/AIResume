@@ -12,9 +12,9 @@ import {
     CheckCircle2,
     Target
 } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../common';
+import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../../common';
 
 const ScoreRing = ({ value, label, color }: any) => (
     <div className="flex flex-col items-center">

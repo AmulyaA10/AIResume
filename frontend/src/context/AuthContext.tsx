@@ -88,11 +88,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = React.useCallback((method: string) => {
         if (method === 'gmail') {
-            window.location.href = 'http://localhost:8000/api/auth/google';
+            window.location.href = 'http://localhost:8000/api/v1/auth/google';
             return;
         }
         if (method === 'linkedin') {
-            window.location.href = 'http://localhost:8000/api/auth/linkedin';
+            window.location.href = 'http://localhost:8000/api/v1/auth/linkedin';
             return;
         }
 

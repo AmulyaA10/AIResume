@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Upload, File, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader } from '../common';
+import { PageHeader } from '../../common';
 
 const ResumeUpload = () => {
     const [files, setFiles] = useState<any[]>([]);

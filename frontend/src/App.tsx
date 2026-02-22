@@ -1,20 +1,14 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import ResumeUpload from './pages/ResumeUpload';
-import AISearch from './pages/AISearch';
-import QualityScoring from './pages/QualityScoring';
-import SkillGap from './pages/SkillGap';
-import AutoScreening from './pages/AutoScreening';
-import ResumeGenerator from './pages/ResumeGenerator';
-import LinkedInScraper from './pages/LinkedInScraper';
 import Layout from './components/Layout';
-import JobDefinitions from './pages/JobDefinitions';
-import Settings from './pages/Settings';
-import AuthCallback from './pages/AuthCallback';
-
 import { useAuth } from './context/AuthContext';
+
+// Feature-based imports
+import { Login, AuthCallback } from './features/auth';
+import { Dashboard, JobDefinitions } from './features/dashboard';
+import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
+import { QualityScoring, SkillGap, AutoScreening, AISearch } from './features/analysis';
+import { Settings } from './features/settings';
 
 // Auth Guard
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {

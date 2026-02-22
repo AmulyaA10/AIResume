@@ -1,6 +1,6 @@
 import React from 'react';
 import { Briefcase, Plus, Search } from 'lucide-react';
-import { PageHeader } from '../common';
+import { PageHeader } from '../../common';
 
 const JobDefinitions = () => {
     return (

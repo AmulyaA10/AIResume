@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../common';
+import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../../common';
 
 const SkillGap = () => {
     const [resumeText, setResumeText] = useState('');

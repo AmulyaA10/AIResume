@@ -27,7 +27,12 @@
 ResumeIntelligenceV2-main/
 ├── frontend/                        # React + Vite + TypeScript
 │   ├── src/
-│   │   ├── pages/                   # One file per route (PascalCase.tsx)
+│   │   ├── features/                # Feature-based page modules
+│   │   │   ├── auth/                # Login.tsx, AuthCallback.tsx
+│   │   │   ├── dashboard/           # Dashboard.tsx, JobDefinitions.tsx
+│   │   │   ├── resumes/             # ResumeUpload.tsx, ResumeGenerator.tsx, LinkedInScraper.tsx
+│   │   │   ├── analysis/            # QualityScoring.tsx, SkillGap.tsx, AutoScreening.tsx, AISearch.tsx
+│   │   │   └── settings/            # Settings.tsx
 │   │   ├── components/              # Layout.tsx, Sidebar.tsx, SettingsSidebar.tsx
 │   │   ├── common/                  # Shared reusable UI components
 │   │   │   ├── index.ts             # Barrel export
@@ -37,8 +42,8 @@ ResumeIntelligenceV2-main/
 │   │   │   ├── ActionButton.tsx     # Primary button with loading state
 │   │   │   └── FormTextarea.tsx     # Labeled textarea
 │   │   ├── context/                 # AuthContext.tsx
-│   │   ├── api.ts                   # Axios instance + interceptors
-│   │   ├── App.tsx                  # Route definitions
+│   │   ├── api.ts                   # Axios instance + interceptors (baseURL: /api/v1)
+│   │   ├── App.tsx                  # Route definitions (imports from features/)
 │   │   └── main.tsx                 # Entry point
 │   ├── package.json
 │   ├── vite.config.js
@@ -59,17 +64,19 @@ ResumeIntelligenceV2-main/
 │       │   ├── __init__.py          # Barrel export
 │       │   ├── llm_helpers.py       # build_llm_config(), build_linkedin_creds()
 │       │   └── activity.py          # safe_log_activity()
-│       └── routes/                  # One file per API domain
-│           ├── __init__.py          # Exports all routers
-│           ├── auth.py              # /api/auth/* (login, OAuth)
-│           ├── resumes.py           # /api/resumes/* (upload, download)
-│           ├── dashboard.py         # /api/dashboard/* (stats)
-│           ├── search.py            # /api/search (semantic search)
-│           ├── analyze.py           # /api/analyze/* (quality, gap, screen)
-│           ├── generate.py          # /api/generate/* (resume gen, export)
-│           ├── linkedin.py          # /api/linkedin/* (scrape)
-│           ├── user.py              # /api/user/* (profile)
-│           └── health.py            # /health
+│       └── routes/                  # Versioned API routes
+│           ├── __init__.py          # Re-exports v1 routers
+│           └── v1/                  # API version 1 route handlers
+│               ├── __init__.py      # Barrel export for v1 routers
+│               ├── auth.py          # /api/v1/auth/* (login, OAuth)
+│               ├── resumes.py       # /api/v1/resumes/* (upload, download)
+│               ├── dashboard.py     # /api/v1/dashboard/* (stats)
+│               ├── search.py        # /api/v1/search (semantic search)
+│               ├── analyze.py       # /api/v1/analyze/* (quality, gap, screen)
+│               ├── generate.py      # /api/v1/generate/* (resume gen, export)
+│               ├── linkedin.py      # /api/v1/linkedin/* (scrape)
+│               ├── user.py          # /api/v1/user/* (profile)
+│               └── health.py        # /health (unversioned)
 │
 ├── services/                        # AI + business logic (shared by backend + legacy)
 │   ├── __init__.py
@@ -117,6 +124,7 @@ ResumeIntelligenceV2-main/
 ├── .env.example                     # Onboarding template (no real secrets)
 ├── .gitignore                       # Comprehensive ignore rules
 ├── requirements.txt                 # Python dependencies
+├── README.md                        # Project documentation
 ├── start_app.bat                    # Windows dev startup script
 └── Agent.md                         # THIS FILE
 ```
@@ -126,15 +134,37 @@ ResumeIntelligenceV2-main/
 - **Do NOT create new top-level directories** without team discussion.
 - **Do NOT move files between directories** without updating all imports.
 - **Legacy code** (`legacy/`) is frozen. Do not modify it.
-- New frontend pages go in `frontend/src/pages/`.
+- New frontend pages go in `frontend/src/features/<domain>/` (see features table below).
 - New AI graphs go in `services/ai/` with the naming pattern `<feature>_graph.py`.
-- New route files go in `backend/app/routes/`.
+- New route files go in `backend/app/routes/v1/`.
 - New DB operations go in `services/db/lancedb_client.py` (extend, don't create new files).
 - Pydantic models go in `backend/app/models.py`.
 - Environment variables go in `backend/app/config.py`.
 - Shared backend helpers go in `backend/app/common/` (e.g., `build_llm_config`, `safe_log_activity`).
 - Shared AI utilities go in `services/ai/common/` (e.g., `get_llm`, `clean_json_output`).
 - Shared frontend components go in `frontend/src/common/` (e.g., `PageHeader`, `EmptyState`).
+
+### Frontend Features Directory
+
+| Feature | Directory | Pages |
+|---|---|---|
+| `auth` | `features/auth/` | Login, AuthCallback |
+| `dashboard` | `features/dashboard/` | Dashboard, JobDefinitions |
+| `resumes` | `features/resumes/` | ResumeUpload, ResumeGenerator, LinkedInScraper |
+| `analysis` | `features/analysis/` | QualityScoring, SkillGap, AutoScreening, AISearch |
+| `settings` | `features/settings/` | Settings |
+
+Each feature directory has a barrel `index.ts` for clean imports in `App.tsx`:
+
+```tsx
+import { Dashboard, JobDefinitions } from './features/dashboard';
+import { QualityScoring, SkillGap } from './features/analysis';
+```
+
+### API Versioning
+
+All API routes are versioned under `/api/v1/`. Route files live in `backend/app/routes/v1/`.
+When introducing breaking changes, create a `v2/` directory alongside `v1/`.
 
 ---
 
@@ -218,11 +248,11 @@ LanceDB is the sole data store. Add new pip packages only with team approval.
 
 ### 5.1 Route File Pattern
 
-Each API domain lives in its own file under `backend/app/routes/`. Every route file
+Each API domain lives in its own file under `backend/app/routes/v1/`. Every route file
 exports a `router` variable:
 
 ```python
-# backend/app/routes/analyze.py
+# backend/app/routes/v1/analyze.py
 from fastapi import APIRouter, Header, Depends
 from typing import Optional
 
@@ -249,7 +279,7 @@ async def analyze_quality(
 ```
 
 **Rules:**
-- All routes are mounted with `/api/<domain>` prefix by the app factory.
+- All routes are mounted with `/api/v1/<domain>` prefix by the app factory.
 - Route functions use `@router.post("/action")` (no `/api/` prefix in the route file).
 - Use `async def` for all endpoints.
 - Accept LLM config via `X-OpenRouter-Key` and `X-LLM-Model` headers.
@@ -261,9 +291,9 @@ async def analyze_quality(
 
 ### 5.2 Adding a New Route File
 
-1. Create `backend/app/routes/<domain>.py` with a `router = APIRouter()`.
-2. Register it in `backend/app/routes/__init__.py`.
-3. Mount it in `backend/app/__init__.py` with `app.include_router(...)`.
+1. Create `backend/app/routes/v1/<domain>.py` with a `router = APIRouter()`.
+2. Register it in `backend/app/routes/v1/__init__.py`.
+3. Mount it in `backend/app/__init__.py` with `app.include_router(..., prefix="/api/v1/<domain>")`.
 
 ### 5.3 Pydantic Request Models
 
@@ -445,11 +475,12 @@ Return ONLY valid JSON:
 ### 7.1 Component Template
 
 ```tsx
+// frontend/src/features/<domain>/FeaturePage.tsx
 import React, { useState } from 'react';
 import { IconName } from 'lucide-react';
-import api from '../api';
-import { useAuth } from '../context/AuthContext';
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
+import api from '../../api';
+import { useAuth } from '../../context/AuthContext';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
 
 const FeaturePage = () => {
     const { persona, user } = useAuth();
@@ -479,7 +510,7 @@ const FeaturePage = () => {
 export default FeaturePage;
 ```
 
-**Available common components** (import from `'../common'`):
+**Available common components** (import from `'../../common'`):
 
 | Component | Props | Usage |
 |---|---|---|
@@ -497,12 +528,12 @@ export default FeaturePage;
 - Do NOT use raw `fetch()` or create new axios instances.
 
 ```tsx
-// CORRECT
-import api from '../api';
+// CORRECT — from a feature page (features/<domain>/)
+import api from '../../api';
 const response = await api.post('/analyze/quality', { resume_text: text });
 
 // WRONG — do not use fetch() directly
-const response = await fetch('http://localhost:8000/api/analyze/quality', ...);
+const response = await fetch('http://localhost:8000/api/v1/analyze/quality', ...);
 ```
 
 > **Note:** `Dashboard.tsx` currently uses raw `fetch()` — this is legacy and should not
@@ -512,11 +543,12 @@ const response = await fetch('http://localhost:8000/api/analyze/quality', ...);
 
 Routes are defined in `frontend/src/App.tsx`. To add a new page:
 
-1. Create `frontend/src/pages/NewPage.tsx`.
-2. Import and add a `<Route>` in `App.tsx`:
+1. Create `frontend/src/features/<domain>/NewPage.tsx`.
+2. Export it from the feature's `index.ts` barrel file.
+3. Import and add a `<Route>` in `App.tsx`:
 
 ```tsx
-import NewPage from './pages/NewPage';
+import { NewPage } from './features/<domain>';
 
 <Route path="/new-page" element={
     <ProtectedRoute>
@@ -525,7 +557,7 @@ import NewPage from './pages/NewPage';
 } />
 ```
 
-3. Add the navigation link in `frontend/src/components/Sidebar.tsx`.
+4. Add the navigation link in `frontend/src/components/Sidebar.tsx`.
 
 ### 7.4 Styling Rules
 
@@ -621,7 +653,7 @@ activity_schema = pa.schema([
 - Frontend stores `token`, `persona`, and `user` in `localStorage`.
 - Backend extracts user from `Authorization: Bearer <token>` header via `app/dependencies.py`.
 - Mapping: `"recruiter"` or `"linkedin"` in token -> `user_recruiter_456`, else `user_alex_chen_123`.
-- OAuth redirects go through `/api/auth/google` and `/api/auth/linkedin`.
+- OAuth redirects go through `/api/v1/auth/google` and `/api/v1/auth/linkedin`.
 - Callback redirects back to `http://localhost:5173/auth/callback?token=...`.
 
 **Do NOT change the auth flow** without team discussion. Future migration to real JWT
@@ -698,8 +730,8 @@ dist/
 
 Before merging, verify:
 - [ ] Follows naming conventions from Section 3
-- [ ] New endpoints in a route file under `backend/app/routes/`
-- [ ] New route file registered in `routes/__init__.py` and `app/__init__.py`
+- [ ] New endpoints in a route file under `backend/app/routes/v1/`
+- [ ] New route file registered in `routes/v1/__init__.py` and `app/__init__.py`
 - [ ] New graphs in `services/ai/` following the template in Section 6.1
 - [ ] New graph registered in `services/agent_controller.py`
 - [ ] New Pydantic models in `backend/app/models.py`
@@ -763,10 +795,10 @@ safe_log_activity(user_id, "screen", score=72, decision="REJECTED")
 
 ### 12.3 Frontend Components (`frontend/src/common/`)
 
-Import shared UI components from `'../common'`:
+Import shared UI components from `'../../common'` (from feature pages):
 
 ```tsx
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
 ```
 
 See section 7.1 for the component table and usage examples.
@@ -806,11 +838,12 @@ Backend runs on `http://localhost:8000`, frontend on `http://localhost:5173`.
 3. Build and compile the graph with `build_<feature>_graph()`.
 4. Register in `services/agent_controller.py`.
 5. Add Pydantic request model in `backend/app/models.py` (if needed).
-6. Create route file in `backend/app/routes/<domain>.py` or add to existing one.
-7. Register router in `backend/app/routes/__init__.py` and `backend/app/__init__.py`.
-8. Create frontend page in `frontend/src/pages/<Feature>.tsx`.
-9. Add route in `App.tsx` with `<ProtectedRoute>`.
-10. Add nav link in `Sidebar.tsx`.
+6. Create route file in `backend/app/routes/v1/<domain>.py` or add to existing one.
+7. Register router in `backend/app/routes/v1/__init__.py` and `backend/app/__init__.py`.
+8. Create frontend page in `frontend/src/features/<domain>/<Feature>.tsx`.
+9. Export from the feature barrel `index.ts`.
+10. Import in `App.tsx` and add `<Route>` with `<ProtectedRoute>`.
+11. Add nav link in `Sidebar.tsx`.
 
 ### Running Legacy Streamlit (if needed)
 
@@ -842,15 +875,14 @@ These are acknowledged issues. Do NOT fix them unless explicitly tasked:
 
 | Issue | Location | Notes |
 |---|---|---|
-| `Dashboard.tsx` uses raw `fetch()` | `frontend/src/pages/Dashboard.tsx` | Should use `api` instance |
+| `Dashboard.tsx` uses raw `fetch()` | `frontend/src/features/dashboard/Dashboard.tsx` | Should use `api` instance |
 | Mock auth with hardcoded users | `backend/app/dependencies.py` | Real JWT planned |
 | `print()` instead of structured logging | Everywhere | Migration to `loguru` planned |
 | CORS set to `allow_origins=["*"]` | `backend/app/config.py` | Must restrict for production |
 | No input sanitization on SQL-like where clauses | `services/db/lancedb_client.py` | `f"user_id = '{user_id}'"` — injection risk |
 | No Docker / CI/CD | Project root | Planned as next infrastructure step |
-| No API versioning | `backend/app/routes/` | All routes under `/api/` without version prefix |
 
 ---
 
-*Last updated: 2026-02-21*
+*Last updated: 2026-02-22*
 *Maintainer: Resume Intelligence Team*

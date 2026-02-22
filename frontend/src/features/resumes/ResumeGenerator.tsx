@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FileText, Loader2, Download, Sparkles, Send, User } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../common';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
 
 const ResumeGenerator = () => {
     const [profile, setProfile] = useState('');

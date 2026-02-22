@@ -1,7 +1,7 @@
 import React from 'react';
 import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 const Dashboard = () => {
     const { persona, user } = useAuth();
@@ -12,7 +12,7 @@ const Dashboard = () => {
         const fetchStats = async () => {
             try {
                 const token = localStorage.getItem('token') || 'mock-token-123';
-                const response = await fetch('http://localhost:8000/api/dashboard/stats', {
+                const response = await fetch('http://localhost:8000/api/v1/dashboard/stats', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
