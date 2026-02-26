@@ -1,38 +1,69 @@
-import React, { useState } from 'react';
-import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck, AlertCircle, Settings } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
 import { PageHeader } from '../../common';
 import { useAuth } from '../../context/AuthContext';
+import { useCredentials } from '../../context/CredentialContext';
+import { useNavigate } from 'react-router-dom';
 
 const LinkedInScraper = () => {
     const [url, setUrl] = useState('');
     const [loading, setLoading] = useState(false);
     const [resume, setResume] = useState<any | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const inputRef = React.useRef<HTMLInputElement>(null);
+    const navigate = useNavigate();
+    const { maskedCredentials, loadMaskedCredentials, isLoaded } = useCredentials();
+
+    // Load credential status from server on mount
+    useEffect(() => {
+        if (!isLoaded) loadMaskedCredentials();
+    }, [isLoaded, loadMaskedCredentials]);
+
+    const hasScraperCreds = maskedCredentials?.has_linkedinUser && maskedCredentials?.has_linkedinPass;
 
     const handleScrape = async () => {
         if (!url.trim()) return;
+
+        // Check if LinkedIn scraper credentials are stored on server
+        if (!hasScraperCreds) {
+            setError('LinkedIn scraper credentials are not configured. Go to Settings and enter your LinkedIn email and password under "Data Sources", then come back and try again.');
+            return;
+        }
+
         setLoading(true);
         setResume(null);
+        setError(null);
         try {
             const response = await api.post('/linkedin/scrape', { query: url });
-            setResume(response.data.resume);
-        } catch (err) {
+            if (response.data.resume) {
+                setResume(response.data.resume);
+            } else if (response.data.error) {
+                setError(response.data.error);
+            } else {
+                setError('No resume data was returned. The profile may be private or inaccessible.');
+            }
+        } catch (err: any) {
             console.error(err);
+            const detail = err?.response?.data?.detail;
+            if (detail) {
+                setError(detail);
+            } else if (err?.message) {
+                setError(`Request failed: ${err.message}`);
+            } else {
+                setError('An unexpected error occurred while scraping the profile.');
+            }
         } finally {
             setLoading(false);
         }
     };
 
-    const { user, login } = useAuth(); // Get user and login from context
+    const { user, login } = useAuth();
 
-    // Auto-populate and handle focus if linked via OAuth
+    // Auto-populate URL from OAuth redirect
     React.useEffect(() => {
-        const isConnected = localStorage.getItem('linkedin_connected');
         const storedUrl = localStorage.getItem('linkedin_profile_url');
-
-        // Extract from URL params for fresh override
         const urlParams = new URLSearchParams(window.location.search);
         const paramUrl = urlParams.get('profile_url');
 
@@ -42,52 +73,16 @@ const LinkedInScraper = () => {
             setUrl(storedUrl);
         }
 
-        // Focus input if we are authenticated but have no resume
-        if (isConnected && !resume && inputRef.current) {
+        if (localStorage.getItem('linkedin_connected') && !resume && inputRef.current) {
             inputRef.current.focus();
         }
-
-        let retryCount = 0;
-        const maxRetries = 15; // 75 seconds total
-
-        if (isConnected && user) {
-            const fetchSyncedProfile = async () => {
-                try {
-                    const response = await api.get('/user/profile');
-                    const potentialResume = response.data.resume;
-                    const isValidStub = potentialResume &&
-                        potentialResume.contact?.name &&
-                        (potentialResume.summary?.length > 100 || (potentialResume.experience && potentialResume.experience.length > 0));
-
-                    if (response.data.found && potentialResume && isValidStub) {
-                        setResume(potentialResume);
-                        setLoading(false);
-                    } else if (retryCount < maxRetries) {
-                        if (loading) {
-                            console.log(`Synced profile not found yet (attempt ${retryCount + 1}), polling...`);
-                            retryCount++;
-                            setTimeout(fetchSyncedProfile, 5000);
-                        } else {
-                            setLoading(false);
-                        }
-                    } else {
-                        console.log("Max retries reached or sync idle.");
-                        setLoading(false);
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch synced profile:", err);
-                    setLoading(false);
-                }
-            };
-
-            fetchSyncedProfile();
-        }
-    }, [user, loading, resume]); // resume added to dependency to allow focusing logic to work correctly
+    }, []);
 
     const handleReset = () => {
         localStorage.removeItem('linkedin_connected');
         localStorage.removeItem('linkedin_profile_url');
         setResume(null);
+        setError(null);
         setLoading(false);
         window.location.reload();
     };
@@ -121,6 +116,8 @@ const LinkedInScraper = () => {
         !resume.summary?.toLowerCase().includes('error') &&
         (resume.summary?.length > 100 || (resume.experience && resume.experience.length > 0));
 
+    const isLinkedInConnected = localStorage.getItem('linkedin_connected');
+
     return (
         <div className="space-y-8">
             <PageHeader
@@ -139,21 +136,39 @@ const LinkedInScraper = () => {
 
                     <div className="text-center">
                         <h3 className="text-xl font-bold text-slate-800 mb-2">
-                            {isResumeValid ? 'Profile Synced Successfully' : (localStorage.getItem('linkedin_connected') ? 'LinkedIn Authenticated' : 'Social Profile Import')}
+                            {isResumeValid ? 'Profile Synced Successfully' : (isLinkedInConnected ? 'LinkedIn Authenticated' : 'Social Profile Import')}
                         </h3>
                         <p className="text-sm text-slate-500 font-medium max-w-md mx-auto">
                             {isResumeValid
                                 ? 'Your profile has been automatically imported and processed.'
-                                : (localStorage.getItem('linkedin_connected')
+                                : (isLinkedInConnected
                                     ? (loading ? 'AI Scraper Active. This may take up to a minute...' : 'Verify your profile URL below and click "Start AI Sync" to begin.')
                                     : 'Click the LinkedIn icon above or the button below to authenticate and sync your profile data.')}
                         </p>
                     </div>
 
+                    {error && (
+                        <div className="w-full bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="space-y-2">
+                                <p className="text-sm font-bold text-red-700">Scraping Failed</p>
+                                <p className="text-xs text-red-600 leading-relaxed">{error}</p>
+                                {!hasScraperCreds && (
+                                    <button
+                                        onClick={() => navigate('/settings')}
+                                        className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                    >
+                                        <Settings className="w-3.5 h-3.5" /> Go to Settings
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {!isResumeValid && (
                         <div className="w-full space-y-6">
-                            {/* Confirmation Input for LikedIn Auth */}
-                            {localStorage.getItem('linkedin_connected') ? (
+                            {/* Confirmation Input for LinkedIn Auth */}
+                            {isLinkedInConnected ? (
                                 <div className="space-y-4">
                                     <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl space-y-2">
                                         <p className="text-xs font-bold text-[#0077b5] uppercase tracking-wider flex items-center gap-2">
@@ -164,13 +179,30 @@ const LinkedInScraper = () => {
                                             If it's wrong, <strong>copy the link from your "Public profile & URL" section</strong> (the one with the unique numbers at the end) and paste it here.
                                         </p>
                                     </div>
+                                    {!hasScraperCreds && (
+                                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+                                            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-bold text-amber-700">Scraper credentials missing</p>
+                                                <p className="text-[11px] text-amber-600 leading-relaxed">
+                                                    Go to <strong>Settings</strong> and enter your LinkedIn email & password under "Data Sources" before syncing.
+                                                </p>
+                                                <button
+                                                    onClick={() => navigate('/settings')}
+                                                    className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                                >
+                                                    <Settings className="w-3 h-3" /> Open Settings
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="w-full relative group">
                                         <LinkIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#0077b5] transition-colors" />
                                         <input
                                             ref={inputRef}
                                             type="text"
                                             value={url}
-                                            onChange={(e) => setUrl(e.target.value)}
+                                            onChange={(e) => { setUrl(e.target.value); setError(null); }}
                                             placeholder="https://www.linkedin.com/in/username"
                                             className="w-full bg-white border border-blue-200 rounded-2xl py-5 pl-14 pr-4 focus:border-[#0077b5] outline-none text-lg transition-all shadow-sm focus:ring-4 focus:ring-[#0077b5]/5 text-slate-800 placeholder:text-slate-300"
                                         />
@@ -178,7 +210,7 @@ const LinkedInScraper = () => {
                                     <button
                                         onClick={handleScrape}
                                         disabled={loading || !url.trim()}
-                                        className="w-full bg-[#0077b5] hover:bg-[#006396] text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-[#0077b5]/20 active:scale-95 flex items-center justify-center gap-3"
+                                        className="w-full bg-[#0077b5] hover:bg-[#006396] text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-[#0077b5]/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                                     >
                                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                                         {loading ? 'AI Scraper Active...' : 'Verify & Start AI Sync'}
@@ -204,7 +236,7 @@ const LinkedInScraper = () => {
                                         <input
                                             type="text"
                                             value={url}
-                                            onChange={(e) => setUrl(e.target.value)}
+                                            onChange={(e) => { setUrl(e.target.value); setError(null); }}
                                             placeholder="https://www.linkedin.com/in/username"
                                             className="w-full bg-white border border-slate-200 rounded-2xl py-5 pl-14 pr-4 focus:border-[#0077b5] outline-none text-lg transition-all shadow-sm focus:ring-4 focus:ring-[#0077b5]/5 text-slate-800 placeholder:text-slate-300"
                                         />
@@ -312,12 +344,12 @@ const LinkedInScraper = () => {
                 </motion.div>
             )}
 
-            {!resume && !loading && (
+            {!resume && !loading && !error && (
                 <div className="text-center py-10 space-y-6">
                     <p className="max-w-sm mx-auto text-xs text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
                         Note: This feature uses automated browser agents to parse profile data and structure it into standardized blocks.
                     </p>
-                    {localStorage.getItem('linkedin_connected') && (
+                    {isLinkedInConnected && (
                         <button
                             onClick={handleReset}
                             className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 mx-auto"
@@ -325,6 +357,17 @@ const LinkedInScraper = () => {
                             <RefreshCw className="w-3.5 h-3.5" /> Reset Connection State
                         </button>
                     )}
+                </div>
+            )}
+
+            {!resume && !loading && error && isLinkedInConnected && (
+                <div className="text-center py-6">
+                    <button
+                        onClick={handleReset}
+                        className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-2 mx-auto"
+                    >
+                        <RefreshCw className="w-3.5 h-3.5" /> Reset Connection State
+                    </button>
                 </div>
             )}
         </div>

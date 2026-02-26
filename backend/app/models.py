@@ -19,3 +19,20 @@ class AnalyzeRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     profile: str
+
+
+class UserSettingsUpdate(BaseModel):
+    """Request body for PUT /user/settings — only non-None fields are updated."""
+    openRouterKey: Optional[str] = None
+    linkedinUser: Optional[str] = None
+    linkedinPass: Optional[str] = None
+
+
+class UserSettingsResponse(BaseModel):
+    """Response body for GET /user/settings — credentials are masked."""
+    openRouterKey: Optional[str] = None
+    linkedinUser: Optional[str] = None
+    linkedinPass: Optional[str] = None
+    has_openRouterKey: bool = False
+    has_linkedinUser: bool = False
+    has_linkedinPass: bool = False

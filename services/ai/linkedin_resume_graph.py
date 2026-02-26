@@ -11,6 +11,7 @@ class LinkedInResumeState(TypedDict):
     raw_profile: Optional[str]
     parsed_profile: Optional[Dict]
     resume: Optional[str]
+    error: Optional[str]
     config: Optional[Dict]
     linkedin_creds: Optional[Dict]
 
@@ -20,17 +21,22 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
     print(f"--- Fetching LinkedIn Profile: {url} ---")
     try:
         profile_text = scrape_linkedin_profile(
-            url, 
-            email=creds.get("email"), 
+            url,
+            email=creds.get("email"),
             password=creds.get("password")
         )
-        return {"raw_profile": profile_text}
+        if not profile_text or len(profile_text.strip()) < 50:
+            return {"raw_profile": None, "error": "Scraped profile was empty or too short. LinkedIn may have blocked the request or the profile is not accessible."}
+        return {"raw_profile": profile_text, "error": None}
     except Exception as e:
         print(f"Error scraping LinkedIn: {e}")
-        return {"raw_profile": f"Error: {str(e)}"}
+        return {"raw_profile": None, "error": str(e)}
 
 
 def profile_parser_agent(state: LinkedInResumeState):
+    if state.get("error") or not state.get("raw_profile"):
+        return {"parsed_profile": None}
+
     llm = get_llm(state.get("config"))
     prompt = PromptTemplate(
         input_variables=["profile"],
@@ -62,15 +68,12 @@ Return ONLY valid JSON:
     except Exception as e:
         print(f"Error parsing profile JSON: {e}")
         print(f"Raw content: {response.content}")
-        return {"parsed_profile": {
-            "name": "Error Parsing",
-            "headline": "Could not extract data",
-            "experience": [],
-            "skills": [],
-            "education": []
-        }}
+        return {"parsed_profile": None, "error": f"Failed to parse LinkedIn profile data: {e}"}
 
 def resume_writer_agent(state: LinkedInResumeState):
+    if state.get("error") or not state.get("parsed_profile"):
+        return {"resume": None}
+
     llm = get_llm(state.get("config"))
     profile = state["parsed_profile"]
 
@@ -123,14 +126,8 @@ Return ONLY valid JSON with this exact structure:
         return {"resume": resume_json}
     except Exception as e:
         print(f"Error parsing resume JSON: {e}")
-        # Fallback to a basic structure if AI fails
-        return {"resume": {
-            "contact": {"name": profile.get("name", "Unknown")},
-            "summary": "Error generating structured resume.",
-            "skills": profile.get("skills", []),
-            "experience": profile.get("experience", []),
-            "education": profile.get("education", [])
-        }}
+        return {"resume": None, "error": f"Failed to generate structured resume: {e}"}
+
 def build_linkedin_resume_graph():
     graph = StateGraph(LinkedInResumeState)
 

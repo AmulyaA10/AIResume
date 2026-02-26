@@ -4,7 +4,7 @@ from typing import List, Optional
 import os
 import shutil
 
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, resolve_credentials
 from app.config import UPLOAD_DIR
 from app.common import build_llm_config, safe_log_activity
 from services.resume_parser import extract_text
@@ -23,6 +23,9 @@ async def upload_resumes(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+
     print(f"--- Uploading {len(files)} files for user {user_id} ---")
     results = []
     store_db_bool = store_db.lower() == "true"
@@ -42,7 +45,6 @@ async def upload_resumes(
             if validate_bool and text.strip():
                 try:
                     file_type = os.path.splitext(file.filename)[1].lstrip(".")
-                    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
                     validation = run_resume_validation(
                         file_name=file.filename,
                         file_type=file_type,
@@ -57,7 +59,7 @@ async def upload_resumes(
             # --- Store in DB (regardless of validation result) ---
             if store_db_bool:
                 print(f"Storing in DB: {file.filename}")
-                store_resume(file.filename, text, user_id, api_key=x_openrouter_key)
+                store_resume(file.filename, text, user_id, api_key=creds["openrouter_key"])
 
             classification = (validation or {}).get("classification", "N/A")
             results.append({

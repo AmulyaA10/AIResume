@@ -4,7 +4,7 @@ import json
 import time
 import os
 
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, resolve_credentials
 from app.models import SearchRequest
 from services.db.lancedb_client import search_resumes_semantic
 from services.ai.common import clean_json_output
@@ -19,12 +19,14 @@ async def search_resumes(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+
     start_time = time.time()
     print(f"--- [Search Start] Query: '{request.query}' for user {user_id} ---")
 
     # Perform semantic search to filter relevant resumes/chunks
     db_start = time.time()
-    df = search_resumes_semantic(request.query, user_id, limit=10, api_key=x_openrouter_key)
+    df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"])
     db_end = time.time()
     print(f"DEBUG: LanceDB search took {db_end - db_start:.2f}s. Found {len(df)} results.")
 
@@ -53,12 +55,12 @@ async def search_resumes(
     )
 
     llm_start = time.time()
-    print(f"DEBUG: Passing {len(df)} results to LLM ({x_llm_model or 'gpt-4o-mini'})...")
+    print(f"DEBUG: Passing {len(df)} results to LLM ({creds['llm_model'] or 'gpt-4o-mini'})...")
 
     # Initialize LLM with dynamic config if available
     llm = ChatOpenAI(
-        model=x_llm_model or "gpt-4o-mini",
-        api_key=x_openrouter_key or os.getenv("OPEN_ROUTER_KEY"),
+        model=creds["llm_model"] or "gpt-4o-mini",
+        api_key=creds["openrouter_key"] or os.getenv("OPEN_ROUTER_KEY"),
         base_url="https://openrouter.ai/api/v1",
         timeout=30
     )

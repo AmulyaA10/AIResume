@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Header, Depends
 from typing import Optional
 
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, resolve_credentials
 from app.models import AnalyzeRequest
 from app.common import build_llm_config, safe_log_activity
 from services.agent_controller import run_resume_pipeline
@@ -16,7 +16,8 @@ async def analyze_quality(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
-    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
     output = run_resume_pipeline(task="score", resumes=[request.resume_text], llm_config=llm_config)
 
     score = output.get("score", {}).get("overall", 0)
@@ -32,7 +33,8 @@ async def analyze_gap(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
-    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
     output = run_resume_pipeline(task="skill_gap", resumes=[request.resume_text], query=request.jd_text, llm_config=llm_config)
 
     score = output.get("match_score", 0)
@@ -48,7 +50,8 @@ async def analyze_screen(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
-    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
     output = run_resume_pipeline(
         task="screen",
         resumes=[request.resume_text],

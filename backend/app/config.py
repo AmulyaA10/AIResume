@@ -16,6 +16,9 @@ OPEN_ROUTER_KEY = os.getenv("OPEN_ROUTER_KEY")
 LINKEDIN_LOGIN = os.getenv("LinkedinLogin")
 LINKEDIN_PASSWORD = os.getenv("LinkedinPassword")
 
+# ---------- Encryption ----------
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
 # ---------- CORS ----------
 CORS_ORIGINS = ["*"]  # In production, replace with specific React URL
 

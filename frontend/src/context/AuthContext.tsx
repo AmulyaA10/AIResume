@@ -123,6 +123,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [navigate]);
 
     const logout = React.useCallback(() => {
+        // Dispatch event so CredentialContext clears in-memory credentials
+        window.dispatchEvent(new Event('auth:logout'));
+
         localStorage.removeItem('token');
         localStorage.removeItem('persona');
         localStorage.removeItem('user');

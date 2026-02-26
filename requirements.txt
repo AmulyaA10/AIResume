@@ -13,3 +13,4 @@ webdriver-manager
 fastapi
 uvicorn
 python-multipart
+cryptography

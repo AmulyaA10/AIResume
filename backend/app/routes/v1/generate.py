@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional
 
+from app.dependencies import get_current_user, resolve_credentials
 from app.models import GenerateRequest
 from app.common import build_llm_config
 from services.agent_controller import run_resume_pipeline
@@ -14,9 +15,11 @@ router = APIRouter()
 async def generate_resume_endpoint(
     request: GenerateRequest,
     x_openrouter_key: Optional[str] = Header(None),
-    x_llm_model: Optional[str] = Header(None)
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user)
 ):
-    llm_config = build_llm_config(x_openrouter_key, x_llm_model)
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
     output = run_resume_pipeline(task="generate", query=request.profile, llm_config=llm_config)
     return output
 

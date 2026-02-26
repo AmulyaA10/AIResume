@@ -192,6 +192,58 @@ def get_dashboard_stats(user_id: str):
         "recent_activity": recent_activity
     }
 
+# ---------- USER SETTINGS SCHEMA ----------
+user_settings_schema = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("user_id", pa.string()),
+    pa.field("setting_key", pa.string()),
+    pa.field("setting_value", pa.string()),
+    pa.field("updated_at", pa.string()),
+])
+
+def get_or_create_settings_table():
+    if "user_settings" in db.table_names():
+        return db.open_table("user_settings")
+    return db.create_table("user_settings", schema=user_settings_schema, mode="create")
+
+def upsert_user_setting(user_id: str, key: str, encrypted_value: str):
+    """Store or update a single encrypted setting for a user."""
+    from datetime import datetime
+    table = get_or_create_settings_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND setting_key = '{key}'")
+    except Exception:
+        pass
+    if encrypted_value:
+        table.add([{
+            "id": str(uuid4()),
+            "user_id": user_id,
+            "setting_key": key,
+            "setting_value": encrypted_value,
+            "updated_at": datetime.now().isoformat(),
+        }])
+
+def get_user_settings(user_id: str) -> dict:
+    """Retrieve all settings for a user as {key: encrypted_value}."""
+    table = get_or_create_settings_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return {}
+        user_df = df[df['user_id'] == user_id]
+        return {row['setting_key']: row['setting_value'] for _, row in user_df.iterrows()}
+    except Exception as e:
+        print(f"DEBUG: Failed to read user settings: {e}")
+        return {}
+
+def delete_user_settings(user_id: str):
+    """Delete all settings for a user."""
+    table = get_or_create_settings_table()
+    try:
+        table.delete(f"user_id = '{user_id}'")
+    except Exception as e:
+        print(f"DEBUG: Failed to delete user settings: {e}")
+
 # ---------- SEARCH ----------
 def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None):
     print(f"DEBUG: Semantic search query: {query} (User: {user_id})")
