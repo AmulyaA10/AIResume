@@ -76,6 +76,16 @@ async def resolve_credentials(
                         print(f"DEBUG: [resolve_credentials] Decrypted '{storage_key}' successfully (len={len(result[internal_key])})")
                     except Exception as e:
                         print(f"WARNING: [resolve_credentials] Decryption failed for '{storage_key}' (user={user_id}): {e}")
+<<<<<<< HEAD
+=======
+                        # Auto-clean the corrupted entry so user can re-enter
+                        try:
+                            from services.db.lancedb_client import upsert_user_setting
+                            upsert_user_setting(user_id, storage_key, "")
+                            print(f"INFO: [resolve_credentials] Cleared corrupted '{storage_key}' for user '{user_id}'")
+                        except Exception:
+                            pass
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
                 else:
                     if not result[internal_key]:
                         print(f"DEBUG: [resolve_credentials] No stored value for '{storage_key}'")

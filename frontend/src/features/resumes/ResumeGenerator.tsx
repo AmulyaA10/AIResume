@@ -9,20 +9,42 @@ const ResumeGenerator = () => {
     const [generating, setGenerating] = useState(false);
     const [resume, setResume] = useState<any>(null);
     const [outputValidation, setOutputValidation] = useState<any>(null);
+<<<<<<< HEAD
+=======
+    const [validationError, setValidationError] = useState<any>(null);
+    const [inputValidationWarning, setInputValidationWarning] = useState<any>(null);
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
     const handleGenerate = async () => {
         if (!profile.trim()) return;
         setGenerating(true);
         setResume(null);
         setOutputValidation(null);
+<<<<<<< HEAD
+=======
+        setValidationError(null);
+        setInputValidationWarning(null);
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
         try {
             const response = await api.post('/generate/resume', { profile });
             setResume(response.data.resume_json);
             if (response.data.output_validation) {
                 setOutputValidation(response.data.output_validation);
             }
+<<<<<<< HEAD
         } catch (err) {
             console.error(err);
+=======
+            if (response.data.input_validation_warning) {
+                setInputValidationWarning(response.data.input_validation_warning);
+            }
+        } catch (err: any) {
+            if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
+                setValidationError(err.response.data.detail.validation);
+            } else {
+                console.error(err);
+            }
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
         } finally {
             setGenerating(false);
         }
@@ -95,7 +117,27 @@ const ResumeGenerator = () => {
                 </div>
 
                 <div className="flex flex-col min-h-[600px]">
+<<<<<<< HEAD
                     {!resume && !generating && (
+=======
+                    {validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner validation={validationError} type="error" />
+                        </div>
+                    )}
+
+                    {inputValidationWarning && !validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner
+                                validation={inputValidationWarning}
+                                type="warning"
+                                onDismiss={() => setInputValidationWarning(null)}
+                            />
+                        </div>
+                    )}
+
+                    {!resume && !generating && !validationError && (
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
                         <EmptyState
                             icon={<FileText className="w-10 h-10" />}
                             heading="Preview Engine Standby"

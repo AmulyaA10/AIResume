@@ -4,7 +4,11 @@ from typing import Optional
 
 from app.dependencies import get_current_user, resolve_credentials
 from app.models import GenerateRequest
+<<<<<<< HEAD
 from app.common import build_llm_config
+=======
+from app.common import build_llm_config, precheck_resume_validation
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 from services.agent_controller import run_resume_pipeline, run_resume_validation
 from services.export_service import generate_docx
 
@@ -49,6 +53,13 @@ async def generate_resume_endpoint(
 ):
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+<<<<<<< HEAD
+=======
+
+    # Pre-check: validate that the input text looks like resume/profile content
+    input_validation_warning = precheck_resume_validation(request.profile, llm_config)
+
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
     output = run_resume_pipeline(task="generate", query=request.profile, llm_config=llm_config)
 
     # Post-generation validation: assess quality of the generated resume
@@ -68,6 +79,13 @@ async def generate_resume_endpoint(
             except Exception as e:
                 print(f"DEBUG: Post-generation validation failed: {e}")
 
+<<<<<<< HEAD
+=======
+    # Attach input validation warning if present (distinct from output_validation)
+    if input_validation_warning:
+        output["input_validation_warning"] = input_validation_warning
+
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
     return output
 
 

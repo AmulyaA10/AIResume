@@ -1,7 +1,15 @@
 import os
+<<<<<<< HEAD
 from dotenv import load_dotenv
 
 load_dotenv()
+=======
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Always load backend/.env regardless of current working directory
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
 # ---------- OAuth ----------
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "placeholder_id")

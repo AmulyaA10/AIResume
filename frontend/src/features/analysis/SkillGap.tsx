@@ -2,26 +2,52 @@ import React, { useState } from 'react';
 import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
+<<<<<<< HEAD
 import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../../common';
+=======
+import { PageHeader, EmptyState, ActionButton, FormTextarea, ValidationBanner } from '../../common';
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
 const SkillGap = () => {
     const [resumeText, setResumeText] = useState('');
     const [jdText, setJdText] = useState('');
     const [analyzing, setAnalyzing] = useState(false);
     const [gaps, setGaps] = useState<any>(null);
+<<<<<<< HEAD
+=======
+    const [validationError, setValidationError] = useState<any>(null);
+    const [validationWarning, setValidationWarning] = useState<any>(null);
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
     const handleAnalyze = async () => {
         if (!resumeText.trim() || !jdText.trim()) return;
         setAnalyzing(true);
         setGaps(null);
+<<<<<<< HEAD
+=======
+        setValidationError(null);
+        setValidationWarning(null);
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
         try {
             const response = await api.post('/analyze/gap', {
                 resume_text: resumeText,
                 jd_text: jdText
             });
             setGaps(response.data.gaps);
+<<<<<<< HEAD
         } catch (err) {
             console.error(err);
+=======
+            if (response.data.validation_warning) {
+                setValidationWarning(response.data.validation_warning);
+            }
+        } catch (err: any) {
+            if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
+                setValidationError(err.response.data.detail.validation);
+            } else {
+                console.error(err);
+            }
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
         } finally {
             setAnalyzing(false);
         }
@@ -60,8 +86,29 @@ const SkillGap = () => {
                 </div>
 
                 <div className="flex flex-col h-full min-h-[500px]">
+<<<<<<< HEAD
                     <AnimatePresence mode="wait">
                         {!gaps && !analyzing && (
+=======
+                    {validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner validation={validationError} type="error" />
+                        </div>
+                    )}
+
+                    {validationWarning && !validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner
+                                validation={validationWarning}
+                                type="warning"
+                                onDismiss={() => setValidationWarning(null)}
+                            />
+                        </div>
+                    )}
+
+                    <AnimatePresence mode="wait">
+                        {!gaps && !analyzing && !validationError && (
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
                             <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <EmptyState
                                     icon={<Sparkles className="w-10 h-10" />}

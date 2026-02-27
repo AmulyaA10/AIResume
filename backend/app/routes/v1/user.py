@@ -73,10 +73,24 @@ async def save_user_settings(
     if not updates:
         raise HTTPException(status_code=400, detail="No settings provided.")
 
+<<<<<<< HEAD
     for key, plaintext in updates.items():
         if key in SENSITIVE_KEYS:
             encrypted = encrypt_value(plaintext)
             upsert_user_setting(user_id, key, encrypted)
+=======
+    try:
+        for key, plaintext in updates.items():
+            if key in SENSITIVE_KEYS:
+                encrypted = encrypt_value(plaintext)
+                upsert_user_setting(user_id, key, encrypted)
+    except Exception as e:
+        print(f"ERROR: [save_user_settings] Failed to encrypt/store credentials for user '{user_id}': {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save credentials: {str(e)}",
+        )
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
     return {"success": True, "updated_keys": list(updates.keys())}
 
@@ -105,6 +119,13 @@ async def get_user_settings_endpoint(
                 result[f"has_{key}"] = True
             except Exception as e:
                 print(f"WARNING: [settings] Failed to decrypt '{key}' for user '{user_id}': {e}")
+<<<<<<< HEAD
+=======
+                # Auto-clean: corrupted credential is unusable, remove it
+                # so the user sees a clean "no credentials" state
+                upsert_user_setting(user_id, key, "")
+                print(f"INFO: [settings] Cleared corrupted '{key}' for user '{user_id}'")
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
                 result[key] = None
                 result[f"has_{key}"] = False
         else:

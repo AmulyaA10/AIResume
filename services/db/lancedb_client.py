@@ -6,10 +6,20 @@ import os
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
+<<<<<<< HEAD
 load_dotenv()
 
 # ---------- DB PATH ----------
 DB_PATH = Path("data/lancedb")
+=======
+# Always load backend/.env regardless of current working directory
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_PROJECT_ROOT / "backend" / ".env")
+
+# ---------- DB PATH ----------
+# Use absolute path so the same DB is used regardless of CWD
+DB_PATH = _PROJECT_ROOT / "data" / "lancedb"
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 DB_PATH.mkdir(parents=True, exist_ok=True)
 
 db = lancedb.connect(DB_PATH)
@@ -52,6 +62,7 @@ resume_schema = pa.schema([
     pa.field("vector", pa.list_(pa.float32(), 1536)) # Assuming text-embedding-3-small
 ])
 
+<<<<<<< HEAD
 # ---------- JOB SCHEMA ----------
 job_schema = pa.schema([
     pa.field("job_id", pa.string()),
@@ -76,6 +87,8 @@ job_schema = pa.schema([
     pa.field("vector", pa.list_(pa.float32(), 1536))
 ])
 
+=======
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 # ---------- TABLE HANDLER ----------
 def get_or_create_table():
     if "resumes" in db.table_names():
@@ -87,6 +100,7 @@ def get_or_create_table():
         mode="create"
     )
 
+<<<<<<< HEAD
 def get_or_create_jobs_table():
     if "jobs" in db.table_names():
         return db.open_table("jobs")
@@ -97,6 +111,8 @@ def get_or_create_jobs_table():
         mode="create"
     )
 
+=======
+>>>>>>> 9d136502ee9374e86211849855e67746afb88872
 # ---------- CHUNKING ----------
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
     """Simple sliding window chunking."""
