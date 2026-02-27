@@ -30,7 +30,7 @@ async def test_linkedin_scrape(app, mock_linkedin_output):
         "app.routes.v1.linkedin.generate_resume_from_linkedin",
         return_value=mock_linkedin_output,
     ), patch(
-        "app.dependencies.resolve_credentials",
+        "app.routes.v1.linkedin.resolve_credentials",
         return_value={
             "openrouter_key": "test-key",
             "llm_model": None,

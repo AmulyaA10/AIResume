@@ -28,10 +28,10 @@ def get_llm(config: Optional[dict] = None, temperature: float = 0.7) -> ChatOpen
     """
     if config and config.get("api_key"):
         return ChatOpenAI(
-            model=config.get("model", DEFAULT_MODEL),
+            model=config.get("model") or DEFAULT_MODEL,
             temperature=config.get("temperature", temperature),
             api_key=config.get("api_key"),
-            base_url=config.get("base_url", DEFAULT_BASE_URL),
+            base_url=config.get("base_url") or DEFAULT_BASE_URL,
         )
     # Fallback to .env
     return ChatOpenAI(

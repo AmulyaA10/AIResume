@@ -155,4 +155,8 @@ async def linkedin_scrape(
     if not output.get("resume"):
         raise HTTPException(status_code=422, detail="Could not extract resume data from the LinkedIn profile. The profile may be private or the scraper credentials may be missing.")
 
-    return output
+    # Return only non-sensitive fields — never expose credentials or API keys
+    return {
+        "resume": output.get("resume"),
+        "error": output.get("error"),
+    }

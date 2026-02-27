@@ -73,10 +73,17 @@ async def save_user_settings(
     if not updates:
         raise HTTPException(status_code=400, detail="No settings provided.")
 
-    for key, plaintext in updates.items():
-        if key in SENSITIVE_KEYS:
-            encrypted = encrypt_value(plaintext)
-            upsert_user_setting(user_id, key, encrypted)
+    try:
+        for key, plaintext in updates.items():
+            if key in SENSITIVE_KEYS:
+                encrypted = encrypt_value(plaintext)
+                upsert_user_setting(user_id, key, encrypted)
+    except Exception as e:
+        print(f"ERROR: [save_user_settings] Failed to encrypt/store credentials for user '{user_id}': {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save credentials: {str(e)}",
+        )
 
     return {"success": True, "updated_keys": list(updates.keys())}
 

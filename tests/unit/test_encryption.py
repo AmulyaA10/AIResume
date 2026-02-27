@@ -14,10 +14,10 @@ _TEST_KEY = Fernet.generate_key().decode()
 def set_encryption_key():
     """Set a valid ENCRYPTION_KEY for all tests in this module."""
     with patch.dict(os.environ, {"ENCRYPTION_KEY": _TEST_KEY}):
-        # Reload the module-level variable
         import app.common.encryption as enc_mod
         enc_mod._ENCRYPTION_KEY = _TEST_KEY
         yield
+        # Reset to env value (or None) so next test starts clean
         enc_mod._ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 
@@ -91,12 +91,24 @@ def test_mask_value_email():
     assert result.count("*") == len("user@example.com") - 4
 
 
-def test_missing_encryption_key_raises():
-    """Missing ENCRYPTION_KEY raises ValueError."""
+def test_missing_encryption_key_auto_generates():
+    """Missing ENCRYPTION_KEY auto-generates a valid key."""
     import app.common.encryption as enc_mod
 
     enc_mod._ENCRYPTION_KEY = None
-    from app.common.encryption import encrypt_value
+    # Also remove from env so _ensure_key() must auto-generate
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("ENCRYPTION_KEY", None)
+        from app.common.encryption import encrypt_value, decrypt_value
 
-    with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
-        encrypt_value("test")
+        # Should NOT raise — auto-generates a key
+        ciphertext = encrypt_value("test-auto")
+        assert ciphertext != ""
+        assert ciphertext != "test-auto"
+
+        # Verify the auto-generated key works for decryption too
+        assert decrypt_value(ciphertext) == "test-auto"
+
+        # Verify a key was generated and cached
+        assert enc_mod._ENCRYPTION_KEY is not None
+        assert len(enc_mod._ENCRYPTION_KEY) > 0
