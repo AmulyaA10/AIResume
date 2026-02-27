@@ -5,16 +5,10 @@ import { useAuth } from './context/AuthContext';
 
 // Feature-based imports
 import { Login, AuthCallback } from './features/auth';
-<<<<<<< HEAD
 import { Dashboard, JobDefinitions, JobForm } from './features/dashboard';
 import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
 import { QualityScoring, SkillGap, AutoScreening, AISearch } from './features/analysis';
 import { JobSearch } from './features/jobs';
-=======
-import { Dashboard, JobDefinitions } from './features/dashboard';
-import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
-import { QualityScoring, SkillGap, AutoScreening, AISearch } from './features/analysis';
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 import { Settings } from './features/settings';
 
 // Auth Guard
@@ -44,11 +38,7 @@ function App() {
 
             <Route path="/search" element={
                 <ProtectedRoute>
-<<<<<<< HEAD
                     <JobSearch />
-=======
-                    <AISearch />
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
                 </ProtectedRoute>
             } />
 
@@ -75,7 +65,6 @@ function App() {
                     <JobDefinitions />
                 </ProtectedRoute>
             } />
-<<<<<<< HEAD
             <Route path="/jd/new" element={
                 <ProtectedRoute>
                     <JobForm />
@@ -86,8 +75,6 @@ function App() {
                     <JobForm />
                 </ProtectedRoute>
             } />
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
             <Route path="/settings" element={
                 <ProtectedRoute>

@@ -42,10 +42,7 @@ async def test_quality_missing_resume_text(app, auth_headers):
 async def test_skill_gap(app, auth_headers, sample_resume_text, sample_jd_text, mock_gap_output):
     """POST /api/v1/analyze/gap returns gap analysis."""
     with (
-<<<<<<< HEAD
-=======
         patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_gap_output),
         patch("app.routes.v1.analyze.safe_log_activity"),
     ):
@@ -258,10 +255,6 @@ async def test_screening_no_warning_good_resume(app, auth_headers, sample_resume
             )
     assert resp.status_code == 200
     assert "validation_warning" not in resp.json()
-<<<<<<< HEAD
-=======
-
-
 # ---- Skill Gap: Validation Pre-check ----
 
 @pytest.mark.asyncio
@@ -322,4 +315,3 @@ async def test_gap_no_warning_good_resume(app, auth_headers, sample_resume_text,
             )
     assert resp.status_code == 200
     assert "validation_warning" not in resp.json()
->>>>>>> 9d136502ee9374e86211849855e67746afb88872

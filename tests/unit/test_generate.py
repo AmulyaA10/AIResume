@@ -2,10 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-<<<<<<< HEAD
-=======
 from fastapi import HTTPException
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 from httpx import AsyncClient, ASGITransport
 import io
 
@@ -14,10 +11,7 @@ import io
 async def test_generate_resume(app, mock_generate_output):
     """POST /api/v1/generate/resume returns generated resume JSON."""
     with (
-<<<<<<< HEAD
-=======
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
         patch("app.routes.v1.generate.run_resume_validation", return_value={}),
     ):
@@ -74,10 +68,7 @@ async def test_export_empty_resume(app):
 async def test_generate_with_output_validation(app, mock_generate_output, mock_good_resume_validation):
     """Generate endpoint includes output_validation in response."""
     with (
-<<<<<<< HEAD
-=======
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
         patch("app.routes.v1.generate.run_resume_validation", return_value=mock_good_resume_validation),
     ):
@@ -92,8 +83,7 @@ async def test_generate_with_output_validation(app, mock_generate_output, mock_g
     assert "output_validation" in data
     assert data["output_validation"]["classification"] == "resume_valid_good"
     assert data["output_validation"]["total_score"] == 22
-<<<<<<< HEAD
-=======
+
 
 
 # ---- Input Validation Pre-check ----
@@ -153,4 +143,3 @@ async def test_generate_no_warning_good_input(app, mock_generate_output):
             )
     assert resp.status_code == 200
     assert "input_validation_warning" not in resp.json()
->>>>>>> 9d136502ee9374e86211849855e67746afb88872

@@ -26,10 +26,7 @@ const Sidebar = () => {
     const menus = {
         jobseeker: [
             { path: '/', label: 'My Applications', icon: Layout },
-<<<<<<< HEAD
             { path: '/search', label: 'Find Jobs', icon: Search },
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/upload', label: 'My Documents', icon: Upload },
             { path: '/linkedin', label: 'Sync LinkedIn', icon: Linkedin },

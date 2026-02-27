@@ -9,32 +9,22 @@ const ResumeGenerator = () => {
     const [generating, setGenerating] = useState(false);
     const [resume, setResume] = useState<any>(null);
     const [outputValidation, setOutputValidation] = useState<any>(null);
-<<<<<<< HEAD
-=======
     const [validationError, setValidationError] = useState<any>(null);
     const [inputValidationWarning, setInputValidationWarning] = useState<any>(null);
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
     const handleGenerate = async () => {
         if (!profile.trim()) return;
         setGenerating(true);
         setResume(null);
         setOutputValidation(null);
-<<<<<<< HEAD
-=======
         setValidationError(null);
         setInputValidationWarning(null);
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         try {
             const response = await api.post('/generate/resume', { profile });
             setResume(response.data.resume_json);
             if (response.data.output_validation) {
                 setOutputValidation(response.data.output_validation);
             }
-<<<<<<< HEAD
-        } catch (err) {
-            console.error(err);
-=======
             if (response.data.input_validation_warning) {
                 setInputValidationWarning(response.data.input_validation_warning);
             }
@@ -44,7 +34,6 @@ const ResumeGenerator = () => {
             } else {
                 console.error(err);
             }
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         } finally {
             setGenerating(false);
         }
@@ -117,9 +106,6 @@ const ResumeGenerator = () => {
                 </div>
 
                 <div className="flex flex-col min-h-[600px]">
-<<<<<<< HEAD
-                    {!resume && !generating && (
-=======
                     {validationError && (
                         <div className="mb-4">
                             <ValidationBanner validation={validationError} type="error" />
@@ -137,7 +123,6 @@ const ResumeGenerator = () => {
                     )}
 
                     {!resume && !generating && !validationError && (
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
                         <EmptyState
                             icon={<FileText className="w-10 h-10" />}
                             heading="Preview Engine Standby"
@@ -154,103 +139,103 @@ const ResumeGenerator = () => {
 
                     {resume && (
                         <div className="flex-1 flex flex-col gap-4">
-                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 glass-card flex flex-col shadow-xl">
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <FileText className="w-3.5 h-3.5" /> Live Preview
-                                </span>
-                                <button
-                                    onClick={handleExport}
-                                    className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95"
-                                >
-                                    <Download className="w-3.5 h-3.5" /> Export DOCX
-                                </button>
-                            </div>
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 glass-card flex flex-col shadow-xl">
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <FileText className="w-3.5 h-3.5" /> Live Preview
+                                    </span>
+                                    <button
+                                        onClick={handleExport}
+                                        className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95"
+                                    >
+                                        <Download className="w-3.5 h-3.5" /> Export DOCX
+                                    </button>
+                                </div>
 
-                            <div className="flex-1 p-12 bg-white text-slate-900 overflow-y-auto max-h-[750px] shadow-inner font-serif selection:bg-primary-100">
-                                {/* Visual Resume Rendering */}
-                                <div className="text-center mb-10">
-                                    <h2 className="text-4xl font-black uppercase tracking-tight border-b-2 border-slate-900 pb-3 mb-4">
-                                        {resume.contact?.name || 'CANDIDATE NAME'}
-                                    </h2>
-                                    <div className="text-[10px] font-bold text-slate-500 flex justify-center gap-4 uppercase tracking-widest">
-                                        <span>{resume.contact?.email}</span>
-                                        <span className="opacity-30">|</span>
-                                        <span>{resume.contact?.phone}</span>
-                                        <span className="opacity-30">|</span>
-                                        <span>{resume.contact?.location}</span>
+                                <div className="flex-1 p-12 bg-white text-slate-900 overflow-y-auto max-h-[750px] shadow-inner font-serif selection:bg-primary-100">
+                                    {/* Visual Resume Rendering */}
+                                    <div className="text-center mb-10">
+                                        <h2 className="text-4xl font-black uppercase tracking-tight border-b-2 border-slate-900 pb-3 mb-4">
+                                            {resume.contact?.name || 'CANDIDATE NAME'}
+                                        </h2>
+                                        <div className="text-[10px] font-bold text-slate-500 flex justify-center gap-4 uppercase tracking-widest">
+                                            <span>{resume.contact?.email}</span>
+                                            <span className="opacity-30">|</span>
+                                            <span>{resume.contact?.phone}</span>
+                                            <span className="opacity-30">|</span>
+                                            <span>{resume.contact?.location}</span>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="mb-10">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Professional Summary</h3>
-                                    <p className="text-xs leading-relaxed text-slate-700 text-justify font-medium">{resume.summary}</p>
-                                </div>
-
-                                <div className="mb-10">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Core Competencies</h3>
-                                    <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                                        {resume.skills?.map((s: string, i: number) => (
-                                            <div key={i} className="text-[11px] flex items-center gap-3 font-semibold text-slate-800">
-                                                <div className="w-1.5 h-1.5 bg-primary-500 rounded-full shrink-0" />
-                                                {s}
-                                            </div>
-                                        ))}
+                                    <div className="mb-10">
+                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Professional Summary</h3>
+                                        <p className="text-xs leading-relaxed text-slate-700 text-justify font-medium">{resume.summary}</p>
                                     </div>
-                                </div>
 
-                                <div className="mb-10">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-6 text-slate-400">Professional Experience</h3>
-                                    <div className="space-y-8">
-                                        {resume.experience?.map((exp: any, i: number) => (
-                                            <div key={i} className="group">
-                                                <div className="flex justify-between items-baseline mb-1">
-                                                    <h4 className="font-black text-sm text-slate-900 group-hover:text-primary-600 transition-colors uppercase tracking-tight">{exp.title}</h4>
-                                                    <span className="text-[10px] italic font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{exp.period}</span>
+                                    <div className="mb-10">
+                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Core Competencies</h3>
+                                        <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                                            {resume.skills?.map((s: string, i: number) => (
+                                                <div key={i} className="text-[11px] flex items-center gap-3 font-semibold text-slate-800">
+                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full shrink-0" />
+                                                    {s}
                                                 </div>
-                                                <p className="text-[10px] font-black text-primary-600 mb-3 uppercase tracking-widest">{exp.company}</p>
-                                                <ul className="space-y-2 list-none">
-                                                    {exp.bullets?.map((b: string, j: number) => (
-                                                        <li key={j} className="text-[11px] leading-relaxed text-slate-600 flex items-start gap-2 font-medium">
-                                                            <span className="text-slate-300 mt-1.5">•</span>
-                                                            {b}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Education</h3>
-                                    <div className="space-y-4">
-                                        {resume.education?.map((edu: any, i: number) => (
-                                            <div key={i} className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-[11px] font-black text-slate-900">{edu.degree}</p>
-                                                    <p className="text-[10px] text-slate-500 font-bold tracking-tight">{edu.school}</p>
+                                    <div className="mb-10">
+                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-6 text-slate-400">Professional Experience</h3>
+                                        <div className="space-y-8">
+                                            {resume.experience?.map((exp: any, i: number) => (
+                                                <div key={i} className="group">
+                                                    <div className="flex justify-between items-baseline mb-1">
+                                                        <h4 className="font-black text-sm text-slate-900 group-hover:text-primary-600 transition-colors uppercase tracking-tight">{exp.title}</h4>
+                                                        <span className="text-[10px] italic font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{exp.period}</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-black text-primary-600 mb-3 uppercase tracking-widest">{exp.company}</p>
+                                                    <ul className="space-y-2 list-none">
+                                                        {exp.bullets?.map((b: string, j: number) => (
+                                                            <li key={j} className="text-[11px] leading-relaxed text-slate-600 flex items-start gap-2 font-medium">
+                                                                <span className="text-slate-300 mt-1.5">•</span>
+                                                                {b}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
                                                 </div>
-                                                <span className="text-[10px] font-black text-slate-400">{edu.year}</span>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Education</h3>
+                                        <div className="space-y-4">
+                                            {resume.education?.map((edu: any, i: number) => (
+                                                <div key={i} className="flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-[11px] font-black text-slate-900">{edu.degree}</p>
+                                                        <p className="text-[10px] text-slate-500 font-bold tracking-tight">{edu.school}</p>
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-slate-400">{edu.year}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </motion.div>
+                            </motion.div>
 
-                        {outputValidation && (
-                            <ValidationBanner
-                                validation={outputValidation}
-                                type={
-                                    outputValidation.classification === 'not_resume' ||
-                                    outputValidation.classification === 'resume_invalid_or_incomplete'
-                                        ? 'error'
-                                        : 'warning'
-                                }
-                                onDismiss={() => setOutputValidation(null)}
-                            />
-                        )}
+                            {outputValidation && (
+                                <ValidationBanner
+                                    validation={outputValidation}
+                                    type={
+                                        outputValidation.classification === 'not_resume' ||
+                                            outputValidation.classification === 'resume_invalid_or_incomplete'
+                                            ? 'error'
+                                            : 'warning'
+                                    }
+                                    onDismiss={() => setOutputValidation(null)}
+                                />
+                            )}
                         </div>
                     )}
                 </div>

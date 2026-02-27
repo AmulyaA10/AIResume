@@ -33,7 +33,6 @@ api.interceptors.request.use((config) => {
     }
 })();
 
-<<<<<<< HEAD
 export const jobsApi = {
     list: (params: any) => api.get('/jobs', { params }),
     get: (id: string) => api.get(`/jobs/${id}`),
@@ -51,7 +50,4 @@ export const matchApi = {
     matchResume: (resumeId: string, limit: number = 50) => api.get(`/match/resume/${resumeId}`, { params: { limit } }),
     searchJobs: (query: string, limit: number = 50, filters: any = {}) => api.get('/match/search/jobs', { params: { q: query, limit, ...filters } }),
 };
-
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 export default api;

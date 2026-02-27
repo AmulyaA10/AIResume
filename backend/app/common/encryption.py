@@ -1,21 +1,6 @@
 """Symmetric encryption helpers for credential storage using Fernet."""
 
 import os
-<<<<<<< HEAD
-from cryptography.fernet import Fernet, InvalidToken
-
-_ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
-
-
-def _get_fernet() -> Fernet:
-    """Return a Fernet instance, raising ValueError if key is missing."""
-    if not _ENCRYPTION_KEY:
-        raise ValueError(
-            "ENCRYPTION_KEY environment variable is required for credential storage. "
-            "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
-    return Fernet(_ENCRYPTION_KEY.encode() if isinstance(_ENCRYPTION_KEY, str) else _ENCRYPTION_KEY)
-=======
 from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -87,7 +72,6 @@ def _get_fernet() -> Fernet:
     """Return a Fernet instance, auto-generating a key if needed."""
     key = _ensure_key()
     return Fernet(key.encode() if isinstance(key, str) else key)
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
 
 def encrypt_value(plaintext: str) -> str:

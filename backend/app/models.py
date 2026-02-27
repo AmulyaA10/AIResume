@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 from pydantic import BaseModel, Field
 from typing import Optional, List
-=======
-from pydantic import BaseModel
-from typing import Optional
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
 
 
 class LoginRequest(BaseModel):
@@ -41,8 +36,6 @@ class UserSettingsResponse(BaseModel):
     has_openRouterKey: bool = False
     has_linkedinUser: bool = False
     has_linkedinPass: bool = False
-<<<<<<< HEAD
-
 
 class JobCreate(BaseModel):
     title: str
@@ -72,5 +65,3 @@ class JobResponse(JobCreate):
 class JobMatchResponse(BaseModel):
     score: float
     job: JobResponse
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872

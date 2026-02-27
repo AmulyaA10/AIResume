@@ -42,24 +42,17 @@ async def analyze_gap(
 ):
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
-<<<<<<< HEAD
-=======
 
     # Validation pre-check: raises 422 if not a resume
     validation_warning = precheck_resume_validation(request.resume_text, llm_config)
 
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
     output = run_resume_pipeline(task="skill_gap", resumes=[request.resume_text], query=request.jd_text, llm_config=llm_config)
 
     score = output.get("match_score", 0)
     safe_log_activity(user_id, "skill_gap", score=score)
 
-<<<<<<< HEAD
-=======
     if validation_warning:
         output["validation_warning"] = validation_warning
-
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
     return output
 
 

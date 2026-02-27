@@ -42,11 +42,8 @@ def create_app() -> FastAPI:
         linkedin_router,
         user_router,
         health_router,
-<<<<<<< HEAD
         jobs_router,
         match_router,
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
     )
 
     # --- API v1 routes ---
@@ -60,11 +57,8 @@ def create_app() -> FastAPI:
     app.include_router(generate_router, prefix="/api/v1/generate", tags=["v1 — Generation"])
     app.include_router(linkedin_router, prefix="/api/v1/linkedin", tags=["v1 — LinkedIn"])
     app.include_router(user_router, prefix="/api/v1/user", tags=["v1 — User"])
-<<<<<<< HEAD
     app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["v1 — Jobs"])
     app.include_router(match_router, prefix="/api/v1/match", tags=["v1 — Matching"])
-=======
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
     app.include_router(health_router, tags=["Health"])
 
     # --- Root route: serve built frontend or show API info ---

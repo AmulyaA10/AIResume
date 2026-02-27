@@ -165,10 +165,7 @@ async def test_full_analysis_pipeline(
 
         # Gap
         with (
-<<<<<<< HEAD
-=======
             patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
             patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_gap_output),
             patch("app.routes.v1.analyze.safe_log_activity"),
         ):
@@ -203,10 +200,7 @@ async def test_generate_then_export(app, mock_generate_output):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         # Generate
         with (
-<<<<<<< HEAD
-=======
             patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
             patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
             patch("app.routes.v1.generate.run_resume_validation", return_value={}),
         ):
@@ -252,10 +246,7 @@ async def test_nonexistent_route_returns_404(app):
 async def test_pipeline_error_propagates(app, auth_headers, sample_resume_text):
     """When the AI pipeline throws, the error propagates (unhandled)."""
     with (
-<<<<<<< HEAD
-=======
         patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
->>>>>>> 9d136502ee9374e86211849855e67746afb88872
         patch("app.routes.v1.analyze.run_resume_pipeline", side_effect=Exception("LLM timeout")),
         patch("app.routes.v1.analyze.safe_log_activity"),
     ):
