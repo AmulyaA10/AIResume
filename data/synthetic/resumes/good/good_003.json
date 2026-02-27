@@ -1,0 +1,50 @@
+{
+  "contact": {
+    "name": "Carmen Rose",
+    "email": "ibrandt@example.net",
+    "phone": "001-734-265-7871x331"
+  },
+  "summary": "Platform Engineer with 7 years of experience in software development. Skilled in Next.js, Angular, Scikit-learn.",
+  "skills": [
+    "Scikit-learn",
+    "Ruby on Rails",
+    "Express",
+    "Next.js",
+    "Angular",
+    "Java",
+    "Problem-solving"
+  ],
+  "experience": [
+    {
+      "title": "Security Engineer",
+      "company": "DataFlow Systems",
+      "period": "2022 - Present",
+      "bullets": [
+        "Refactored distributed cache layer, increasing test coverage to 41%",
+        "Mentored event-driven system, increasing test coverage to 38%",
+        "Scaled customer-facing dashboard, improving throughput by 68x",
+        "Scaled machine learning model, reducing error rate by 88%",
+        "Scaled monitoring stack, reducing error rate by 67%"
+      ]
+    },
+    {
+      "title": "Cloud Architect",
+      "company": "Uber",
+      "period": "2018 - 2023",
+      "bullets": [
+        "Led migration of distributed cache layer",
+        "Reduced API gateway",
+        "Increased distributed cache layer",
+        "Architected CI/CD pipeline",
+        "Reduced API gateway, reducing deploy time by 36%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "M.S. Computer Science",
+      "school": "University of Illinois",
+      "year": "2010"
+    }
+  ]
+}

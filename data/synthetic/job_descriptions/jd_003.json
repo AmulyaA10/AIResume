@@ -1,0 +1,19 @@
+{
+  "title": "Frontend Engineer (React)",
+  "company": "Acme Corp",
+  "required_skills": [
+    "RabbitMQ",
+    "Azure",
+    "Rust",
+    "GCP",
+    "MongoDB",
+    "Docker",
+    "MySQL"
+  ],
+  "nice_to_have": [
+    "Scrum",
+    "C#",
+    "Svelte"
+  ],
+  "min_years": 8
+}

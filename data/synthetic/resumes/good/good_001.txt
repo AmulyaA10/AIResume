@@ -1,0 +1,24 @@
+Alexandra Le
+kayla51@example.com | (727)404-8281x48932
+
+SUMMARY
+Machine Learning Engineer with 7 years of experience in software development. Skilled in Angular, Redis, TypeScript.
+
+SKILLS
+Angular, GitHub Actions, TypeScript, Redis, REST, GitLab CI, JIRA, Kubernetes, React, Agile, Cross-functional teamwork, Leadership
+
+EXPERIENCE
+
+Backend Engineer | NovaTech | 2024 - Present
+- Mentored search infrastructure, serving 40K+ daily active users
+- Designed and built data pipeline, saving $62K annually
+
+Platform Engineer | Amazon | 2023 - 2024
+- Architected customer-facing dashboard, reducing error rate by 54%
+- Launched customer-facing dashboard, cutting latency from 485ms to 64ms
+- Increased ETL workflow, saving $13K annually
+- Optimized microservices architecture
+- Increased authentication system
+
+EDUCATION
+B.A. Computer Science | Community College | 2016

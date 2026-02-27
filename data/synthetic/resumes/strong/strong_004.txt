@@ -1,0 +1,29 @@
+Maria Thomas
+johnhoffman@example.com | 001-496-496-5328x7101 | Carlsonfurt, MS
+LinkedIn: linkedin.com/in/maria-thomas | GitHub: github.com/jrice
+
+PROFESSIONAL SUMMARY
+Results-driven site reliability engineer with 13+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about data-intensive applications.
+
+TECHNICAL SKILLS
+TensorFlow, Ruby on Rails, AWS, PostgreSQL, Go, Python, Agile, Apache Kafka, GraphQL, C++, Linux, GitHub Actions, Node.js, Mentoring, Communication, Cross-functional teamwork, Leadership
+
+EXPERIENCE
+
+Site Reliability Engineer | Coinbase | 2023 - Present
+- Developed event-driven system, reducing deploy time by 95%
+- Led migration of data pipeline
+- Refactored API gateway
+
+Engineering Manager | Salesforce | 2018 - 2023
+- Launched mobile application
+- Mentored microservices architecture
+- Optimized microservices architecture
+
+EDUCATION
+M.S. Computer Science | Stanford University | 2021
+
+CERTIFICATIONS
+- AWS Solutions Architect Professional
+- HashiCorp Certified Terraform Associate
+- Certified Kubernetes Administrator (CKA)

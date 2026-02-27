@@ -1,0 +1,237 @@
+{
+  "generated_at": "2026-02-22T12:23:29.652525",
+  "resumes": [
+    {
+      "file": "resumes/strong/strong_001.txt",
+      "json_file": "resumes/strong/strong_001.json",
+      "classification": "resume_valid_strong",
+      "expected_score_range": [
+        25,
+        30
+      ],
+      "category": "strong"
+    },
+    {
+      "file": "resumes/strong/strong_002.txt",
+      "json_file": "resumes/strong/strong_002.json",
+      "classification": "resume_valid_strong",
+      "expected_score_range": [
+        25,
+        30
+      ],
+      "category": "strong"
+    },
+    {
+      "file": "resumes/strong/strong_003.txt",
+      "json_file": "resumes/strong/strong_003.json",
+      "classification": "resume_valid_strong",
+      "expected_score_range": [
+        25,
+        30
+      ],
+      "category": "strong"
+    },
+    {
+      "file": "resumes/strong/strong_004.txt",
+      "json_file": "resumes/strong/strong_004.json",
+      "classification": "resume_valid_strong",
+      "expected_score_range": [
+        25,
+        30
+      ],
+      "category": "strong"
+    },
+    {
+      "file": "resumes/good/good_001.txt",
+      "json_file": "resumes/good/good_001.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/good/good_002.txt",
+      "json_file": "resumes/good/good_002.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/good/good_003.txt",
+      "json_file": "resumes/good/good_003.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/good/good_004.txt",
+      "json_file": "resumes/good/good_004.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/good/good_005.txt",
+      "json_file": "resumes/good/good_005.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/good/good_006.txt",
+      "json_file": "resumes/good/good_006.json",
+      "classification": "resume_valid_good",
+      "expected_score_range": [
+        18,
+        24
+      ],
+      "category": "good"
+    },
+    {
+      "file": "resumes/weak/weak_001.txt",
+      "json_file": "resumes/weak/weak_001.json",
+      "classification": "resume_valid_but_weak",
+      "expected_score_range": [
+        11,
+        17
+      ],
+      "category": "weak"
+    },
+    {
+      "file": "resumes/weak/weak_002.txt",
+      "json_file": "resumes/weak/weak_002.json",
+      "classification": "resume_valid_but_weak",
+      "expected_score_range": [
+        11,
+        17
+      ],
+      "category": "weak"
+    },
+    {
+      "file": "resumes/weak/weak_003.txt",
+      "json_file": "resumes/weak/weak_003.json",
+      "classification": "resume_valid_but_weak",
+      "expected_score_range": [
+        11,
+        17
+      ],
+      "category": "weak"
+    },
+    {
+      "file": "resumes/weak/weak_004.txt",
+      "json_file": "resumes/weak/weak_004.json",
+      "classification": "resume_valid_but_weak",
+      "expected_score_range": [
+        11,
+        17
+      ],
+      "category": "weak"
+    },
+    {
+      "file": "resumes/invalid/invalid_001.txt",
+      "json_file": null,
+      "classification": "resume_invalid_or_incomplete",
+      "expected_score_range": [
+        1,
+        10
+      ],
+      "category": "invalid"
+    },
+    {
+      "file": "resumes/invalid/invalid_002.txt",
+      "json_file": null,
+      "classification": "resume_invalid_or_incomplete",
+      "expected_score_range": [
+        1,
+        10
+      ],
+      "category": "invalid"
+    },
+    {
+      "file": "resumes/invalid/invalid_003.txt",
+      "json_file": null,
+      "classification": "resume_invalid_or_incomplete",
+      "expected_score_range": [
+        1,
+        10
+      ],
+      "category": "invalid"
+    },
+    {
+      "file": "resumes/not_resume/not_resume_001.txt",
+      "json_file": null,
+      "classification": "not_resume",
+      "expected_score_range": [
+        0,
+        0
+      ],
+      "category": "not_resume"
+    },
+    {
+      "file": "resumes/not_resume/not_resume_002.txt",
+      "json_file": null,
+      "classification": "not_resume",
+      "expected_score_range": [
+        0,
+        0
+      ],
+      "category": "not_resume"
+    },
+    {
+      "file": "resumes/not_resume/not_resume_003.txt",
+      "json_file": null,
+      "classification": "not_resume",
+      "expected_score_range": [
+        0,
+        0
+      ],
+      "category": "not_resume"
+    }
+  ],
+  "job_descriptions": [
+    {
+      "file": "job_descriptions/jd_001.txt",
+      "json_file": "job_descriptions/jd_001.json",
+      "title": "Backend Engineer (Python)",
+      "company": "Datadog"
+    },
+    {
+      "file": "job_descriptions/jd_002.txt",
+      "json_file": "job_descriptions/jd_002.json",
+      "title": "Senior Full-Stack Engineer",
+      "company": "Meta"
+    },
+    {
+      "file": "job_descriptions/jd_003.txt",
+      "json_file": "job_descriptions/jd_003.json",
+      "title": "Frontend Engineer (React)",
+      "company": "Acme Corp"
+    },
+    {
+      "file": "job_descriptions/jd_004.txt",
+      "json_file": "job_descriptions/jd_004.json",
+      "title": "Staff Engineer",
+      "company": "CloudNine Solutions"
+    },
+    {
+      "file": "job_descriptions/jd_005.txt",
+      "json_file": "job_descriptions/jd_005.json",
+      "title": "Senior Full-Stack Engineer",
+      "company": "Stripe"
+    }
+  ]
+}

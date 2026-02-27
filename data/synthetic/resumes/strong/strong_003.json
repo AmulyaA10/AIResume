@@ -1,0 +1,73 @@
+{
+  "contact": {
+    "name": "Roy Martin",
+    "email": "jason41@example.net",
+    "phone": "+1-228-732-7648x3503",
+    "location": "Adamsborough, PW",
+    "linkedin": "linkedin.com/in/roy-martin",
+    "github": "github.com/jason76"
+  },
+  "summary": "Results-driven engineering manager with 10+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about developer experience.",
+  "skills": [
+    "GraphQL",
+    "JIRA",
+    "GCP",
+    "FastAPI",
+    "Agile",
+    "Docker",
+    "Next.js",
+    "C++",
+    "Scikit-learn",
+    "Kubernetes",
+    "MongoDB",
+    "TensorFlow",
+    "NumPy",
+    "Leadership",
+    "Team collaboration",
+    "Project management"
+  ],
+  "experience": [
+    {
+      "title": "Full-Stack Developer",
+      "company": "Stripe",
+      "period": "2025 - Present",
+      "bullets": [
+        "Implemented search infrastructure",
+        "Mentored CI/CD pipeline, improving throughput by 16x",
+        "Deployed mobile application"
+      ]
+    },
+    {
+      "title": "Full-Stack Developer",
+      "company": "Oracle",
+      "period": "2018 - 2022",
+      "bullets": [
+        "Implemented search infrastructure",
+        "Deployed event-driven system, increasing test coverage to 81%",
+        "Architected microservices architecture",
+        "Scaled microservices architecture, reducing deploy time by 16%",
+        "Mentored API gateway"
+      ]
+    },
+    {
+      "title": "Machine Learning Engineer",
+      "company": "Meta",
+      "period": "2022 - 2024",
+      "bullets": [
+        "Architected search infrastructure",
+        "Architected machine learning model, improving throughput by 63x"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "M.S. Computer Science",
+      "school": "Stanford University",
+      "year": "2020"
+    }
+  ],
+  "certifications": [
+    "HashiCorp Certified Terraform Associate",
+    "AWS Solutions Architect Professional"
+  ]
+}

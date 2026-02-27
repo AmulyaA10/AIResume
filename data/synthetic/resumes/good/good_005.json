@@ -1,0 +1,57 @@
+{
+  "contact": {
+    "name": "John Russell",
+    "email": "davisryan@example.com",
+    "phone": "(870)410-6513x33872"
+  },
+  "summary": "Full-Stack Developer with 5 years of experience in software development. Skilled in GCP, C#, React.",
+  "skills": [
+    "FastAPI",
+    "React",
+    "GCP",
+    "PyTorch",
+    "C#",
+    "GraphQL",
+    "Stakeholder management"
+  ],
+  "experience": [
+    {
+      "title": "Machine Learning Engineer",
+      "company": "TechStart Inc",
+      "period": "2023 - Present",
+      "bullets": [
+        "Refactored CI/CD pipeline, serving 49K+ daily active users",
+        "Optimized machine learning model",
+        "Increased search infrastructure, processing 19M+ events daily"
+      ]
+    },
+    {
+      "title": "Product Engineer",
+      "company": "Acme Corp",
+      "period": "2018 - 2023",
+      "bullets": [
+        "Reduced API gateway, saving $18K annually",
+        "Increased mobile application"
+      ]
+    },
+    {
+      "title": "Backend Engineer",
+      "company": "DataFlow Systems",
+      "period": "2017 - 2018",
+      "bullets": [
+        "Automated distributed cache layer",
+        "Scaled ETL workflow",
+        "Deployed API gateway, reducing error rate by 65%",
+        "Mentored CI/CD pipeline",
+        "Deployed monitoring stack, increasing test coverage to 53%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. Information Systems",
+      "school": "University of Washington",
+      "year": "2017"
+    }
+  ]
+}

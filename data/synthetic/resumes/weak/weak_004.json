@@ -1,0 +1,13 @@
+{
+  "contact": {
+    "name": "Kim Brown",
+    "email": "yorkcasey@example.org"
+  },
+  "skills": [
+    "C#",
+    "GitHub Actions",
+    "Express",
+    "TensorFlow",
+    "Angular"
+  ]
+}

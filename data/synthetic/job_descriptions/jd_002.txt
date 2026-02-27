@@ -1,0 +1,32 @@
+Senior Full-Stack Engineer at Meta
+
+About Us:
+Meta is a leading technology company focused on building innovative solutions.
+We are looking for talented engineers to join our growing team.
+
+Role:
+As a Senior Full-Stack Engineer, you will be responsible for designing, building, and maintaining
+scalable software systems that serve millions of users.
+
+Requirements:
+- 10+ years of professional software development experience
+- Strong proficiency in Scikit-learn
+- Strong proficiency in GraphQL
+- Strong proficiency in REST
+- Strong proficiency in Java
+- Strong proficiency in Agile
+- Excellent problem-solving and communication skills
+- Experience working in an Agile environment
+
+Nice to Have:
+- Experience with Spring Boot
+- Experience with Apache Kafka
+- Experience with JavaScript
+- Experience with Next.js
+
+Benefits:
+- Competitive salary (233K - 321K)
+- Remote-friendly
+- Health, dental, and vision insurance
+- 401(k) matching
+- Unlimited PTO

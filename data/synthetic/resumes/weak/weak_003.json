@@ -1,0 +1,10 @@
+{
+  "contact": {
+    "name": "Lauren Daniels",
+    "email": "brian97@example.net"
+  },
+  "skills": [
+    "Scikit-learn",
+    "Express"
+  ]
+}

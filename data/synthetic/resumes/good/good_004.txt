@@ -1,0 +1,20 @@
+Crystal Robinson
+zimmermanbrian@example.org | 4519834738
+
+SUMMARY
+Software Engineer with 4 years of experience in software development. Skilled in Agile, Ruby on Rails, DynamoDB.
+
+SKILLS
+Ruby on Rails, Agile, DynamoDB, Docker, GitHub Actions, Linux, gRPC, Stakeholder management
+
+EXPERIENCE
+
+Software Engineer | Oracle | 2022 - Present
+- Launched event-driven system, serving 69K+ daily active users
+- Increased machine learning model, reducing deploy time by 20%
+- Implemented microservices architecture
+- Automated authentication system, increasing test coverage to 45%
+- Automated microservices architecture, reducing deploy time by 54%
+
+EDUCATION
+B.S. Information Technology | State University | 2022

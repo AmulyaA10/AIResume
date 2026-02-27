@@ -1,0 +1,34 @@
+Roy Martin
+jason41@example.net | +1-228-732-7648x3503 | Adamsborough, PW
+LinkedIn: linkedin.com/in/roy-martin | GitHub: github.com/jason76
+
+PROFESSIONAL SUMMARY
+Results-driven engineering manager with 10+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about developer experience.
+
+TECHNICAL SKILLS
+GraphQL, JIRA, GCP, FastAPI, Agile, Docker, Next.js, C++, Scikit-learn, Kubernetes, MongoDB, TensorFlow, NumPy, Leadership, Team collaboration, Project management
+
+EXPERIENCE
+
+Full-Stack Developer | Stripe | 2025 - Present
+- Implemented search infrastructure
+- Mentored CI/CD pipeline, improving throughput by 16x
+- Deployed mobile application
+
+Full-Stack Developer | Oracle | 2018 - 2022
+- Implemented search infrastructure
+- Deployed event-driven system, increasing test coverage to 81%
+- Architected microservices architecture
+- Scaled microservices architecture, reducing deploy time by 16%
+- Mentored API gateway
+
+Machine Learning Engineer | Meta | 2022 - 2024
+- Architected search infrastructure
+- Architected machine learning model, improving throughput by 63x
+
+EDUCATION
+M.S. Computer Science | Stanford University | 2020
+
+CERTIFICATIONS
+- HashiCorp Certified Terraform Associate
+- AWS Solutions Architect Professional

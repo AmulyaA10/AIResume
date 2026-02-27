@@ -1,0 +1,14 @@
+Lauren Daniels
+brian97@example.net
+
+Skills: Scikit-learn, Express
+
+Work Experience:
+Security Engineer at Airbnb
+- Worked on various projects
+- Helped with development tasks
+- Attended team meetings and sprint planning
+- Fixed bugs and resolved issues
+
+Education:
+B.S. in Computer Science

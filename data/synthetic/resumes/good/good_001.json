@@ -1,0 +1,52 @@
+{
+  "contact": {
+    "name": "Alexandra Le",
+    "email": "kayla51@example.com",
+    "phone": "(727)404-8281x48932"
+  },
+  "summary": "Machine Learning Engineer with 7 years of experience in software development. Skilled in Angular, Redis, TypeScript.",
+  "skills": [
+    "Angular",
+    "GitHub Actions",
+    "TypeScript",
+    "Redis",
+    "REST",
+    "GitLab CI",
+    "JIRA",
+    "Kubernetes",
+    "React",
+    "Agile",
+    "Cross-functional teamwork",
+    "Leadership"
+  ],
+  "experience": [
+    {
+      "title": "Backend Engineer",
+      "company": "NovaTech",
+      "period": "2024 - Present",
+      "bullets": [
+        "Mentored search infrastructure, serving 40K+ daily active users",
+        "Designed and built data pipeline, saving $62K annually"
+      ]
+    },
+    {
+      "title": "Platform Engineer",
+      "company": "Amazon",
+      "period": "2023 - 2024",
+      "bullets": [
+        "Architected customer-facing dashboard, reducing error rate by 54%",
+        "Launched customer-facing dashboard, cutting latency from 485ms to 64ms",
+        "Increased ETL workflow, saving $13K annually",
+        "Optimized microservices architecture",
+        "Increased authentication system"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.A. Computer Science",
+      "school": "Community College",
+      "year": "2016"
+    }
+  ]
+}

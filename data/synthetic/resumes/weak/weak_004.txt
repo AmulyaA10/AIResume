@@ -1,0 +1,14 @@
+Kim Brown
+yorkcasey@example.org
+
+Skills: C#, GitHub Actions, Express, TensorFlow, Angular
+
+Work Experience:
+Security Engineer at Airbnb
+- Worked on various projects
+- Helped with development tasks
+- Attended team meetings and sprint planning
+- Fixed bugs and resolved issues
+
+Education:
+B.S. in Computer Science

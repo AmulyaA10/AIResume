@@ -1,0 +1,64 @@
+{
+  "contact": {
+    "name": "David Leblanc",
+    "email": "jmorton@example.org",
+    "phone": "5808132677"
+  },
+  "summary": "Cloud Architect with 3 years of experience in software development. Skilled in Flask, Jenkins, Pandas.",
+  "skills": [
+    "Pandas",
+    "Flask",
+    "GitLab CI",
+    "Python",
+    "Jenkins",
+    "Next.js",
+    "Rust",
+    "FastAPI",
+    "Docker",
+    "Technical writing",
+    "Problem-solving"
+  ],
+  "experience": [
+    {
+      "title": "Product Engineer",
+      "company": "Google",
+      "period": "2022 - Present",
+      "bullets": [
+        "Architected search infrastructure",
+        "Optimized ETL workflow, reducing error rate by 80%",
+        "Refactored API gateway, reducing error rate by 44%",
+        "Refactored customer-facing dashboard, serving 34K+ daily active users",
+        "Developed event-driven system, cutting latency from 398ms to 57ms"
+      ]
+    },
+    {
+      "title": "Frontend Engineer",
+      "company": "Google",
+      "period": "2021 - 2024",
+      "bullets": [
+        "Implemented real-time notification system",
+        "Optimized distributed cache layer",
+        "Launched mobile application, improving throughput by 11x"
+      ]
+    },
+    {
+      "title": "Backend Engineer",
+      "company": "Netflix",
+      "period": "2014 - 2018",
+      "bullets": [
+        "Optimized mobile application, improving throughput by 61x",
+        "Launched microservices architecture",
+        "Optimized CI/CD pipeline, improving throughput by 81x",
+        "Developed customer-facing dashboard, increasing test coverage to 67%",
+        "Increased real-time notification system, reducing deploy time by 88%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. Information Technology",
+      "school": "State University",
+      "year": "2014"
+    }
+  ]
+}

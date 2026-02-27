@@ -1,0 +1,30 @@
+Allison Hill
+donaldgarcia@example.net | +1-219-560-0133 | Robinsonshire, KY
+LinkedIn: linkedin.com/in/allison-hill | GitHub: github.com/blakeerik
+
+PROFESSIONAL SUMMARY
+Results-driven full-stack developer with 7+ years of experience building scalable distributed systems. Proven track record of leading cross-functional teams, mentoring engineers, and delivering high-impact projects in fast-paced environments. Passionate about data-intensive applications.
+
+TECHNICAL SKILLS
+C#, Java, Git, Flask, FastAPI, Express, React, C++, GitHub Actions, Rust, REST, Kubernetes, TypeScript, Team collaboration, Problem-solving
+
+EXPERIENCE
+
+Engineering Manager | DataFlow Systems | 2021 - Present
+- Increased customer-facing dashboard, cutting latency from 363ms to 74ms
+- Implemented customer-facing dashboard, saving $23K annually
+- Mentored authentication system
+
+Data Engineer | Apple | 2022 - 2023
+- Increased CI/CD pipeline, saving $83K annually
+- Architected event-driven system
+- Led migration of mobile application
+- Optimized monitoring stack
+- Reduced data pipeline, processing 95M+ events daily
+
+EDUCATION
+B.A. Computer Science | Georgia Tech | 2021
+
+CERTIFICATIONS
+- Certified Kubernetes Administrator (CKA)
+- HashiCorp Certified Terraform Associate

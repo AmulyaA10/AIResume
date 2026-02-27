@@ -1,0 +1,18 @@
+{
+  "title": "Backend Engineer (Python)",
+  "company": "Datadog",
+  "required_skills": [
+    "Pandas",
+    "Elasticsearch",
+    "Flask",
+    "CI/CD",
+    "GitHub Actions",
+    "Azure"
+  ],
+  "nice_to_have": [
+    "Rust",
+    "Scikit-learn",
+    "TypeScript"
+  ],
+  "min_years": 9
+}

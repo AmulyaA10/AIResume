@@ -1,0 +1,33 @@
+Staff Engineer at CloudNine Solutions
+
+About Us:
+CloudNine Solutions is a leading technology company focused on building innovative solutions.
+We are looking for talented engineers to join our growing team.
+
+Role:
+As a Staff Engineer, you will be responsible for designing, building, and maintaining
+scalable software systems that serve millions of users.
+
+Requirements:
+- 3+ years of professional software development experience
+- Strong proficiency in Agile
+- Strong proficiency in GitLab CI
+- Strong proficiency in TypeScript
+- Strong proficiency in AWS
+- Strong proficiency in Rust
+- Strong proficiency in PostgreSQL
+- Strong proficiency in Django
+- Excellent problem-solving and communication skills
+- Experience working in an Agile environment
+
+Nice to Have:
+- Experience with Angular
+- Experience with GCP
+- Experience with gRPC
+
+Benefits:
+- Competitive salary (238K - 355K)
+- Remote-friendly
+- Health, dental, and vision insurance
+- 401(k) matching
+- Unlimited PTO

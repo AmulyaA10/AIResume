@@ -1,0 +1,27 @@
+Carmen Rose
+ibrandt@example.net | 001-734-265-7871x331
+
+SUMMARY
+Platform Engineer with 7 years of experience in software development. Skilled in Next.js, Angular, Scikit-learn.
+
+SKILLS
+Scikit-learn, Ruby on Rails, Express, Next.js, Angular, Java, Problem-solving
+
+EXPERIENCE
+
+Security Engineer | DataFlow Systems | 2022 - Present
+- Refactored distributed cache layer, increasing test coverage to 41%
+- Mentored event-driven system, increasing test coverage to 38%
+- Scaled customer-facing dashboard, improving throughput by 68x
+- Scaled machine learning model, reducing error rate by 88%
+- Scaled monitoring stack, reducing error rate by 67%
+
+Cloud Architect | Uber | 2018 - 2023
+- Led migration of distributed cache layer
+- Reduced API gateway
+- Increased distributed cache layer
+- Architected CI/CD pipeline
+- Reduced API gateway, reducing deploy time by 36%
+
+EDUCATION
+M.S. Computer Science | University of Illinois | 2010
