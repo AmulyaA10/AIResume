@@ -42,6 +42,7 @@ async def test_quality_missing_resume_text(app, auth_headers):
 async def test_skill_gap(app, auth_headers, sample_resume_text, sample_jd_text, mock_gap_output):
     """POST /api/v1/analyze/gap returns gap analysis."""
     with (
+        patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
         patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_gap_output),
         patch("app.routes.v1.analyze.safe_log_activity"),
     ):
@@ -250,6 +251,68 @@ async def test_screening_no_warning_good_resume(app, auth_headers, sample_resume
             resp = await client.post(
                 "/api/v1/analyze/screen",
                 json={"resume_text": sample_resume_text, "jd_text": sample_jd_text, "threshold": 75},
+                headers=auth_headers,
+            )
+    assert resp.status_code == 200
+    assert "validation_warning" not in resp.json()
+
+
+# ---- Skill Gap: Validation Pre-check ----
+
+@pytest.mark.asyncio
+async def test_gap_blocked_not_resume(app, auth_headers, sample_jd_text, mock_not_resume_validation):
+    """Skill gap returns 422 when input is not a resume."""
+    with patch(
+        "app.routes.v1.analyze.precheck_resume_validation",
+        side_effect=HTTPException(
+            status_code=422,
+            detail={"error": "not_a_resume", "message": "Not a resume", "validation": mock_not_resume_validation},
+        ),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/analyze/gap",
+                json={"resume_text": "Buy milk, eggs, bread", "jd_text": sample_jd_text},
+                headers=auth_headers,
+            )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "not_a_resume"
+    assert resp.json()["detail"]["validation"]["classification"] == "not_resume"
+
+
+@pytest.mark.asyncio
+async def test_gap_warning_weak_resume(app, auth_headers, sample_resume_text, sample_jd_text, mock_gap_output, mock_weak_resume_validation):
+    """Skill gap proceeds with warning for weak resumes."""
+    with (
+        patch("app.routes.v1.analyze.precheck_resume_validation", return_value=mock_weak_resume_validation),
+        patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_gap_output),
+        patch("app.routes.v1.analyze.safe_log_activity"),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/analyze/gap",
+                json={"resume_text": sample_resume_text, "jd_text": sample_jd_text},
+                headers=auth_headers,
+            )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "match_score" in data
+    assert "validation_warning" in data
+    assert data["validation_warning"]["classification"] == "resume_valid_but_weak"
+
+
+@pytest.mark.asyncio
+async def test_gap_no_warning_good_resume(app, auth_headers, sample_resume_text, sample_jd_text, mock_gap_output):
+    """Skill gap has no validation_warning for good resumes."""
+    with (
+        patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
+        patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_gap_output),
+        patch("app.routes.v1.analyze.safe_log_activity"),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/analyze/gap",
+                json={"resume_text": sample_resume_text, "jd_text": sample_jd_text},
                 headers=auth_headers,
             )
     assert resp.status_code == 200

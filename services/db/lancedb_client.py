@@ -6,10 +6,13 @@ import os
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
-load_dotenv()
+# Always load backend/.env regardless of current working directory
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_PROJECT_ROOT / "backend" / ".env")
 
 # ---------- DB PATH ----------
-DB_PATH = Path("data/lancedb")
+# Use absolute path so the same DB is used regardless of CWD
+DB_PATH = _PROJECT_ROOT / "data" / "lancedb"
 DB_PATH.mkdir(parents=True, exist_ok=True)
 
 db = lancedb.connect(DB_PATH)

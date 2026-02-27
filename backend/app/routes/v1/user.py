@@ -112,6 +112,10 @@ async def get_user_settings_endpoint(
                 result[f"has_{key}"] = True
             except Exception as e:
                 print(f"WARNING: [settings] Failed to decrypt '{key}' for user '{user_id}': {e}")
+                # Auto-clean: corrupted credential is unusable, remove it
+                # so the user sees a clean "no credentials" state
+                upsert_user_setting(user_id, key, "")
+                print(f"INFO: [settings] Cleared corrupted '{key}' for user '{user_id}'")
                 result[key] = None
                 result[f"has_{key}"] = False
         else:

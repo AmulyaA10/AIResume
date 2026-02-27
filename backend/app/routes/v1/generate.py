@@ -4,7 +4,7 @@ from typing import Optional
 
 from app.dependencies import get_current_user, resolve_credentials
 from app.models import GenerateRequest
-from app.common import build_llm_config
+from app.common import build_llm_config, precheck_resume_validation
 from services.agent_controller import run_resume_pipeline, run_resume_validation
 from services.export_service import generate_docx
 
@@ -49,6 +49,10 @@ async def generate_resume_endpoint(
 ):
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+
+    # Pre-check: validate that the input text looks like resume/profile content
+    input_validation_warning = precheck_resume_validation(request.profile, llm_config)
+
     output = run_resume_pipeline(task="generate", query=request.profile, llm_config=llm_config)
 
     # Post-generation validation: assess quality of the generated resume
@@ -67,6 +71,10 @@ async def generate_resume_endpoint(
                 output["output_validation"] = output_validation
             except Exception as e:
                 print(f"DEBUG: Post-generation validation failed: {e}")
+
+    # Attach input validation warning if present (distinct from output_validation)
+    if input_validation_warning:
+        output["input_validation_warning"] = input_validation_warning
 
     return output
 

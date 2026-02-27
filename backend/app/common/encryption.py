@@ -20,6 +20,10 @@ def _ensure_key() -> str:
     if _ENCRYPTION_KEY:
         return _ENCRYPTION_KEY
 
+    # Safety: ensure backend/.env is loaded even if config.py hasn't been imported yet
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
     key = os.getenv("ENCRYPTION_KEY")
 
     # Reject obvious placeholders from .env.example

@@ -2,26 +2,37 @@ import React, { useState } from 'react';
 import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../../common';
+import { PageHeader, EmptyState, ActionButton, FormTextarea, ValidationBanner } from '../../common';
 
 const SkillGap = () => {
     const [resumeText, setResumeText] = useState('');
     const [jdText, setJdText] = useState('');
     const [analyzing, setAnalyzing] = useState(false);
     const [gaps, setGaps] = useState<any>(null);
+    const [validationError, setValidationError] = useState<any>(null);
+    const [validationWarning, setValidationWarning] = useState<any>(null);
 
     const handleAnalyze = async () => {
         if (!resumeText.trim() || !jdText.trim()) return;
         setAnalyzing(true);
         setGaps(null);
+        setValidationError(null);
+        setValidationWarning(null);
         try {
             const response = await api.post('/analyze/gap', {
                 resume_text: resumeText,
                 jd_text: jdText
             });
             setGaps(response.data.gaps);
-        } catch (err) {
-            console.error(err);
+            if (response.data.validation_warning) {
+                setValidationWarning(response.data.validation_warning);
+            }
+        } catch (err: any) {
+            if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
+                setValidationError(err.response.data.detail.validation);
+            } else {
+                console.error(err);
+            }
         } finally {
             setAnalyzing(false);
         }
@@ -60,8 +71,24 @@ const SkillGap = () => {
                 </div>
 
                 <div className="flex flex-col h-full min-h-[500px]">
+                    {validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner validation={validationError} type="error" />
+                        </div>
+                    )}
+
+                    {validationWarning && !validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner
+                                validation={validationWarning}
+                                type="warning"
+                                onDismiss={() => setValidationWarning(null)}
+                            />
+                        </div>
+                    )}
+
                     <AnimatePresence mode="wait">
-                        {!gaps && !analyzing && (
+                        {!gaps && !analyzing && !validationError && (
                             <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <EmptyState
                                     icon={<Sparkles className="w-10 h-10" />}
