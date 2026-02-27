@@ -50,7 +50,7 @@ async def auth_linkedin():
 async def auth_linkedin_callback(code: str, background_tasks: BackgroundTasks):
     import requests
 
-    user_id = "user_recruiter_456"
+    user_id = "user_alex_chen_123"  # LinkedIn OAuth users are jobseekers
     profile_data = None
     real_profile_url = None
     display_name = "LinkedIn User"

@@ -79,6 +79,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setPersona(newPersona);
         setUser(newUser);
 
+        // Notify CredentialContext to reload server-stored credentials
+        window.dispatchEvent(new Event('auth:login'));
+
         // Redirect to /linkedin if we just connected LinkedIn
         if (linkedinConnected) {
             navigate('/linkedin', { replace: true });
@@ -119,6 +122,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsAuthenticated(true);
         setPersona(newPersona);
         setUser(newUser);
+
+        // Notify CredentialContext to reload server-stored credentials
+        window.dispatchEvent(new Event('auth:login'));
+
         navigate('/');
     }, [navigate]);
 

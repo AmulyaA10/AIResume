@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader, EmptyState, ActionButton, FormTextarea } from '../../common';
+import { PageHeader, EmptyState, ActionButton, FormTextarea, ValidationBanner } from '../../common';
 
 const ScoreRing = ({ value, label, color }: any) => (
     <div className="flex flex-col items-center">
@@ -33,17 +33,27 @@ const QualityScoring = () => {
     const [text, setText] = useState('');
     const [analyzing, setAnalyzing] = useState(false);
     const [results, setResults] = useState<any>(null);
+    const [validationError, setValidationError] = useState<any>(null);
+    const [validationWarning, setValidationWarning] = useState<any>(null);
 
     const handleScore = async () => {
         if (!text.trim()) return;
         setAnalyzing(true);
         setResults(null);
+        setValidationError(null);
+        setValidationWarning(null);
         try {
             const response = await api.post('/analyze/quality', { resume_text: text });
-            // Assuming backend returns { score: { overall: X, clarity: Y, ... }, summary: "..." }
             setResults(response.data);
-        } catch (err) {
-            console.error(err);
+            if (response.data.validation_warning) {
+                setValidationWarning(response.data.validation_warning);
+            }
+        } catch (err: any) {
+            if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
+                setValidationError(err.response.data.detail.validation);
+            } else {
+                console.error(err);
+            }
         } finally {
             setAnalyzing(false);
         }
@@ -79,7 +89,23 @@ const QualityScoring = () => {
                 </div>
 
                 <div className="glass-card flex flex-col items-center justify-center min-h-[500px] border-slate-100 bg-white/80">
-                    {!hasData && !analyzing && (
+                    {validationError && (
+                        <div className="w-full p-4">
+                            <ValidationBanner validation={validationError} type="error" />
+                        </div>
+                    )}
+
+                    {validationWarning && !validationError && (
+                        <div className="w-full p-4 pb-0">
+                            <ValidationBanner
+                                validation={validationWarning}
+                                type="warning"
+                                onDismiss={() => setValidationWarning(null)}
+                            />
+                        </div>
+                    )}
+
+                    {!hasData && !analyzing && !validationError && (
                         <EmptyState
                             icon={<Target className="w-10 h-10" />}
                             heading="Ready for Analysis"

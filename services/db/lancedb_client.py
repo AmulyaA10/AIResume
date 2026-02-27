@@ -244,6 +244,38 @@ def delete_user_settings(user_id: str):
     except Exception as e:
         print(f"DEBUG: Failed to delete user settings: {e}")
 
+def migrate_orphaned_settings(old_user_id: str, new_user_id: str):
+    """One-time migration: copy settings from old user_id to new user_id.
+
+    Only runs if new_user_id has NO settings and old_user_id has settings.
+    This handles the case where credentials were saved under a previous
+    user ID mapping (e.g., LinkedIn OAuth formerly mapped to user_recruiter_456).
+    """
+    from datetime import datetime
+    table = get_or_create_settings_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return
+        new_settings = df[df['user_id'] == new_user_id]
+        if not new_settings.empty:
+            return  # new user already has settings — no migration needed
+        old_settings = df[df['user_id'] == old_user_id]
+        if old_settings.empty:
+            return  # no orphaned settings to migrate
+        # Copy old settings to new user
+        for _, row in old_settings.iterrows():
+            table.add([{
+                "id": str(uuid4()),
+                "user_id": new_user_id,
+                "setting_key": row['setting_key'],
+                "setting_value": row['setting_value'],
+                "updated_at": datetime.now().isoformat(),
+            }])
+        print(f"MIGRATION: Copied {len(old_settings)} settings from {old_user_id} to {new_user_id}")
+    except Exception as e:
+        print(f"MIGRATION: Failed to migrate settings from {old_user_id} to {new_user_id}: {e}")
+
 # ---------- SEARCH ----------
 def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None):
     print(f"DEBUG: Semantic search query: {query} (User: {user_id})")

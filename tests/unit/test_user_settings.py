@@ -117,7 +117,8 @@ async def test_get_settings_with_stored_creds(app, auth_headers):
 @pytest.mark.asyncio
 async def test_get_settings_empty(app, auth_headers):
     """GET /settings with no stored credentials returns all false."""
-    with patch("app.routes.v1.user.get_user_settings", return_value={}):
+    with patch("app.routes.v1.user.get_user_settings", return_value={}), \
+         patch("app.routes.v1.user.migrate_orphaned_settings"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/user/settings", headers=auth_headers)
 
@@ -129,6 +130,38 @@ async def test_get_settings_empty(app, auth_headers):
     assert data["openRouterKey"] is None
     assert data["linkedinUser"] is None
     assert data["linkedinPass"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_settings_decryption_failure_returns_false(app, auth_headers):
+    """GET /settings returns has_*=False when decryption fails (e.g., key changed)."""
+    stored = {"openRouterKey": "corrupted-not-real-ciphertext", "linkedinUser": "also-bad"}
+
+    with patch("app.routes.v1.user.get_user_settings", return_value=stored):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/user/settings", headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_openRouterKey"] is False
+    assert data["openRouterKey"] is None
+    assert data["has_linkedinUser"] is False
+    assert data["linkedinUser"] is None
+    assert data["has_linkedinPass"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_settings_migration_triggered_on_empty(app, auth_headers):
+    """GET /settings triggers orphaned credential migration when user has no settings."""
+    with patch("app.routes.v1.user.get_user_settings", return_value={}) as mock_get, \
+         patch("app.routes.v1.user.migrate_orphaned_settings") as mock_migrate:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/user/settings", headers=auth_headers)
+
+    assert resp.status_code == 200
+    mock_migrate.assert_called_once_with("user_recruiter_456", "user_alex_chen_123")
+    # get_user_settings called twice: first check + re-fetch after migration
+    assert mock_get.call_count == 2
 
 
 # ---- DELETE /settings ----
@@ -207,3 +240,46 @@ async def test_resolve_credentials_partial_fallback():
     assert result["openrouter_key"] == "my-header-key"
     assert result["linkedin_user"] == "stored@email.com"
     assert result["linkedin_pass"] == "stored-pass"
+
+
+@pytest.mark.asyncio
+async def test_resolve_credentials_triggers_migration_on_empty():
+    """resolve_credentials triggers orphan migration when jobseeker user has no settings."""
+    from app.common.encryption import encrypt_value
+    from app.dependencies import resolve_credentials
+
+    migrated = {
+        "linkedinUser": encrypt_value("migrated@email.com"),
+        "linkedinPass": encrypt_value("migrated-pass"),
+    }
+
+    # First call returns empty (no settings), second call returns migrated values
+    with patch(
+        "services.db.lancedb_client.get_user_settings",
+        side_effect=[{}, migrated],
+    ) as mock_get, patch(
+        "services.db.lancedb_client.migrate_orphaned_settings"
+    ) as mock_migrate:
+        result = await resolve_credentials(user_id="user_alex_chen_123")
+
+    mock_migrate.assert_called_once_with("user_recruiter_456", "user_alex_chen_123")
+    assert mock_get.call_count == 2
+    assert result["linkedin_user"] == "migrated@email.com"
+    assert result["linkedin_pass"] == "migrated-pass"
+
+
+@pytest.mark.asyncio
+async def test_resolve_credentials_no_migration_for_other_users():
+    """resolve_credentials does NOT trigger migration for non-jobseeker user IDs."""
+    from app.dependencies import resolve_credentials
+
+    with patch(
+        "services.db.lancedb_client.get_user_settings", return_value={}
+    ), patch(
+        "services.db.lancedb_client.migrate_orphaned_settings"
+    ) as mock_migrate:
+        result = await resolve_credentials(user_id="user_recruiter_456")
+
+    mock_migrate.assert_not_called()
+    assert result["linkedin_user"] is None
+    assert result["linkedin_pass"] is None

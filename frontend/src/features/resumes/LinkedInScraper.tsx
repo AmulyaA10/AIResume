@@ -14,23 +14,29 @@ const LinkedInScraper = () => {
     const [error, setError] = useState<string | null>(null);
     const inputRef = React.useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
-    const { maskedCredentials, loadMaskedCredentials, isLoaded } = useCredentials();
+    const { maskedCredentials, loadMaskedCredentials, isLoaded, isLoading, loadError } = useCredentials();
 
-    // Load credential status from server on mount
+    // Load credential status from server on mount (skip if auth:login handler is already loading)
     useEffect(() => {
-        if (!isLoaded) loadMaskedCredentials();
-    }, [isLoaded, loadMaskedCredentials]);
+        if (!isLoaded && !loadError && !isLoading) loadMaskedCredentials();
+    }, [isLoaded, loadError, isLoading, loadMaskedCredentials]);
+
+    // Retry once if credential load failed (e.g., auth token wasn't ready)
+    useEffect(() => {
+        if (loadError && !isLoading) {
+            const timer = setTimeout(() => loadMaskedCredentials(), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [loadError, isLoading, loadMaskedCredentials]);
 
     const hasScraperCreds = maskedCredentials?.has_linkedinUser && maskedCredentials?.has_linkedinPass;
 
     const handleScrape = async () => {
         if (!url.trim()) return;
 
-        // Check if LinkedIn scraper credentials are stored on server
-        if (!hasScraperCreds) {
-            setError('LinkedIn scraper credentials are not configured. Go to Settings and enter your LinkedIn email and password under "Data Sources", then come back and try again.');
-            return;
-        }
+        // No client-side credential gate — the backend's resolve_credentials()
+        // handles credential resolution independently. If credentials are truly
+        // missing, the backend returns a descriptive error.
 
         setLoading(true);
         setResume(null);
@@ -153,14 +159,12 @@ const LinkedInScraper = () => {
                             <div className="space-y-2">
                                 <p className="text-sm font-bold text-red-700">Scraping Failed</p>
                                 <p className="text-xs text-red-600 leading-relaxed">{error}</p>
-                                {!hasScraperCreds && (
-                                    <button
-                                        onClick={() => navigate('/settings')}
-                                        className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
-                                    >
-                                        <Settings className="w-3.5 h-3.5" /> Go to Settings
-                                    </button>
-                                )}
+                                <button
+                                    onClick={() => navigate('/settings')}
+                                    className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                >
+                                    <Settings className="w-3.5 h-3.5" /> Check Settings
+                                </button>
                             </div>
                         </div>
                     )}
@@ -179,21 +183,19 @@ const LinkedInScraper = () => {
                                             If it's wrong, <strong>copy the link from your "Public profile & URL" section</strong> (the one with the unique numbers at the end) and paste it here.
                                         </p>
                                     </div>
-                                    {!hasScraperCreds && (
-                                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-                                            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                                            <div className="space-y-1">
-                                                <p className="text-xs font-bold text-amber-700">Scraper credentials missing</p>
-                                                <p className="text-[11px] text-amber-600 leading-relaxed">
-                                                    Go to <strong>Settings</strong> and enter your LinkedIn email & password under "Data Sources" before syncing.
-                                                </p>
+                                    {isLoaded && !hasScraperCreds && (
+                                        <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center gap-2">
+                                            <Settings className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                                            <p className="text-[11px] text-blue-600 font-medium">
+                                                No saved LinkedIn credentials detected.{' '}
                                                 <button
                                                     onClick={() => navigate('/settings')}
-                                                    className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                                    className="font-bold text-[#0077b5] hover:text-[#006396] underline transition-colors"
                                                 >
-                                                    <Settings className="w-3 h-3" /> Open Settings
+                                                    Add in Settings
                                                 </button>
-                                            </div>
+                                                {' '}for faster syncing, or just click the button below — the server may already have your credentials.
+                                            </p>
                                         </div>
                                     )}
                                     <div className="w-full relative group">

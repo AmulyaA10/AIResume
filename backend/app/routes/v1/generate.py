@@ -5,10 +5,39 @@ from typing import Optional
 from app.dependencies import get_current_user, resolve_credentials
 from app.models import GenerateRequest
 from app.common import build_llm_config
-from services.agent_controller import run_resume_pipeline
+from services.agent_controller import run_resume_pipeline, run_resume_validation
 from services.export_service import generate_docx
 
 router = APIRouter()
+
+
+def _resume_json_to_text(resume_json: dict) -> str:
+    """Convert structured resume JSON to plain text for validation."""
+    parts = []
+    contact = resume_json.get("contact", {})
+    if contact.get("name"):
+        parts.append(contact["name"])
+    if contact.get("email"):
+        parts.append(contact["email"])
+    if contact.get("phone"):
+        parts.append(contact["phone"])
+
+    if resume_json.get("summary"):
+        parts.append(f"\nPROFESSIONAL SUMMARY\n{resume_json['summary']}")
+
+    skills = resume_json.get("skills", [])
+    if skills:
+        parts.append(f"\nSKILLS\n{', '.join(skills)}")
+
+    for exp in resume_json.get("experience", []):
+        parts.append(f"\nEXPERIENCE\n{exp.get('title', '')} | {exp.get('company', '')} | {exp.get('period', '')}")
+        for bullet in exp.get("bullets", []):
+            parts.append(f"- {bullet}")
+
+    for edu in resume_json.get("education", []):
+        parts.append(f"\nEDUCATION\n{edu.get('degree', '')} | {edu.get('school', '')} | {edu.get('year', '')}")
+
+    return "\n".join(parts)
 
 
 @router.post("/resume")
@@ -21,6 +50,24 @@ async def generate_resume_endpoint(
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
     output = run_resume_pipeline(task="generate", query=request.profile, llm_config=llm_config)
+
+    # Post-generation validation: assess quality of the generated resume
+    # Graph state uses "resume_json" key; some serializations may use "resume"
+    resume_json = output.get("resume_json") or output.get("resume") or {}
+    if resume_json:
+        resume_text = _resume_json_to_text(resume_json)
+        if resume_text.strip():
+            try:
+                output_validation = run_resume_validation(
+                    file_name="generated_resume",
+                    file_type="txt",
+                    extracted_text=resume_text,
+                    llm_config=llm_config,
+                )
+                output["output_validation"] = output_validation
+            except Exception as e:
+                print(f"DEBUG: Post-generation validation failed: {e}")
+
     return output
 
 

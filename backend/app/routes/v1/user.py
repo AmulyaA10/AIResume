@@ -9,6 +9,7 @@ from services.db.lancedb_client import (
     upsert_user_setting,
     get_user_settings,
     delete_user_settings,
+    migrate_orphaned_settings,
 )
 
 router = APIRouter()
@@ -86,6 +87,14 @@ async def get_user_settings_endpoint(
 ):
     """Return masked credentials for display. Never returns raw values."""
     stored = get_user_settings(user_id)
+
+    # One-time migration: if this user has no settings, check for orphaned
+    # credentials from the old user_recruiter_456 mapping (LinkedIn OAuth
+    # tokens previously mapped to recruiter user_id instead of jobseeker)
+    if not stored and user_id == "user_alex_chen_123":
+        migrate_orphaned_settings("user_recruiter_456", "user_alex_chen_123")
+        stored = get_user_settings(user_id)  # re-fetch after migration
+
     result = {}
     for key in SENSITIVE_KEYS:
         encrypted = stored.get(key, "")
@@ -94,7 +103,8 @@ async def get_user_settings_endpoint(
                 plaintext = decrypt_value(encrypted)
                 result[key] = mask_value(plaintext)
                 result[f"has_{key}"] = True
-            except Exception:
+            except Exception as e:
+                print(f"WARNING: [settings] Failed to decrypt '{key}' for user '{user_id}': {e}")
                 result[key] = None
                 result[f"has_{key}"] = False
         else:

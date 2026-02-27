@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, Loader2, UserCheck, UserX, Info, Target } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea, ValidationBanner } from '../../common';
 
 const AutoScreening = () => {
     const [resumeText, setResumeText] = useState('');
@@ -10,11 +10,15 @@ const AutoScreening = () => {
     const [threshold, setThreshold] = useState(75);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
+    const [validationError, setValidationError] = useState<any>(null);
+    const [validationWarning, setValidationWarning] = useState<any>(null);
 
     const handleScreen = async () => {
         if (!resumeText.trim() || !jdText.trim()) return;
         setLoading(true);
         setResult(null);
+        setValidationError(null);
+        setValidationWarning(null);
         try {
             const response = await api.post('/analyze/screen', {
                 resume_text: resumeText,
@@ -22,8 +26,15 @@ const AutoScreening = () => {
                 threshold: threshold
             });
             setResult(response.data);
-        } catch (err) {
-            console.error(err);
+            if (response.data.validation_warning) {
+                setValidationWarning(response.data.validation_warning);
+            }
+        } catch (err: any) {
+            if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
+                setValidationError(err.response.data.detail.validation);
+            } else {
+                console.error(err);
+            }
         } finally {
             setLoading(false);
         }
@@ -86,7 +97,23 @@ const AutoScreening = () => {
                 </div>
 
                 <div className="flex flex-col min-h-[500px]">
-                    {!result && !loading && (
+                    {validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner validation={validationError} type="error" />
+                        </div>
+                    )}
+
+                    {validationWarning && !validationError && (
+                        <div className="mb-4">
+                            <ValidationBanner
+                                validation={validationWarning}
+                                type="warning"
+                                onDismiss={() => setValidationWarning(null)}
+                            />
+                        </div>
+                    )}
+
+                    {!result && !loading && !validationError && (
                         <EmptyState
                             icon={<ShieldCheck className="w-10 h-10" />}
                             heading="Decision Engine Standby"

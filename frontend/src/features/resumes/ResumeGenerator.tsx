@@ -2,20 +2,25 @@ import React, { useState } from 'react';
 import { FileText, Loader2, Download, Sparkles, Send, User } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea } from '../../common';
+import { PageHeader, EmptyState, LoadingOverlay, ActionButton, FormTextarea, ValidationBanner } from '../../common';
 
 const ResumeGenerator = () => {
     const [profile, setProfile] = useState('');
     const [generating, setGenerating] = useState(false);
     const [resume, setResume] = useState<any>(null);
+    const [outputValidation, setOutputValidation] = useState<any>(null);
 
     const handleGenerate = async () => {
         if (!profile.trim()) return;
         setGenerating(true);
         setResume(null);
+        setOutputValidation(null);
         try {
             const response = await api.post('/generate/resume', { profile });
             setResume(response.data.resume_json);
+            if (response.data.output_validation) {
+                setOutputValidation(response.data.output_validation);
+            }
         } catch (err) {
             console.error(err);
         } finally {
@@ -106,6 +111,7 @@ const ResumeGenerator = () => {
                     )}
 
                     {resume && (
+                        <div className="flex-1 flex flex-col gap-4">
                         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 glass-card flex flex-col shadow-xl">
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -190,6 +196,20 @@ const ResumeGenerator = () => {
                                 </div>
                             </div>
                         </motion.div>
+
+                        {outputValidation && (
+                            <ValidationBanner
+                                validation={outputValidation}
+                                type={
+                                    outputValidation.classification === 'not_resume' ||
+                                    outputValidation.classification === 'resume_invalid_or_incomplete'
+                                        ? 'error'
+                                        : 'warning'
+                                }
+                                onDismiss={() => setOutputValidation(null)}
+                            />
+                        )}
+                        </div>
                     )}
                 </div>
             </div>

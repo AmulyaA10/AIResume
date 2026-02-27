@@ -6,15 +6,18 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     """Mock authentication dependency — returns user_id based on token.
 
     Token-to-user mapping:
-      - Token contains "recruiter" or "linkedin" -> user_recruiter_456
-      - Everything else -> user_alex_chen_123
+      - Token contains "recruiter" -> user_recruiter_456
+      - Everything else (including OAuth: google, linkedin) -> user_alex_chen_123
+
+    NOTE: LinkedIn OAuth users are jobseekers, not recruiters.
+    Only the corporate SSO "mock-recruiter-token" maps to the recruiter user.
 
     TODO: Replace with real JWT validation.
     """
     token = authorization.replace("Bearer ", "") if authorization else "guest"
     print(f"DEBUG: [auth] Authorization Header: '{authorization}' -> Token: '{token}'")
 
-    if "recruiter" in token or "linkedin" in token:
+    if "recruiter" in token:
         user_id = "user_recruiter_456"
     else:
         user_id = "user_alex_chen_123"
@@ -43,12 +46,24 @@ async def resolve_credentials(
     }
 
     missing = [k for k, v in result.items() if not v and k != "llm_model"]
+    print(f"DEBUG: [resolve_credentials] user_id={user_id}, missing_keys={missing}")
+
     if missing:
         try:
             from app.common.encryption import decrypt_value
-            from services.db.lancedb_client import get_user_settings
+            from services.db.lancedb_client import get_user_settings, migrate_orphaned_settings
 
             stored = get_user_settings(user_id)
+            print(f"DEBUG: [resolve_credentials] get_user_settings('{user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
+
+            # One-time migration: if no settings found for this user, check
+            # for orphaned credentials from the old recruiter user ID mapping
+            if not stored and user_id == "user_alex_chen_123":
+                print("DEBUG: [resolve_credentials] Triggering orphan migration...")
+                migrate_orphaned_settings("user_recruiter_456", "user_alex_chen_123")
+                stored = get_user_settings(user_id)
+                print(f"DEBUG: [resolve_credentials] Post-migration keys: {list(stored.keys()) if stored else '(empty)'}")
+
             key_map = {
                 "openrouter_key": "openRouterKey",
                 "linkedin_user": "linkedinUser",
@@ -58,9 +73,17 @@ async def resolve_credentials(
                 if not result[internal_key] and stored.get(storage_key):
                     try:
                         result[internal_key] = decrypt_value(stored[storage_key])
+                        print(f"DEBUG: [resolve_credentials] Decrypted '{storage_key}' successfully (len={len(result[internal_key])})")
                     except Exception as e:
-                        print(f"DEBUG: Failed to decrypt {storage_key}: {e}")
+                        print(f"WARNING: [resolve_credentials] Decryption failed for '{storage_key}' (user={user_id}): {e}")
+                else:
+                    if not result[internal_key]:
+                        print(f"DEBUG: [resolve_credentials] No stored value for '{storage_key}'")
         except Exception as e:
-            print(f"DEBUG: Failed to resolve stored credentials: {e}")
+            print(f"ERROR: [resolve_credentials] OUTER EXCEPTION (user={user_id}): {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
 
+    resolved_keys = [k for k, v in result.items() if v]
+    print(f"DEBUG: [resolve_credentials] Final resolved keys: {resolved_keys}")
     return result

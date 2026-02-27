@@ -6,6 +6,7 @@ so the tests run without network access or API keys.
 """
 
 import io
+import os
 import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
@@ -150,6 +151,7 @@ async def test_full_analysis_pipeline(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         # Quality
         with (
+            patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
             patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_quality_output),
             patch("app.routes.v1.analyze.safe_log_activity"),
         ):
@@ -176,6 +178,7 @@ async def test_full_analysis_pipeline(
 
         # Screen
         with (
+            patch("app.routes.v1.analyze.precheck_resume_validation", return_value=None),
             patch("app.routes.v1.analyze.run_resume_pipeline", return_value=mock_screen_output),
             patch("app.routes.v1.analyze.safe_log_activity"),
         ):
@@ -195,7 +198,10 @@ async def test_generate_then_export(app, mock_generate_output):
     """Integration: generate a resume then export to DOCX."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         # Generate
-        with patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output):
+        with (
+            patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
+            patch("app.routes.v1.generate.run_resume_validation", return_value={}),
+        ):
             gen_resp = await c.post(
                 "/api/v1/generate/resume",
                 json={"profile": "Python dev with 5 years experience"},
@@ -279,3 +285,51 @@ async def test_validation_error_does_not_block_upload(app, auth_headers):
     mock_store.assert_called_once()
     # Validation result contains the error
     assert "error" in result["validation"]
+
+
+# ── LinkedIn credential resolution ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_linkedin_scrape_resolves_stored_credentials(
+    app, auth_headers, mock_linkedin_output
+):
+    """LinkedIn scrape resolves credentials from server storage when headers are absent."""
+    from cryptography.fernet import Fernet
+
+    _test_key = Fernet.generate_key().decode()
+
+    with patch.dict(os.environ, {"ENCRYPTION_KEY": _test_key}):
+        import app.common.encryption as enc_mod
+        old_key = enc_mod._ENCRYPTION_KEY
+        enc_mod._ENCRYPTION_KEY = _test_key
+        try:
+            from app.common.encryption import encrypt_value
+
+            stored = {
+                "openRouterKey": encrypt_value("test-api-key"),
+                "linkedinUser": encrypt_value("test@linkedin.com"),
+                "linkedinPass": encrypt_value("test-pass"),
+            }
+
+            with (
+                patch("services.db.lancedb_client.get_user_settings", return_value=stored),
+                patch(
+                    "app.routes.v1.linkedin.generate_resume_from_linkedin",
+                    return_value=mock_linkedin_output,
+                ) as mock_pipeline,
+            ):
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as c:
+                    resp = await c.post(
+                        "/api/v1/linkedin/scrape",
+                        json={"query": "https://www.linkedin.com/in/janedoe"},
+                        headers=auth_headers,  # auth only, no credential headers
+                    )
+
+            assert resp.status_code == 200
+            assert "resume" in resp.json()
+            # Pipeline was called — proving credentials resolved from storage
+            mock_pipeline.assert_called_once()
+        finally:
+            enc_mod._ENCRYPTION_KEY = old_key

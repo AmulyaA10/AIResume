@@ -24,6 +24,8 @@ interface CredentialContextType {
     loadMaskedCredentials: () => Promise<void>;
     clearCredentials: () => Promise<void>;
     isLoaded: boolean;
+    isLoading: boolean;
+    loadError: boolean;
 }
 
 const CredentialContext = createContext<CredentialContextType | undefined>(undefined);
@@ -36,6 +38,8 @@ export const CredentialProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     const [maskedCredentials, setMaskedCredentials] = useState<MaskedCredentials | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     const setCredential = useCallback((key: keyof Credentials, value: string) => {
         setCredentials(prev => ({ ...prev, [key]: value }));
@@ -43,12 +47,17 @@ export const CredentialProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadMaskedCredentials = useCallback(async () => {
         try {
+            setLoadError(false);
+            setIsLoading(true);
             const resp = await api.get('/user/settings');
             setMaskedCredentials(resp.data);
             setIsLoaded(true);
         } catch (err) {
             console.error('Failed to load credential status:', err);
-            setIsLoaded(true);
+            setLoadError(true);
+            // Do NOT set isLoaded=true on failure — allow consumers to retry
+        } finally {
+            setIsLoading(false);
         }
     }, []);
 
@@ -77,9 +86,42 @@ export const CredentialProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setCredentials({ openRouterKey: '', linkedinUser: '', linkedinPass: '' });
             setMaskedCredentials(null);
             setIsLoaded(false);
+            setLoadError(false);
         };
         window.addEventListener('auth:logout', handler);
         return () => window.removeEventListener('auth:logout', handler);
+    }, []);
+
+    // Listen for login event to auto-load credentials from server with retry
+    useEffect(() => {
+        const handler = async () => {
+            // Reset state for the new session
+            setIsLoaded(false);
+            setLoadError(false);
+            setMaskedCredentials(null);
+            setIsLoading(true); // prevent mount effects from competing
+
+            // Retry with increasing delays to handle auth token timing
+            const delays = [200, 500, 1000];
+            for (const delay of delays) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                try {
+                    const resp = await api.get('/user/settings');
+                    setMaskedCredentials(resp.data);
+                    setIsLoaded(true);
+                    setIsLoading(false);
+                    return; // success — stop retrying
+                } catch (err) {
+                    console.warn(`Credential load attempt failed (delay=${delay}ms):`, err);
+                }
+            }
+            // All retries exhausted
+            console.error('Failed to load credentials after all retries');
+            setIsLoading(false);
+            setLoadError(true);
+        };
+        window.addEventListener('auth:login', handler);
+        return () => window.removeEventListener('auth:login', handler);
     }, []);
 
     const value = React.useMemo(() => ({
@@ -90,8 +132,10 @@ export const CredentialProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         loadMaskedCredentials,
         clearCredentials,
         isLoaded,
+        isLoading,
+        loadError,
     }), [credentials, maskedCredentials, setCredential, saveCredentials,
-         loadMaskedCredentials, clearCredentials, isLoaded]);
+         loadMaskedCredentials, clearCredentials, isLoaded, isLoading, loadError]);
 
     return (
         <CredentialContext.Provider value={value}>

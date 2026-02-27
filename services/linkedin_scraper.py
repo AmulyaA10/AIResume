@@ -23,7 +23,8 @@ def scrape_linkedin_profile(profile_url, email=None, password=None):
     if not email or not password:
         raise ValueError(
             "LinkedIn scraper credentials are not configured. "
-            "Please set LinkedinLogin and LinkedinPassword in your backend/.env file."
+            "Please set LinkedinLogin and LinkedinPassword in your backend/.env file "
+            "or save your LinkedIn email and password in Settings."
         )
 
     chrome_options = Options()

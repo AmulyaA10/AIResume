@@ -256,3 +256,76 @@ def auth_headers():
 def recruiter_auth_headers():
     """Recruiter auth headers."""
     return {"Authorization": "Bearer mock-recruiter-token-123"}
+
+
+# ---------------------------------------------------------------------------
+# Resume validation pre-check fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def mock_not_resume_validation():
+    """Validation result for non-resume text (e.g. a grocery list)."""
+    return {
+        "is_resume": False,
+        "classification": "not_resume",
+        "total_score": 2,
+        "scores": {
+            "document_type_validity": 0,
+            "completeness": 0,
+            "structure_readability": 1,
+            "achievement_quality": 0,
+            "credibility_consistency": 0,
+            "ats_friendliness": 1,
+        },
+        "missing_fields": ["name", "email", "experience", "education"],
+        "top_issues": ["This text does not appear to be a resume"],
+        "suggested_improvements": [],
+        "followup_verification_questions": [],
+        "summary": "The submitted text is not a resume.",
+    }
+
+
+@pytest.fixture()
+def mock_weak_resume_validation():
+    """Validation result for a weak but valid resume."""
+    return {
+        "is_resume": True,
+        "classification": "resume_valid_but_weak",
+        "total_score": 14,
+        "scores": {
+            "document_type_validity": 3,
+            "completeness": 2,
+            "structure_readability": 2,
+            "achievement_quality": 2,
+            "credibility_consistency": 3,
+            "ats_friendliness": 2,
+        },
+        "missing_fields": ["phone"],
+        "top_issues": ["Missing quantified achievements", "Weak formatting"],
+        "suggested_improvements": ["Add metrics to bullet points"],
+        "followup_verification_questions": [],
+        "summary": "Resume is present but needs significant improvement.",
+    }
+
+
+@pytest.fixture()
+def mock_good_resume_validation():
+    """Validation result for a good resume (no warning needed)."""
+    return {
+        "is_resume": True,
+        "classification": "resume_valid_good",
+        "total_score": 22,
+        "scores": {
+            "document_type_validity": 4,
+            "completeness": 4,
+            "structure_readability": 3,
+            "achievement_quality": 4,
+            "credibility_consistency": 4,
+            "ats_friendliness": 3,
+        },
+        "missing_fields": [],
+        "top_issues": [],
+        "suggested_improvements": ["Consider adding LinkedIn URL"],
+        "followup_verification_questions": [],
+        "summary": "Solid resume with minor improvements possible.",
+    }
