@@ -1,6 +1,6 @@
 from services.ai.resume_quality_graph import build_resume_quality_graph
 from services.ai.skill_gap_graph import build_skill_gap_graph
-from services.ai.linkedin_resume_graph import build_linkedin_resume_graph
+from services.ai.linkedin_resume_graph import build_linkedin_resume_graph, build_linkedin_parse_graph
 from services.ai.langgraph_workflow import build_resume_graph
 from services.ai.screening_graph import build_screening_graph
 from services.ai.resume_generator_graph import build_resume_generator_graph
@@ -9,6 +9,7 @@ from services.ai.resume_validation_graph import build_resume_validation_graph
 _quality_graph = build_resume_quality_graph()
 _skill_gap_graph = build_skill_gap_graph()
 _linkedin_graph = build_linkedin_resume_graph()
+_linkedin_parse_graph = build_linkedin_parse_graph()
 _screening_graph = build_screening_graph()
 _generator_graph = build_resume_generator_graph()
 _validation_graph = build_resume_validation_graph()
@@ -53,9 +54,23 @@ def run_resume_validation(file_name: str, file_type: str, extracted_text: str,
     return result.get("validation_result", {})
 
 
-def generate_resume_from_linkedin(url: str, llm_config: dict = None, linkedin_creds: dict = None):
+def generate_resume_from_linkedin(url: str, llm_config: dict = None, linkedin_creds: dict = None, login_wait: int = None):
     return _linkedin_graph.invoke({
         "linkedin_url": url,
         "config": llm_config,
-        "linkedin_creds": linkedin_creds
+        "linkedin_creds": linkedin_creds,
+        "login_wait": login_wait,
+    })
+
+
+def parse_linkedin_profile_text(profile_text: str, llm_config: dict = None):
+    """Parse user-pasted LinkedIn profile text into a structured resume.
+
+    Skips the Selenium scraper entirely — feeds text directly to the
+    LLM parser → resume writer pipeline.
+    """
+    return _linkedin_parse_graph.invoke({
+        "linkedin_url": "manual-paste",
+        "raw_profile": profile_text,
+        "config": llm_config,
     })

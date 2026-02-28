@@ -223,7 +223,7 @@ const ResumeUpload = () => {
         const formData = new FormData();
         files.forEach(f => formData.append('files', f.file));
         formData.append('store_db', 'true');
-        formData.append('validate', 'true');
+        formData.append('run_validation', 'true');
 
         try {
             console.log("Sending request to /resumes/upload");

@@ -57,6 +57,160 @@ async def test_linkedin_scrape_missing_query(app):
     assert resp.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_linkedin_scrape_security_challenge(app, mock_linkedin_security_challenge):
+    """Security challenge returns 200 with error + error_code in JSON body."""
+    with patch(
+        "app.routes.v1.linkedin.generate_resume_from_linkedin",
+        return_value=mock_linkedin_security_challenge,
+    ), patch(
+        "app.routes.v1.linkedin.resolve_credentials",
+        return_value={
+            "openrouter_key": "test-key",
+            "llm_model": None,
+            "linkedin_user": "test@test.com",
+            "linkedin_pass": "test-pass",
+        },
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/linkedin/scrape",
+                json={"query": "https://www.linkedin.com/in/janedoe"},
+            )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resume"] is None
+    assert "security verification" in data["error"].lower()
+    assert data["error_code"] == "SECURITY_CHALLENGE"
+
+
+@pytest.mark.asyncio
+async def test_linkedin_scrape_generic_error(app, mock_linkedin_generic_error):
+    """Generic graph error returns 200 with error in JSON body and error_code=None."""
+    with patch(
+        "app.routes.v1.linkedin.generate_resume_from_linkedin",
+        return_value=mock_linkedin_generic_error,
+    ), patch(
+        "app.routes.v1.linkedin.resolve_credentials",
+        return_value={
+            "openrouter_key": "test-key",
+            "llm_model": None,
+            "linkedin_user": "test@test.com",
+            "linkedin_pass": "test-pass",
+        },
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/linkedin/scrape",
+                json={"query": "https://www.linkedin.com/in/janedoe"},
+            )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resume"] is None
+    assert data["error"] is not None
+    assert data["error_code"] is None
+
+
+@pytest.mark.asyncio
+async def test_linkedin_scrape_retry_sets_login_wait(app, mock_linkedin_output):
+    """retry=True passes login_wait=45 to generate_resume_from_linkedin."""
+    with patch(
+        "app.routes.v1.linkedin.generate_resume_from_linkedin",
+        return_value=mock_linkedin_output,
+    ) as mock_pipeline, patch(
+        "app.routes.v1.linkedin.resolve_credentials",
+        return_value={
+            "openrouter_key": "test-key",
+            "llm_model": None,
+            "linkedin_user": "test@test.com",
+            "linkedin_pass": "test-pass",
+        },
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/linkedin/scrape",
+                json={"query": "https://www.linkedin.com/in/janedoe", "retry": True},
+            )
+    assert resp.status_code == 200
+    # Verify login_wait=45 was passed (retry mode)
+    call_kwargs = mock_pipeline.call_args
+    assert call_kwargs[1]["login_wait"] == 45
+
+
+@pytest.mark.asyncio
+async def test_linkedin_scrape_no_retry_sets_short_login_wait(app, mock_linkedin_output):
+    """retry=False (default) passes login_wait=10 to generate_resume_from_linkedin."""
+    with patch(
+        "app.routes.v1.linkedin.generate_resume_from_linkedin",
+        return_value=mock_linkedin_output,
+    ) as mock_pipeline, patch(
+        "app.routes.v1.linkedin.resolve_credentials",
+        return_value={
+            "openrouter_key": "test-key",
+            "llm_model": None,
+            "linkedin_user": "test@test.com",
+            "linkedin_pass": "test-pass",
+        },
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/linkedin/scrape",
+                json={"query": "https://www.linkedin.com/in/janedoe"},
+            )
+    assert resp.status_code == 200
+    # Verify login_wait=10 was passed (first attempt mode)
+    call_kwargs = mock_pipeline.call_args
+    assert call_kwargs[1]["login_wait"] == 10
+
+
+# ── /linkedin/parse endpoint tests ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_linkedin_parse_success(app, mock_linkedin_output):
+    """POST /api/v1/linkedin/parse returns structured resume from pasted text."""
+    with patch(
+        "app.routes.v1.linkedin.parse_linkedin_profile_text",
+        return_value=mock_linkedin_output,
+    ), patch(
+        "app.routes.v1.linkedin.resolve_credentials",
+        return_value={
+            "openrouter_key": "test-key",
+            "llm_model": None,
+            "linkedin_user": None,
+            "linkedin_pass": None,
+        },
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/linkedin/parse",
+                json={"profile_text": "Experience\nManager\nDeloitte\nSep 2024 - Present\nLondon\n" * 5},
+            )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "resume" in data
+    assert data["resume"]["contact"]["name"] == "Jane Doe"
+
+
+@pytest.mark.asyncio
+async def test_linkedin_parse_too_short(app):
+    """LinkedIn parse rejects profile text that is too short."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/linkedin/parse",
+            json={"profile_text": "Too short"},
+        )
+    assert resp.status_code == 422
+    assert "too short" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_linkedin_parse_missing_body(app):
+    """LinkedIn parse requires profile_text field."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/api/v1/linkedin/parse", json={})
+    assert resp.status_code == 422
+
+
 # ── _resolve_credentials_sync tests ─────────────────────────────────────────
 
 def test_resolve_creds_sync_from_stored():

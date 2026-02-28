@@ -120,7 +120,7 @@ async def test_upload_validate_store_pipeline(app, auth_headers, mock_validation
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files={"files": ("resume.pdf", fake_pdf, "application/pdf")},
-                data={"store_db": "true", "validate": "true"},
+                data={"store_db": "true", "run_validation": "true"},
             )
 
     assert resp.status_code == 200
@@ -279,7 +279,7 @@ async def test_validation_error_does_not_block_upload(app, auth_headers):
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files={"files": ("resume.pdf", fake_pdf, "application/pdf")},
-                data={"store_db": "true", "validate": "true"},
+                data={"store_db": "true", "run_validation": "true"},
             )
 
     assert resp.status_code == 200
@@ -336,3 +336,40 @@ async def test_linkedin_scrape_resolves_stored_credentials(
             mock_pipeline.assert_called_once()
         finally:
             enc_mod._ENCRYPTION_KEY = old_key
+
+
+@pytest.mark.asyncio
+async def test_linkedin_scrape_error_returns_json_with_error_code(
+    app, auth_headers, mock_linkedin_security_challenge
+):
+    """LinkedIn scrape error returns HTTP 200 JSON with error + error_code (not HTTPException)."""
+    with (
+        patch(
+            "app.routes.v1.linkedin.resolve_credentials",
+            return_value={
+                "openrouter_key": "test-key",
+                "llm_model": None,
+                "linkedin_user": "test@test.com",
+                "linkedin_pass": "test-pass",
+            },
+        ),
+        patch(
+            "app.routes.v1.linkedin.generate_resume_from_linkedin",
+            return_value=mock_linkedin_security_challenge,
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.post(
+                "/api/v1/linkedin/scrape",
+                json={"query": "https://www.linkedin.com/in/janedoe", "retry": True},
+                headers=auth_headers,
+            )
+
+    # Should be 200 with structured error body (not 422 HTTPException)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resume"] is None
+    assert data["error"] is not None
+    assert data["error_code"] == "SECURITY_CHALLENGE"

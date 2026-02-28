@@ -3,11 +3,11 @@ from typing import Optional
 import json
 
 from app.dependencies import get_current_user, resolve_credentials
-from app.models import SearchRequest
+from app.models import SearchRequest, LinkedInScrapeRequest, LinkedInParseRequest
 from app.config import LINKEDIN_LOGIN, LINKEDIN_PASSWORD
 from app.common import build_llm_config, build_linkedin_creds, safe_log_activity
 from app.common import decrypt_value
-from services.agent_controller import generate_resume_from_linkedin
+from services.agent_controller import generate_resume_from_linkedin, parse_linkedin_profile_text
 from services.db.lancedb_client import store_resume, get_user_settings, migrate_orphaned_settings
 
 router = APIRouter()
@@ -117,7 +117,7 @@ def background_sync_linkedin(user_id: str, profile_url: str):
 
 @router.post("/scrape")
 async def linkedin_scrape(
-    request: SearchRequest,
+    request: LinkedInScrapeRequest,
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None),
     x_linkedin_user: Optional[str] = Header(None),
@@ -140,8 +140,12 @@ async def linkedin_scrape(
                    "or check the server logs for credential resolution errors."
         )
 
+    # First attempt: 10s login wait (detect challenge fast, prompt user quickly)
+    # Retry after phone approval: 45s login wait (user is actively approving)
+    login_wait = 45 if request.retry else 10
+
     try:
-        output = generate_resume_from_linkedin(request.query, llm_config=llm_config, linkedin_creds=linkedin_creds)
+        output = generate_resume_from_linkedin(request.query, llm_config=llm_config, linkedin_creds=linkedin_creds, login_wait=login_wait)
     except Exception as e:
         print(f"--- LinkedIn scrape pipeline error: {e} ---")
         raise HTTPException(status_code=500, detail=f"LinkedIn scraping failed: {str(e)}")
@@ -150,12 +154,68 @@ async def linkedin_scrape(
         raise HTTPException(status_code=500, detail="LinkedIn pipeline returned no output.")
 
     if output.get("error"):
-        raise HTTPException(status_code=422, detail=output["error"])
+        # Return error as JSON body (not HTTPException) so the frontend can
+        # read both "error" and "error_code" (e.g. SECURITY_CHALLENGE).
+        return {
+            "resume": None,
+            "error": output["error"],
+            "error_code": output.get("error_code"),
+        }
 
     if not output.get("resume"):
         raise HTTPException(status_code=422, detail="Could not extract resume data from the LinkedIn profile. The profile may be private or the scraper credentials may be missing.")
 
     # Return only non-sensitive fields — never expose credentials or API keys
+    return {
+        "resume": output.get("resume"),
+        "error": output.get("error"),
+    }
+
+
+@router.post("/parse")
+async def linkedin_parse(
+    request: LinkedInParseRequest,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user)
+):
+    """Parse user-pasted LinkedIn profile text into a structured resume.
+
+    This endpoint skips the Selenium scraper entirely — the user copies their
+    LinkedIn profile page content and pastes it here. The LLM pipeline parses
+    the raw text into structured experience, education, skills, certifications,
+    and generates a professional resume.
+    """
+    profile_text = request.profile_text.strip()
+
+    if len(profile_text) < 100:
+        raise HTTPException(
+            status_code=422,
+            detail="Profile text is too short. Please copy and paste your full LinkedIn profile content."
+        )
+
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+
+    try:
+        output = parse_linkedin_profile_text(profile_text, llm_config=llm_config)
+    except Exception as e:
+        print(f"--- LinkedIn parse pipeline error: {e} ---")
+        raise HTTPException(status_code=500, detail=f"LinkedIn profile parsing failed: {str(e)}")
+
+    if not output:
+        raise HTTPException(status_code=500, detail="LinkedIn parse pipeline returned no output.")
+
+    if output.get("error"):
+        raise HTTPException(status_code=422, detail=output["error"])
+
+    if not output.get("resume"):
+        raise HTTPException(
+            status_code=422,
+            detail="Could not generate a resume from the pasted profile text. "
+                   "Please ensure you copied the full LinkedIn profile page content."
+        )
+
     return {
         "resume": output.get("resume"),
         "error": output.get("error"),

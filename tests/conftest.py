@@ -182,6 +182,28 @@ def mock_linkedin_output():
 
 
 @pytest.fixture()
+def mock_linkedin_security_challenge():
+    """LinkedIn scrape output when security challenge / 2FA was detected."""
+    return {
+        "resume": None,
+        "error": "LinkedIn security verification timed out after 30 seconds. "
+                 "Please log into LinkedIn manually in a regular browser first, "
+                 "approve any security checks, then retry the scrape.",
+        "error_code": "SECURITY_CHALLENGE",
+    }
+
+
+@pytest.fixture()
+def mock_linkedin_generic_error():
+    """LinkedIn scrape output for a generic (non-security) error."""
+    return {
+        "resume": None,
+        "error": "Scraped content does not appear to contain LinkedIn profile sections.",
+        "error_code": None,
+    }
+
+
+@pytest.fixture()
 def sample_resume_text():
     """Sample resume text for testing."""
     return """

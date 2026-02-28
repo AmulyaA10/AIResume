@@ -18,7 +18,7 @@ router = APIRouter()
 async def upload_resumes(
     files: List[UploadFile] = File(...),
     store_db: str = Form("true"),
-    validate: str = Form("true"),
+    run_validation: str = Form("true"),
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
@@ -29,7 +29,7 @@ async def upload_resumes(
     print(f"--- Uploading {len(files)} files for user {user_id} ---")
     results = []
     store_db_bool = store_db.lower() == "true"
-    validate_bool = validate.lower() == "true"
+    validate_bool = run_validation.lower() == "true"
 
     for file in files:
         try:
