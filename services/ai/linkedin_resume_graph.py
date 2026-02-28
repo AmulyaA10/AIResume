@@ -4,7 +4,11 @@ from langgraph.graph import StateGraph, END
 import json
 
 from services.ai.common import get_llm, clean_json_output
-from services.linkedin_scraper import scrape_linkedin_profile
+from services.linkedin_scraper import (
+    scrape_linkedin_profile,
+    resume_linkedin_session,
+    SecurityChallengeError,
+)
 
 class LinkedInResumeState(TypedDict):
     linkedin_url: str
@@ -13,6 +17,7 @@ class LinkedInResumeState(TypedDict):
     resume: Optional[str]
     error: Optional[str]
     error_code: Optional[str]
+    session_id: Optional[str]
     config: Optional[Dict]
     linkedin_creds: Optional[Dict]
     login_wait: Optional[int]
@@ -20,14 +25,29 @@ class LinkedInResumeState(TypedDict):
 def linkedin_fetch_agent(state: LinkedInResumeState):
     url = state["linkedin_url"]
     creds = state.get("linkedin_creds") or {}
-    print(f"--- Fetching LinkedIn Profile: {url} ---")
+    session_id = state.get("session_id")
+    login_wait = state.get("login_wait")
+    is_retry = login_wait is not None and login_wait >= 60  # retry uses 60s
+
+    print(f"--- Fetching LinkedIn Profile: {url} (retry={is_retry}, session_id={session_id}) ---")
+
     try:
-        profile_text = scrape_linkedin_profile(
-            url,
-            email=creds.get("email"),
-            password=creds.get("password"),
-            login_wait=state.get("login_wait"),
-        )
+        # If retrying with an existing session, resume polling instead of fresh login
+        if is_retry and session_id:
+            print(f"--- [Fetch] Resuming cached session {session_id} ---")
+            profile_text = resume_linkedin_session(
+                session_id=session_id,
+                profile_url=url,
+                login_wait=login_wait,
+            )
+        else:
+            profile_text = scrape_linkedin_profile(
+                url,
+                email=creds.get("email"),
+                password=creds.get("password"),
+                login_wait=login_wait,
+                session_id=session_id,
+            )
 
         # Debug logging — shows exactly what Selenium captured
         text_len = len(profile_text) if profile_text else 0
@@ -60,6 +80,16 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
             }
 
         return {"raw_profile": profile_text, "error": None}
+
+    except SecurityChallengeError as e:
+        print(f"Security challenge (session held): {e}")
+        return {
+            "raw_profile": None,
+            "error": str(e),
+            "error_code": "SECURITY_CHALLENGE",
+            "session_id": e.session_id,
+        }
+
     except Exception as e:
         print(f"Error scraping LinkedIn: {e}")
         error_msg = str(e)
@@ -205,11 +235,11 @@ Important:
 Critical extraction rules:
 1) VERBATIM FIRST:
 - For fields like description, copy the text exactly as it appears where possible.
-- If the profile doesn’t provide a field, leave it as "" or [] (do not invent facts like dates, degrees, employers).
+- If the profile doesn't provide a field, leave it as "" or [] (do not invent facts like dates, degrees, employers).
 
 2) SPLIT RESPONSIBILITIES VS ACHIEVEMENTS:
-- Put “did/owned” statements into responsibilities[].
-- Put “results/impact” statements into achievements[].
+- Put "did/owned" statements into responsibilities[].
+- Put "results/impact" statements into achievements[].
 - If the LinkedIn text mixes both, duplicate a bullet into both arrays ONLY if necessary.
 
 3) EXTRAPOLATE SKILLS (from experience + projects):

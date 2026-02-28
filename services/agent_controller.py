@@ -54,12 +54,13 @@ def run_resume_validation(file_name: str, file_type: str, extracted_text: str,
     return result.get("validation_result", {})
 
 
-def generate_resume_from_linkedin(url: str, llm_config: dict = None, linkedin_creds: dict = None, login_wait: int = None):
+def generate_resume_from_linkedin(url: str, llm_config: dict = None, linkedin_creds: dict = None, login_wait: int = None, session_id: str = None):
     return _linkedin_graph.invoke({
         "linkedin_url": url,
         "config": llm_config,
         "linkedin_creds": linkedin_creds,
         "login_wait": login_wait,
+        "session_id": session_id,
     })
 
 

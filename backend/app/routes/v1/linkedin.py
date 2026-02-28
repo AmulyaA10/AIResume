@@ -140,12 +140,23 @@ async def linkedin_scrape(
                    "or check the server logs for credential resolution errors."
         )
 
-    # First attempt: 10s login wait (detect challenge fast, prompt user quickly)
-    # Retry after phone approval: 45s login wait (user is actively approving)
-    login_wait = 45 if request.retry else 10
+    # First attempt: 30s login wait (give user time to approve on phone)
+    # Retry after phone approval: 60s login wait (resume cached session)
+    login_wait = 60 if request.retry else 30
+
+    # Use user_id as session_id (one active session per user).
+    # On retry, pass the session_id from the frontend so we can resume
+    # the cached Selenium driver instead of creating a new one.
+    session_id = request.session_id or user_id
 
     try:
-        output = generate_resume_from_linkedin(request.query, llm_config=llm_config, linkedin_creds=linkedin_creds, login_wait=login_wait)
+        output = generate_resume_from_linkedin(
+            request.query,
+            llm_config=llm_config,
+            linkedin_creds=linkedin_creds,
+            login_wait=login_wait,
+            session_id=session_id,
+        )
     except Exception as e:
         print(f"--- LinkedIn scrape pipeline error: {e} ---")
         raise HTTPException(status_code=500, detail=f"LinkedIn scraping failed: {str(e)}")
@@ -156,10 +167,12 @@ async def linkedin_scrape(
     if output.get("error"):
         # Return error as JSON body (not HTTPException) so the frontend can
         # read both "error" and "error_code" (e.g. SECURITY_CHALLENGE).
+        # Include session_id so the frontend can send it back on retry.
         return {
             "resume": None,
             "error": output["error"],
             "error_code": output.get("error_code"),
+            "session_id": output.get("session_id"),
         }
 
     if not output.get("resume"):

@@ -82,6 +82,8 @@ async def test_linkedin_scrape_security_challenge(app, mock_linkedin_security_ch
     assert data["resume"] is None
     assert "security verification" in data["error"].lower()
     assert data["error_code"] == "SECURITY_CHALLENGE"
+    # session_id should be returned so frontend can send it back on retry
+    assert data["session_id"] is not None
 
 
 @pytest.mark.asyncio
@@ -113,7 +115,7 @@ async def test_linkedin_scrape_generic_error(app, mock_linkedin_generic_error):
 
 @pytest.mark.asyncio
 async def test_linkedin_scrape_retry_sets_login_wait(app, mock_linkedin_output):
-    """retry=True passes login_wait=45 to generate_resume_from_linkedin."""
+    """retry=True passes login_wait=60 and session_id to generate_resume_from_linkedin."""
     with patch(
         "app.routes.v1.linkedin.generate_resume_from_linkedin",
         return_value=mock_linkedin_output,
@@ -129,17 +131,23 @@ async def test_linkedin_scrape_retry_sets_login_wait(app, mock_linkedin_output):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/linkedin/scrape",
-                json={"query": "https://www.linkedin.com/in/janedoe", "retry": True},
+                json={
+                    "query": "https://www.linkedin.com/in/janedoe",
+                    "retry": True,
+                    "session_id": "cached-session-123",
+                },
             )
     assert resp.status_code == 200
-    # Verify login_wait=45 was passed (retry mode)
+    # Verify login_wait=60 was passed (retry mode)
     call_kwargs = mock_pipeline.call_args
-    assert call_kwargs[1]["login_wait"] == 45
+    assert call_kwargs[1]["login_wait"] == 60
+    # Verify session_id from request was forwarded
+    assert call_kwargs[1]["session_id"] == "cached-session-123"
 
 
 @pytest.mark.asyncio
 async def test_linkedin_scrape_no_retry_sets_short_login_wait(app, mock_linkedin_output):
-    """retry=False (default) passes login_wait=10 to generate_resume_from_linkedin."""
+    """retry=False (default) passes login_wait=30 and user_id as session_id."""
     with patch(
         "app.routes.v1.linkedin.generate_resume_from_linkedin",
         return_value=mock_linkedin_output,
@@ -158,9 +166,11 @@ async def test_linkedin_scrape_no_retry_sets_short_login_wait(app, mock_linkedin
                 json={"query": "https://www.linkedin.com/in/janedoe"},
             )
     assert resp.status_code == 200
-    # Verify login_wait=10 was passed (first attempt mode)
+    # Verify login_wait=30 was passed (first attempt mode)
     call_kwargs = mock_pipeline.call_args
-    assert call_kwargs[1]["login_wait"] == 10
+    assert call_kwargs[1]["login_wait"] == 30
+    # session_id defaults to user_id when not provided in request
+    assert call_kwargs[1]["session_id"] is not None
 
 
 # ── /linkedin/parse endpoint tests ────────────────────────────────────────

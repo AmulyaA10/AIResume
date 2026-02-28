@@ -187,9 +187,10 @@ def mock_linkedin_security_challenge():
     return {
         "resume": None,
         "error": "LinkedIn security verification timed out after 30 seconds. "
-                 "Please log into LinkedIn manually in a regular browser first, "
-                 "approve any security checks, then retry the scrape.",
+                 "A phone notification was sent — please approve it in the LinkedIn app, "
+                 "then click 'Resume Scrape'.",
         "error_code": "SECURITY_CHALLENGE",
+        "session_id": "user_alex_chen_123",
     }
 
 

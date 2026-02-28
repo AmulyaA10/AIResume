@@ -373,3 +373,5 @@ async def test_linkedin_scrape_error_returns_json_with_error_code(
     assert data["resume"] is None
     assert data["error"] is not None
     assert data["error_code"] == "SECURITY_CHALLENGE"
+    # session_id should flow through so frontend can resume the cached session
+    assert data["session_id"] is not None

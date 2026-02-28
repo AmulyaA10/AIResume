@@ -16,6 +16,7 @@ const LinkedInScraper = () => {
     const [pastedText, setPastedText] = useState('');
     const [parseLoading, setParseLoading] = useState(false);
     const [securityChallenge, setSecurityChallenge] = useState(false);
+    const [sessionId, setSessionId] = useState<string | null>(null);
     const inputRef = React.useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
     const { maskedCredentials, loadMaskedCredentials, isLoaded, isLoading, loadError } = useCredentials();
@@ -44,13 +45,25 @@ const LinkedInScraper = () => {
         setShowPasteFallback(false);
         setSecurityChallenge(false);
         try {
-            const response = await api.post('/linkedin/scrape', { query: url, retry });
+            // On retry, send the cached session_id so the backend can resume
+            // the same Selenium driver (no fresh login = no throttled notification)
+            const payload: any = { query: url, retry };
+            if (retry && sessionId) {
+                payload.session_id = sessionId;
+            }
+            const response = await api.post('/linkedin/scrape', payload);
             if (response.data.resume) {
                 setResume(response.data.resume);
+                setSessionId(null);  // clear session on success
             } else if (response.data.error) {
                 const errorMsg = response.data.error;
                 const errorCode = response.data.error_code;
                 setError(errorMsg);
+
+                // Store session_id from backend for retry
+                if (response.data.session_id) {
+                    setSessionId(response.data.session_id);
+                }
 
                 // Detect security challenge (2-step verification on phone)
                 const isChallenge = errorCode === 'SECURITY_CHALLENGE'
@@ -143,6 +156,7 @@ const LinkedInScraper = () => {
         setPastedText('');
         setParseLoading(false);
         setSecurityChallenge(false);
+        setSessionId(null);
         window.location.reload();
     };
 
@@ -201,7 +215,7 @@ const LinkedInScraper = () => {
                             {isResumeValid
                                 ? 'Your profile has been automatically imported and processed.'
                                 : (isLinkedInConnected
-                                    ? (loading ? 'AI Scraper Active. This may take up to a minute...' : (parseLoading ? 'Processing your pasted profile text...' : 'Verify your profile URL below and click "Start AI Sync" to begin.'))
+                                    ? (loading ? 'Syncing your profile — check your phone if LinkedIn sends a verification notification...' : (parseLoading ? 'Processing your pasted profile text...' : 'Verify your profile URL below and click "Start AI Sync" to begin.'))
                                     : 'Click the LinkedIn icon above or the button below to authenticate and sync your profile data.')}
                         </p>
                     </div>
@@ -228,16 +242,20 @@ const LinkedInScraper = () => {
                             <div className="flex items-start gap-3">
                                 <Smartphone className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-0.5" />
                                 <div className="space-y-2">
-                                    <p className="text-sm font-bold text-indigo-800">Phone Verification Required</p>
+                                    <p className="text-sm font-bold text-indigo-800">📱 Phone Verification Required</p>
                                     <p className="text-xs text-indigo-600 leading-relaxed">
-                                        LinkedIn sent a security notification to your phone.
-                                        Please open the <strong>LinkedIn app</strong> on your phone,
-                                        approve the <strong>"Is this you?"</strong> prompt,
-                                        then click <strong>"Retry Scrape"</strong> below.
+                                        LinkedIn requires phone verification to confirm this login.
+                                        Check your phone — you should have received an <strong>"Is this you?"</strong> notification
+                                        in the <strong>LinkedIn app</strong>. Tap <strong>"Yes"</strong> to approve.
                                     </p>
                                     <p className="text-[11px] text-indigo-500 leading-relaxed">
-                                        This is LinkedIn's 2-step verification to confirm the login.
-                                        Once you approve it, the scraper will be able to access your profile.
+                                        If you didn't receive a notification, try opening <strong>linkedin.com</strong> in
+                                        your regular browser first — this often triggers a new verification prompt.
+                                        Then click <strong>"Resume Scrape"</strong> below.
+                                    </p>
+                                    <p className="text-[11px] text-indigo-400 leading-relaxed italic">
+                                        The browser session is being held open — once you approve on your phone,
+                                        clicking resume will pick up right where it left off.
                                     </p>
                                 </div>
                             </div>
@@ -247,10 +265,10 @@ const LinkedInScraper = () => {
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-indigo-500/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                                {loading ? 'Retrying — Waiting for Phone Approval...' : 'Retry Scrape (After Phone Approval)'}
+                                {loading ? 'Resuming — Waiting for Phone Approval...' : 'Resume Scrape (After Phone Approval)'}
                             </button>
                             <button
-                                onClick={() => { setSecurityChallenge(false); setShowPasteFallback(true); }}
+                                onClick={() => { setSecurityChallenge(false); setSessionId(null); setShowPasteFallback(true); }}
                                 className="w-full text-xs text-indigo-500 hover:text-indigo-700 font-bold uppercase tracking-widest transition-colors py-2"
                             >
                                 Skip — paste profile text instead
@@ -374,7 +392,7 @@ const LinkedInScraper = () => {
                                         className="w-full bg-[#0077b5] hover:bg-[#006396] text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-[#0077b5]/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                                     >
                                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                                        {loading ? 'AI Scraper Active...' : (showPasteFallback ? 'Retry Auto-Scrape' : 'Verify & Start AI Sync')}
+                                        {loading ? 'Syncing — Check Phone for Verification...' : (showPasteFallback ? 'Retry Auto-Scrape' : 'Verify & Start AI Sync')}
                                     </button>
                                 </div>
                             ) : (
