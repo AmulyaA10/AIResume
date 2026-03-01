@@ -95,8 +95,8 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
         error_msg = str(e)
         error_code = None
 
-        # Detect security challenge / 2-step verification errors so the
-        # frontend can show a specific "check your phone" prompt.
+        # Detect security challenge errors so the frontend can show
+        # a verification prompt (could be phone, email, or CAPTCHA).
         challenge_keywords = [
             "security verification", "verification timed out",
             "captcha", "2fa", "security check", "security challenge",

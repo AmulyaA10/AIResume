@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck, AlertCircle, Settings, ClipboardPaste, Smartphone } from 'lucide-react';
+import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck, AlertCircle, Settings, ClipboardPaste, ShieldAlert } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
 import { PageHeader } from '../../common';
@@ -65,7 +65,7 @@ const LinkedInScraper = () => {
                     setSessionId(response.data.session_id);
                 }
 
-                // Detect security challenge (2-step verification on phone)
+                // Detect security challenge (phone, email, CAPTCHA, etc.)
                 const isChallenge = errorCode === 'SECURITY_CHALLENGE'
                     || /security verif|verification timed|captcha|2fa/i.test(errorMsg);
                 if (isChallenge) {
@@ -215,7 +215,7 @@ const LinkedInScraper = () => {
                             {isResumeValid
                                 ? 'Your profile has been automatically imported and processed.'
                                 : (isLinkedInConnected
-                                    ? (loading ? 'Syncing your profile — check your phone if LinkedIn sends a verification notification...' : (parseLoading ? 'Processing your pasted profile text...' : 'Verify your profile URL below and click "Start AI Sync" to begin.'))
+                                    ? (loading ? 'Connecting to LinkedIn — this may take a few seconds...' : (parseLoading ? 'Processing your pasted profile text...' : 'Verify your profile URL below and click "Start AI Sync" to begin.'))
                                     : 'Click the LinkedIn icon above or the button below to authenticate and sync your profile data.')}
                         </p>
                     </div>
@@ -236,25 +236,26 @@ const LinkedInScraper = () => {
                         </div>
                     )}
 
-                    {/* Phone verification prompt — shown when LinkedIn 2-step verification is detected */}
+                    {/* Security verification prompt — shown when LinkedIn requires additional verification */}
                     {securityChallenge && !isResumeValid && (
                         <div className="w-full bg-indigo-50 border border-indigo-200 rounded-xl p-5 space-y-4">
                             <div className="flex items-start gap-3">
-                                <Smartphone className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-0.5" />
+                                <ShieldAlert className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-0.5" />
                                 <div className="space-y-2">
-                                    <p className="text-sm font-bold text-indigo-800">📱 Phone Verification Required</p>
+                                    <p className="text-sm font-bold text-indigo-800">Security Verification Required</p>
                                     <p className="text-xs text-indigo-600 leading-relaxed">
-                                        LinkedIn requires phone verification to confirm this login.
-                                        Check your phone — you should have received an <strong>"Is this you?"</strong> notification
-                                        in the <strong>LinkedIn app</strong>. Tap <strong>"Yes"</strong> to approve.
+                                        LinkedIn requires additional verification to confirm this login.
+                                        This could be a <strong>phone notification</strong> ("Is this you?"),
+                                        an <strong>email verification</strong> link, or a <strong>CAPTCHA</strong> challenge.
                                     </p>
                                     <p className="text-[11px] text-indigo-500 leading-relaxed">
-                                        If you didn't receive a notification, try opening <strong>linkedin.com</strong> in
-                                        your regular browser first — this often triggers a new verification prompt.
+                                        Check your phone and email for any LinkedIn verification prompts,
+                                        or try opening <strong>linkedin.com</strong> in your regular browser
+                                        to complete any pending security check.
                                         Then click <strong>"Resume Scrape"</strong> below.
                                     </p>
                                     <p className="text-[11px] text-indigo-400 leading-relaxed italic">
-                                        The browser session is being held open — once you approve on your phone,
+                                        The browser session is being held open — once you complete verification,
                                         clicking resume will pick up right where it left off.
                                     </p>
                                 </div>
@@ -265,7 +266,7 @@ const LinkedInScraper = () => {
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-indigo-500/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                                {loading ? 'Resuming — Waiting for Phone Approval...' : 'Resume Scrape (After Phone Approval)'}
+                                {loading ? 'Resuming — Waiting for verification...' : 'Resume Scrape (After Verification)'}
                             </button>
                             <button
                                 onClick={() => { setSecurityChallenge(false); setSessionId(null); setShowPasteFallback(true); }}
@@ -343,18 +344,18 @@ const LinkedInScraper = () => {
                                                 </p>
                                             </div>
                                             <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-                                                <Smartphone className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                                <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                                                 <div className="space-y-1.5">
                                                     <p className="text-xs font-bold text-amber-700">
-                                                        📱 Keep your phone nearby
+                                                        Security verification may be required
                                                     </p>
                                                     <p className="text-[11px] text-amber-600 font-medium leading-relaxed">
-                                                        If you have <strong>2-step verification</strong> enabled on LinkedIn,
-                                                        you'll receive an <strong>"Is this you?"</strong> notification on your phone.
-                                                        You must <strong>tap "Yes"</strong> in the LinkedIn app to allow the scraper to access your profile.
+                                                        LinkedIn may require additional verification on the first login attempt.
+                                                        This could be a <strong>phone notification</strong>, <strong>email link</strong>,
+                                                        or a <strong>CAPTCHA</strong>. If prompted, complete the check and click "Resume Scrape".
                                                     </p>
                                                     <p className="text-[11px] text-amber-500 leading-relaxed">
-                                                        Don't have your phone? Use the <strong>"Paste LinkedIn Profile Text"</strong> option below as an alternative.
+                                                        Not getting any prompt? Use the <strong>"Paste LinkedIn Profile Text"</strong> option below as an alternative.
                                                     </p>
                                                 </div>
                                             </div>
@@ -392,7 +393,7 @@ const LinkedInScraper = () => {
                                         className="w-full bg-[#0077b5] hover:bg-[#006396] text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-[#0077b5]/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                                     >
                                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                                        {loading ? 'Syncing — Check Phone for Verification...' : (showPasteFallback ? 'Retry Auto-Scrape' : 'Verify & Start AI Sync')}
+                                        {loading ? 'Connecting to LinkedIn...' : (showPasteFallback ? 'Retry Auto-Scrape' : 'Verify & Start AI Sync')}
                                     </button>
                                 </div>
                             ) : (
@@ -411,10 +412,11 @@ const LinkedInScraper = () => {
                                     </div>
 
                                     <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-start gap-2.5">
-                                        <Smartphone className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                        <ShieldAlert className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                                         <p className="text-[11px] text-amber-600 font-medium leading-relaxed">
-                                            <strong>📱 Have your phone ready</strong> — LinkedIn may send an <strong>"Is this you?"</strong> notification
-                                            if 2-step verification is on. Tap <strong>"Yes"</strong> in the LinkedIn app to proceed.
+                                            <strong>Security verification may be required</strong> — LinkedIn may ask you to verify
+                                            via phone notification, email, or CAPTCHA on the first login attempt.
+                                            If prompted, complete the check to proceed.
                                         </p>
                                     </div>
 

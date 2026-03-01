@@ -186,8 +186,8 @@ def mock_linkedin_security_challenge():
     """LinkedIn scrape output when security challenge / 2FA was detected."""
     return {
         "resume": None,
-        "error": "LinkedIn security verification timed out after 30 seconds. "
-                 "A phone notification was sent — please approve it in the LinkedIn app, "
+        "error": "LinkedIn security verification is required. "
+                 "Complete the pending check (phone notification, email, or CAPTCHA), "
                  "then click 'Resume Scrape'.",
         "error_code": "SECURITY_CHALLENGE",
         "session_id": "user_alex_chen_123",

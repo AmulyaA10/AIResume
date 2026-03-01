@@ -28,7 +28,7 @@ _SESSION_TTL_SECONDS = 120  # auto-cleanup sessions older than 2 min
 
 
 class SecurityChallengeError(Exception):
-    """Raised when LinkedIn shows a 2-step verification challenge.
+    """Raised when LinkedIn shows a security verification challenge (phone 2FA, email, CAPTCHA, etc.).
 
     The associated Selenium driver is kept alive in ``_active_sessions``
     so that a subsequent retry can resume polling the same challenge page
@@ -356,18 +356,31 @@ def _extract_section_text(driver) -> str:
     return "\n\n".join(parts)
 
 
-def _poll_login(driver, login_wait: int):
+def _poll_login(driver, login_wait: int, early_return_on_challenge: bool = False):
     """Poll the login/challenge page until login succeeds or timeout.
 
-    Returns True if login succeeded, False otherwise.
-    Also returns whether a security challenge was detected.
+    Returns (login_success, challenge_detected).
+
+    Args:
+        early_return_on_challenge: When True, return as soon as a
+            *confirmed* challenge is detected — requires the URL to be on
+            a checkpoint/challenge page (not just /login).  Text-only
+            matches on /login are ignored during polling to prevent false
+            positives.  Use on the first scrape attempt so the user is
+            notified in ~17 s instead of ~34 s.
     """
     _LOGIN_POLL_INTERVAL = 3   # seconds between checks
+    _INITIAL_WAIT = 2          # seconds before first check
+    # Minimum time (seconds) before we trust an early-return challenge
+    # detection.  15 s gives a normal login enough time to redirect
+    # away from the login page (typically 8-15 s) before we conclude
+    # the checkpoint URL is a real challenge, not a transient redirect.
+    _MIN_ELAPSED_FOR_EARLY_RETURN = 15
 
     login_elapsed = 0
     login_success = False
     challenge_detected = False
-    time.sleep(4)  # initial wait for fast logins
+    time.sleep(_INITIAL_WAIT)  # brief wait for fast logins
 
     while login_elapsed < login_wait:
         current_url = driver.current_url
@@ -386,34 +399,48 @@ def _poll_login(driver, login_wait: int):
         # If we're past the login/checkpoint pages, we're in
         if not any(kw in current_url for kw in ["login", "checkpoint", "challenge"]):
             login_success = True
-            print(f"--- [Scraper] Login succeeded after ~{login_elapsed + 4}s (URL: {current_url}) ---")
+            print(f"--- [Scraper] Login succeeded after ~{login_elapsed + _INITIAL_WAIT}s (URL: {current_url}) ---")
             break
 
-        # Still on a challenge page — keep waiting for user to approve
-        page_lower = page_text.lower()
-        is_challenge = any(kw in page_lower for kw in [
-            "verification", "security", "challenge", "verify",
-            "approve", "confirm", "recognize", "is this you",
-        ])
+        # ── Challenge detection (polling loop) ──
+        # Only URL-based evidence is used during polling.  Text keywords
+        # on /login cause false positives (normal login pages contain
+        # generic words like "verification", "approve", "recognize").
+        url_is_challenge = any(kw in current_url for kw in ["checkpoint", "challenge"])
 
-        if is_challenge:
+        if url_is_challenge:
             challenge_detected = True
-            print(f"--- [Scraper] Security challenge detected, waiting for approval... ({login_elapsed + 4}s elapsed) ---")
+            total_elapsed = login_elapsed + _INITIAL_WAIT
+            if early_return_on_challenge and total_elapsed >= _MIN_ELAPSED_FOR_EARLY_RETURN:
+                print(f"--- [Scraper] Security challenge confirmed at ~{total_elapsed}s (URL: {current_url}) — returning immediately for user notification ---")
+                return login_success, challenge_detected
+            print(f"--- [Scraper] Security challenge detected, waiting for approval... ({total_elapsed}s elapsed, URL: {current_url}) ---")
         else:
-            print(f"--- [Scraper] Still on login-like page: {current_url} ({login_elapsed + 4}s elapsed) ---")
+            print(f"--- [Scraper] Still on login-like page: {current_url} ({login_elapsed + _INITIAL_WAIT}s elapsed) ---")
 
         time.sleep(_LOGIN_POLL_INTERVAL)
         login_elapsed += _LOGIN_POLL_INTERVAL
 
     if not login_success:
-        # Final check after the full wait
+        # Final check after the full wait.
+        # Text-based detection is acceptable here — if we waited the
+        # entire timeout and are still on a login-like page with
+        # challenge keywords, it is very likely a real challenge.
         current_url = driver.current_url
         _dismiss_modals(driver)
 
         if any(kw in current_url for kw in ["login", "checkpoint", "challenge"]):
             page_text = driver.find_element(By.TAG_NAME, "body").text[:500]
             page_lower = page_text.lower()
-            if any(kw in page_lower for kw in ["verification", "security", "challenge", "verify", "approve", "is this you"]):
+            url_is_checkpoint = any(kw in current_url for kw in ["checkpoint", "challenge"])
+            # Tightened keywords — removed generic "verification",
+            # "approve", "recognize" that match normal login pages.
+            text_has_challenge = any(kw in page_lower for kw in [
+                "verify your identity", "security check",
+                "is this you", "let's do a quick security check",
+                "approve this sign-in",
+            ])
+            if url_is_checkpoint or text_has_challenge:
                 challenge_detected = True
 
     return login_success, challenge_detected
@@ -549,8 +576,23 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-notifications")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    # Match the installed Chrome version to avoid fingerprint mismatch
+    chrome_options.add_argument(
+        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    )
+
+    # ── Anti-bot-detection flags ──
+    # Hide Selenium/automation signals so LinkedIn treats this as a
+    # normal browser login and sends phone push notifications instead
+    # of silently blocking with CAPTCHA-only challenges.
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
 
     # Suppress notification prompts at browser level (belt-and-suspenders
     # alongside --disable-notifications flag above)
@@ -558,10 +600,41 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
         "profile.default_content_setting_values.notifications": 2,  # 2 = Block
     })
 
-    # Initialize driver
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.set_page_load_timeout(30)
+    # Helper: configure a new driver with anti-detection CDP commands
+    def _init_driver(svc_path, opts):
+        svc = Service(svc_path)
+        d = webdriver.Chrome(service=svc, options=opts)
+        d.set_page_load_timeout(30)
+        # Remove navigator.webdriver flag so LinkedIn sees a normal browser
+        d.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+        )
+        return d
+
+    # Initialize driver with retry for transient chromedriver crashes
+    _MAX_DRIVER_RETRIES = 2
+    driver = None
+    driver_mgr_path = ChromeDriverManager().install()
+
+    for _attempt in range(1, _MAX_DRIVER_RETRIES + 1):
+        try:
+            driver = _init_driver(driver_mgr_path, chrome_options)
+            break
+        except Exception as e:
+            print(f"--- [Scraper] Driver init attempt {_attempt}/{_MAX_DRIVER_RETRIES} failed: {e} ---")
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                driver = None
+            if _attempt == _MAX_DRIVER_RETRIES:
+                raise RuntimeError(
+                    f"Failed to initialize Chrome after {_MAX_DRIVER_RETRIES} attempts. "
+                    "Try restarting your backend or updating Chrome/chromedriver."
+                ) from e
+            time.sleep(2)
 
     # Track whether we cached this session (don't quit driver if cached)
     session_cached = False
@@ -569,7 +642,17 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
     try:
         # Step 1: Login
         print("--- [Scraper] Navigating to LinkedIn login... ---")
-        driver.get("https://www.linkedin.com/login")
+        try:
+            driver.get("https://www.linkedin.com/login")
+        except Exception as nav_err:
+            # Chromedriver can crash during navigation — retry once with a fresh driver
+            print(f"--- [Scraper] Navigation crashed: {nav_err}. Retrying with fresh driver... ---")
+            try:
+                driver.quit()
+            except Exception:
+                pass
+            driver = _init_driver(driver_mgr_path, chrome_options)
+            driver.get("https://www.linkedin.com/login")
 
         wait = WebDriverWait(driver, 10)
 
@@ -577,12 +660,18 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
         password_field = driver.find_element(By.ID, "password")
 
         username_field.send_keys(email)
+        time.sleep(0.5)  # human-like pause between fields
         password_field.send_keys(password)
+        time.sleep(0.3)  # brief pause before submit
         driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
 
-        # Poll for login completion
+        # Poll for login completion.
+        # On first attempt, return immediately when a challenge is detected
+        # (no point polling 30s — user hasn't been notified yet).
         _login_wait = login_wait if login_wait is not None else 30
-        login_success, challenge_detected = _poll_login(driver, _login_wait)
+        login_success, challenge_detected = _poll_login(
+            driver, _login_wait, early_return_on_challenge=True
+        )
 
         if not login_success and challenge_detected and session_id:
             # Cache the driver so retry can resume polling this challenge page
@@ -602,8 +691,8 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
             session_cached = True
             print(f"--- [Scraper] Cached session {session_id} for retry (challenge page held open) ---")
             raise SecurityChallengeError(
-                f"LinkedIn security verification timed out after {_login_wait} seconds. "
-                "A phone notification was sent — please approve it in the LinkedIn app, "
+                "LinkedIn security verification is required. "
+                "Complete the pending check (phone notification, email, or CAPTCHA), "
                 "then click 'Resume Scrape'.",
                 session_id=session_id,
             )
@@ -611,10 +700,9 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
         if not login_success and challenge_detected:
             # No session_id → can't cache, fall back to generic error
             raise ValueError(
-                f"LinkedIn security verification timed out after {_login_wait} seconds. "
-                "The phone notification may have expired. "
-                "Try opening linkedin.com in your regular browser to trigger a new "
-                "verification prompt, approve it on your phone, then retry the scrape."
+                "LinkedIn security verification is required. "
+                "Try opening linkedin.com in your regular browser to complete any "
+                "pending security check, then retry the scrape."
             )
 
         if not login_success:
@@ -694,7 +782,7 @@ def resume_linkedin_session(session_id: str, profile_url: str, login_wait: int =
                         _active_sessions[session_id]["created"] = time.time()
                 raise SecurityChallengeError(
                     f"LinkedIn security verification still pending after {login_wait} seconds. "
-                    "Please check your phone for the LinkedIn notification and approve it, "
+                    "Please complete the pending check (phone notification, email, or CAPTCHA), "
                     "then click 'Resume Scrape' again.",
                     session_id=session_id,
                 )
