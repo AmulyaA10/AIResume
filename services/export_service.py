@@ -32,6 +32,20 @@ def generate_docx(resume_json: dict) -> io.BytesIO:
 
     # Skills
     skills = resume_json.get("skills", [])
+    if isinstance(skills, dict):
+        derived = []
+        derived.extend(skills.get("explicit") or [])
+        derived.extend(skills.get("inferred_from_experience_projects") or [])
+        grouped = skills.get("grouped") or {}
+        if isinstance(grouped, dict):
+            for items in grouped.values():
+                if items:
+                    derived.extend(items)
+        # Deduplicate while preserving order
+        seen = set()
+        skills = [s for s in derived if isinstance(s, str) and not (s in seen or seen.add(s))]
+    elif isinstance(skills, str):
+        skills = [s.strip() for s in skills.split(",") if s.strip()]
     if skills:
         doc.add_heading('Key Skills', level=1)
         doc.add_paragraph(", ".join(skills))

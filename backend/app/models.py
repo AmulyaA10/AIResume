@@ -21,6 +21,17 @@ class GenerateRequest(BaseModel):
     profile: str
 
 
+class LinkedInScrapeRequest(BaseModel):
+    """Request body for POST /linkedin/scrape."""
+    query: str
+    retry: Optional[bool] = False
+    session_id: Optional[str] = None
+
+class LinkedInParseRequest(BaseModel):
+    """Request body for POST /linkedin/parse — raw profile text pasted by user."""
+    profile_text: str
+
+
 class UserSettingsUpdate(BaseModel):
     """Request body for PUT /user/settings — only non-None fields are updated."""
     openRouterKey: Optional[str] = None

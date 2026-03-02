@@ -23,7 +23,7 @@ async def test_upload_single_file_no_validation(app, auth_headers):
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files={"files": ("test_resume.pdf", fake_pdf, "application/pdf")},
-                data={"store_db": "true", "validate": "false"},
+                data={"store_db": "true", "run_validation": "false"},
             )
     assert resp.status_code == 200
     data = resp.json()
@@ -50,7 +50,7 @@ async def test_upload_with_validation(app, auth_headers, mock_validation_result)
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files={"files": ("resume.pdf", fake_pdf, "application/pdf")},
-                data={"store_db": "true", "validate": "true"},
+                data={"store_db": "true", "run_validation": "true"},
             )
     assert resp.status_code == 200
     result = resp.json()["processed"][0]
@@ -74,7 +74,7 @@ async def test_upload_skip_storage(app, auth_headers):
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files={"files": ("resume.pdf", fake_pdf, "application/pdf")},
-                data={"store_db": "false", "validate": "false"},
+                data={"store_db": "false", "run_validation": "false"},
             )
     assert resp.status_code == 200
     mock_store.assert_not_called()
@@ -98,7 +98,7 @@ async def test_upload_multiple_files(app, auth_headers):
                 "/api/v1/resumes/upload",
                 headers=auth_headers,
                 files=files,
-                data={"store_db": "true", "validate": "false"},
+                data={"store_db": "true", "run_validation": "false"},
             )
     assert resp.status_code == 200
     assert len(resp.json()["processed"]) == 2
