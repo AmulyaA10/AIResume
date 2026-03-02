@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext';
 
 // Feature-based imports
 import { Login, AuthCallback } from './features/auth';
+import { MyApplications } from './features/dashboard';
 import { Dashboard, JobDefinitions, JobForm } from './features/dashboard';
 import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
 import { QualityScoring, SkillGap, AutoScreening, AISearch } from './features/analysis';
@@ -27,6 +28,11 @@ function App() {
             <Route path="/" element={
                 <ProtectedRoute>
                     <Dashboard />
+                </ProtectedRoute>
+            } />
+            <Route path="/my-applications" element={
+                <ProtectedRoute>
+                    <MyApplications />
                 </ProtectedRoute>
             } />
 

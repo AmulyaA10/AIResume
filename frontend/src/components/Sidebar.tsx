@@ -12,7 +12,8 @@ import {
     Cpu,
     LogOut,
     Linkedin,
-    Upload
+    Upload,
+    Home
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,7 +26,8 @@ const Sidebar = () => {
     // Map Wireframe IDs to existing Routes
     const menus = {
         jobseeker: [
-            { path: '/', label: 'My Applications', icon: Layout },
+            { path: '/', label: 'Home', icon: Home },
+            { path: '/my-applications', label: 'My Applications', icon: Layout },
             { path: '/search', label: 'Find Jobs', icon: Search },
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/upload', label: 'My Documents', icon: Upload },

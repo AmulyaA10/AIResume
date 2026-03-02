@@ -15,6 +15,7 @@ async def test_dashboard_stats_authenticated(app, auth_headers, mock_dashboard_s
     data = resp.json()
     assert "total_resumes" in data
     assert "auto_screened" in data
+    assert "total_applied" in data
     assert "recent_activity" in data
     assert data["total_resumes"] == 5
 
@@ -39,6 +40,7 @@ async def test_dashboard_stats_empty(app, auth_headers):
         "high_matches": 0,
         "skill_gaps": 0,
         "quality_scored": 0,
+        "total_applied": 0,
         "recent_activity": [],
     }
     with patch("app.routes.v1.dashboard.get_dashboard_stats", return_value=empty_stats):

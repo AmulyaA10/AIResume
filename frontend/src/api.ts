@@ -44,6 +44,8 @@ export const jobsApi = {
         fd.append('file', file);
         return api.post('/jobs/parse-upload', fd);
     },
+    apply: (jobId: string, resumeId: string) => api.post(`/jobs/${jobId}/apply?resume_id=${resumeId}`),
+    getAppliedJobs: () => api.get('/jobs/my-applied'),
 };
 
 export const matchApi = {

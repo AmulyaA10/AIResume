@@ -6,7 +6,7 @@ import json
 
 from app.dependencies import get_current_user
 from app.models import JobCreate, JobResponse
-from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model
+from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table
 
 router = APIRouter(tags=["v1 — Jobs"])
 
@@ -91,6 +91,41 @@ async def list_jobs(
     results = query.limit(limit + skip).to_list()
     return [_serialize_job(r) for r in results[skip:skip + limit]]
 
+# New endpoint to fetch applied jobs for the current user
+@router.get("/my-applied", response_model=List[dict])
+async def get_applied_jobs(user_id: str = Depends(get_current_user)):
+    # Retrieve applied records
+    applied_table = get_or_create_job_applied_table()
+    applied_records = applied_table.search().where(f"user_id = '{user_id}'").to_list()
+    
+    if not applied_records:
+        return []
+
+    # Retrieve job details for each applied record
+    jobs_table = get_or_create_jobs_table()
+    result = []
+    for rec in applied_records:
+        job_id = rec.get('job_id')
+        job_rows = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
+        
+        if job_rows:
+            job = job_rows[0]
+            # Serialize job without vector
+            job_serialized = {k: v for k, v in job.items() if k != 'vector'}
+            # Combine with applied info
+            combined = {
+                "job_id": job_id,
+                "title": job_serialized.get('title'),
+                "company": job_serialized.get('employer_name'),
+                "location": job_serialized.get('location_name'),
+                "posted_date": job_serialized.get('posted_date'),
+                "resume_id": rec.get('resume_id'),
+                "applied_at": rec.get('timestamp'),
+                "applied_status": rec.get('applied_status', 'applied')
+            }
+            result.append(combined)
+    return result
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, user_id: str = Depends(get_current_user)):
     table = get_or_create_jobs_table()
@@ -135,3 +170,16 @@ async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
     
     table.delete(f"job_id = '{job_id}'")
     return {"message": "Deleted"}
+
+@router.post("/{job_id}/apply")
+async def apply_job(job_id: str, resume_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    from services.db.lancedb_client import apply_for_job
+    try:
+        success = apply_for_job(user_id, job_id, resume_id)
+        if success:
+            return {"message": "Successfully applied for job"}
+        else:
+            return {"message": "Already applied for job"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

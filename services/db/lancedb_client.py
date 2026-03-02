@@ -137,6 +137,53 @@ def store_resume(filename: str, text: str, user_id: str, api_key: str = None):
     table.add(data)
     print(f"DEBUG: Successfully stored {filename}")
 
+# ---------- JOB RESUME APPLIED SCHEMA ----------
+job_resume_applied_schema = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("user_id", pa.string()),
+    pa.field("job_id", pa.string()),
+    pa.field("resume_id", pa.string()),
+    pa.field("applied_status", pa.string()),
+    pa.field("timestamp", pa.string())
+])
+
+def get_or_create_job_applied_table():
+    if "job_resume_applied" in db.table_names():
+        table = db.open_table("job_resume_applied")
+        # Check if schema is up to date
+        if "applied_status" not in table.schema.names:
+            print("DEBUG: [db] job_resume_applied schema mismatch (missing applied_status), dropping and recreating...")
+            db.drop_table("job_resume_applied")
+            return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
+        return table
+    return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
+
+def apply_for_job(user_id: str, job_id: str, resume_id: str):
+    from datetime import datetime
+    table = get_or_create_job_applied_table()
+    
+    # Optional: check if already applied to prevent duplicates
+    try:
+        df = table.to_pandas()
+        if not df.empty:
+            existing = df[(df['user_id'] == user_id) & (df['job_id'] == job_id) & (df['resume_id'] == resume_id)]
+            if not existing.empty:
+                print(f"DEBUG: User {user_id} already applied to job {job_id} with resume {resume_id}")
+                return False
+    except Exception as e:
+        print(f"DEBUG: Error checking existing applications: {e}")
+        
+    table.add([{
+        "id": str(uuid4()),
+        "user_id": user_id,
+        "job_id": job_id,
+        "resume_id": resume_id,
+        "applied_status": "applied",
+        "timestamp": datetime.now().isoformat()
+    }])
+    print(f"DEBUG: Applied job {job_id} using resume {resume_id} for user {user_id}")
+    return True
+
 # ---------- ACTIVITY SCHEMA ----------
 activity_schema = pa.schema([
     pa.field("id", pa.string()),
@@ -171,6 +218,7 @@ def get_dashboard_stats(user_id: str):
     print(f"DEBUG: [stats] Fetching stats for user: {user_id}")
     resumes_table = get_or_create_table()
     activity_table = get_or_create_activity_table()
+    applied_table = get_or_create_job_applied_table()
     
     import pandas as pd
     resumes_df = resumes_table.to_pandas()
@@ -192,7 +240,16 @@ def get_dashboard_stats(user_id: str):
     high_matches = 0
     skill_gaps = 0
     quality_scored = 0
+    total_applied = 0
     recent_activity = []
+
+    # Applied Stats
+    applied_df = applied_table.to_pandas()
+    if not applied_df.empty:
+        user_applied = applied_df[applied_df['user_id'] == user_id]
+        total_applied = len(user_applied)
+        print(f"DEBUG: [stats] Found {total_applied} applied jobs for {user_id}")
+
 
     if not activity_df.empty:
         available_act = activity_df['user_id'].unique().tolist()
@@ -224,6 +281,7 @@ def get_dashboard_stats(user_id: str):
         "high_matches": high_matches,
         "skill_gaps": skill_gaps,
         "quality_scored": quality_scored,
+        "total_applied": total_applied,
         "recent_activity": recent_activity
     }
 
