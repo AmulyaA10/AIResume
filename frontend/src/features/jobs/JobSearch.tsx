@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Target, Briefcase, MapPin, PoundSterling, Filter, Sparkles, ExternalLink, ArrowRight, Star, X, Info } from 'lucide-react';
+import { Search, Target, Briefcase, MapPin, PoundSterling, Filter, Sparkles, ExternalLink, ArrowRight, Star, X, Info, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { matchApi } from '../../api';
+import { matchApi, jobsApi } from '../../api';
 
 const JobSearch = () => {
     const [query, setQuery] = useState('');
@@ -10,9 +10,38 @@ const JobSearch = () => {
     const [cutoff, setCutoff] = useState(45);
     const [searchMode, setSearchMode] = useState<'recommend' | 'search'>('recommend');
     const [selectedJob, setSelectedJob] = useState<any | null>(null);
+    const [confirmingJobId, setConfirmingJobId] = useState<string | null>(null);
+    const [appStatus, setAppStatus] = useState<'idle' | 'confirming' | 'applying' | 'success' | 'error'>('idle');
 
     // For now, we'll try to match using a mock resume_id or look up the user's first resume
     const [resumeId, setResumeId] = useState<string | null>(null);
+
+    const handleApply = async (jobId: string) => {
+        if (!resumeId) {
+            alert("No resume found. Please upload a resume first.");
+            return;
+        }
+        setConfirmingJobId(jobId);
+        setAppStatus('confirming');
+    };
+
+    const confirmApply = async () => {
+        if (!confirmingJobId || !resumeId) return;
+
+        setAppStatus('applying');
+        try {
+            await jobsApi.apply(confirmingJobId, resumeId);
+            setAppStatus('success');
+            // Auto-close after 2 seconds
+            setTimeout(() => {
+                setConfirmingJobId(null);
+                setAppStatus('idle');
+            }, 2000);
+        } catch (error) {
+            console.error("Application failed", error);
+            setAppStatus('error');
+        }
+    };
 
     useEffect(() => {
         // Mock finding the user's resume for the demo
@@ -224,7 +253,12 @@ const JobSearch = () => {
                                             >
                                                 <Info size={12} /> View Details
                                             </button>
-                                            <button className="bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-1 hover:bg-blue-700 transition-all px-4 py-2 rounded-lg shadow-lg shadow-blue-200">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleApply(match.job.job_id);
+                                                }}
+                                                className="bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-1 hover:bg-blue-700 transition-all px-4 py-2 rounded-lg shadow-lg shadow-blue-200">
                                                 Apply Now <ArrowRight size={12} />
                                             </button>
                                         </div>
@@ -370,6 +404,7 @@ const JobSearch = () => {
                                     Close
                                 </button>
                                 <button
+                                    onClick={() => handleApply(selectedJob.job.job_id)}
                                     className="flex-[2] px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
                                 >
                                     Apply Now <ArrowRight size={16} />
@@ -379,6 +414,91 @@ const JobSearch = () => {
                     </div>
                 )}
             </AnimatePresence>
+            {/* Confirmation Modal */}
+            <AnimatePresence>
+                {confirmingJobId && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => appStatus !== 'applying' && setConfirmingJobId(null)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center space-y-6"
+                        >
+                            {appStatus === 'success' ? (
+                                <>
+                                    <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                                        <CheckCircle size={40} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-2xl font-black text-slate-900">Application Sent!</h3>
+                                        <p className="text-slate-500 font-medium">
+                                            Your application has been successfully submitted. Good luck!
+                                        </p>
+                                    </div>
+                                </>
+                            ) : appStatus === 'error' ? (
+                                <>
+                                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-600">
+                                        <X size={40} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-2xl font-black text-slate-900">Application Failed</h3>
+                                        <p className="text-slate-500 font-medium">
+                                            Something went wrong or you've already applied for this position.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => setConfirmingJobId(null)}
+                                        className="w-full px-6 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all"
+                                    >
+                                        Close
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600">
+                                        <Info size={40} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-2xl font-black text-slate-900">Confirm Application</h3>
+                                        <p className="text-slate-500 font-medium">
+                                            Are you sure? Do you really want to apply for this job? Your profile and resume will be sent to the employer.
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-4 pt-4">
+                                        <button
+                                            onClick={() => setConfirmingJobId(null)}
+                                            disabled={appStatus === 'applying'}
+                                            className="flex-1 px-6 py-4 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmApply}
+                                            disabled={appStatus === 'applying'}
+                                            className="flex-[1.5] px-6 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {appStatus === 'applying' ? (
+                                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            ) : (
+                                                <>Yes, Apply <ArrowRight size={16} /></>
+                                            )}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
         </div>
     );
 };

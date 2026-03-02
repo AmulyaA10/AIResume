@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield } from 'lucide-react';
+import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield, FileCheck, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
@@ -77,6 +77,16 @@ const Dashboard = () => {
                     {renderStatCard("Quality Checks", stats?.quality_scored || 0, <CheckCircle size={24} />, "bg-violet-600")}
                 </div>
             )}
+            {/* Job Seeker Stats Grid */}
+            {!isRecruiter && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {renderStatCard("Indexed Documents", stats?.total_resumes || 0, <FileCheck size={24} />, "bg-blue-600")}
+                    {renderStatCard("Applied Jobs", stats?.total_applied || 0, <Briefcase size={24} />, "bg-indigo-600")}
+                    {renderStatCard("Target Skills", stats?.skill_gaps || 0, <AlertCircle size={24} />, "bg-rose-500")}
+                    {renderStatCard("Quality Score", stats?.quality_scored || 0, <CheckCircle size={24} />, "bg-violet-600")}
+                </div>
+            )}
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Recent Activity */}
