@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText, Sparkles, Target, Info } from 'lucide-react';
+import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText, Sparkles, Target, X, Info, ArrowRight } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,14 +30,14 @@ const AISearch = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-2">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest border border-blue-100">
-                        <Sparkles size={12} /> AI-Powered Candidate Search
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest border border-red-100">
+                        <Sparkles size={12} /> RECRUITER MODE: Candidate Search
                     </div>
                     <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
-                        Find the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Perfect Talent</span>
+                        Search <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-orange-600">Candidate Resumes</span>
                     </h1>
                     <p className="text-slate-500 max-w-lg">
-                        Our semantic engine uses natural language reasoning to find candidates that match your specific requirements.
+                        You are searching the candidate database using semantic AI reasoning.
                     </p>
                 </div>
             </div>

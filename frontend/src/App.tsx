@@ -8,8 +8,9 @@ import { Login, AuthCallback } from './features/auth';
 import { MyApplications } from './features/dashboard';
 import { Dashboard, JobDefinitions, JobForm } from './features/dashboard';
 import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
-import { QualityScoring, SkillGap, AutoScreening, AISearch } from './features/analysis';
-import { JobSearch } from './features/jobs';
+import { QualityScoring, SkillGap, AutoScreening } from './features/analysis';
+import AISearch from './features/analysis/AISearch';
+import JobSearch from './features/jobs/JobSearch';
 import { Settings } from './features/settings';
 
 // Auth Guard
@@ -45,6 +46,8 @@ function App() {
 
             <Route path="/search" element={
                 <ProtectedRoute>
+                    {/* Debug Banner - can be removed after verification */}
+                    <div className="text-[10px] text-slate-400 p-1">Debug: persona="{persona}"</div>
                     {(persona?.trim().toLowerCase() === 'recruiter' || persona?.trim().toLowerCase() === 'manager') ? <AISearch /> : <JobSearch />}
                 </ProtectedRoute>
             } />
