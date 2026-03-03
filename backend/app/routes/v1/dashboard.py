@@ -8,4 +8,5 @@ router = APIRouter()
 
 @router.get("/stats")
 async def dashboard_stats(user_id: str = Depends(get_current_user)):
-    return get_dashboard_stats(user_id)
+    is_recruiter = user_id == "user_recruiter_456"
+    return get_dashboard_stats(user_id, is_recruiter=is_recruiter)

@@ -60,6 +60,8 @@ const JobForm = () => {
             setFormData((prev: any) => ({
                 ...prev,
                 title: parsed.title || prev.title,
+                employer_name: parsed.employer_name || prev.employer_name,
+                location_name: parsed.location_name || prev.location_name,
                 description: parsed.description || prev.description,
                 skills_required: parsed.skills_required?.join(', ') || prev.skills_required,
                 job_level: parsed.job_level || prev.job_level,
