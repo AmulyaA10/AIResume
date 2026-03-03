@@ -477,9 +477,12 @@ const LinkedInScraper = () => {
                     <div className="glass-card p-12 bg-white border-slate-100 shadow-2xl space-y-8 font-sans">
                         <div className="text-center space-y-2 border-b border-slate-100 pb-8">
                             <h2 className="text-4xl font-black text-slate-900">{resume.contact?.name}</h2>
-                            <p className="text-slate-500 font-bold tracking-widest uppercase text-xs">
-                                {resume.contact?.location} {resume.contact?.location && resume.contact?.email ? ' | ' : ''} {resume.contact?.email}
-                            </p>
+                            <div className="text-slate-500 font-bold tracking-widest uppercase text-xs flex justify-center gap-2 flex-wrap">
+                                {resume.contact?.email && <span>{resume.contact.email}</span>}
+                                {resume.contact?.phone && <><span className="opacity-30">|</span><span>{resume.contact.phone}</span></>}
+                                {resume.contact?.location && <><span className="opacity-30">|</span><span>{resume.contact.location}</span></>}
+                                {resume.contact?.linkedin && <><span className="opacity-30">|</span><span>{resume.contact.linkedin}</span></>}
+                            </div>
                         </div>
 
                         {resume.summary && (
@@ -512,7 +515,10 @@ const LinkedInScraper = () => {
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <h5 className="font-bold text-slate-900">{exp.title}</h5>
-                                                    <p className="text-sm text-[#0077b5] font-black">{exp.company}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-sm text-[#0077b5] font-black">{exp.company}</p>
+                                                        {exp.location && <><span className="text-slate-300 text-xs">|</span><p className="text-xs text-slate-400 font-medium">{exp.location}</p></>}
+                                                    </div>
                                                 </div>
                                                 <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full uppercase">{exp.period}</span>
                                             </div>
@@ -531,9 +537,10 @@ const LinkedInScraper = () => {
                             <section className="space-y-4">
                                 <h4 className="text-[10px] font-black text-[#0077b5] uppercase tracking-widest px-2 py-1 bg-blue-50 w-fit rounded-lg">Education</h4>
                                 {resume.education.map((edu: any, i: number) => (
-                                    <div key={i} className="flex justify-between items-center text-sm">
+                                    <div key={i} className="flex justify-between items-start text-sm">
                                         <div>
                                             <span className="font-bold text-slate-900">{edu.degree}</span>
+                                            {edu.field_of_study && <span className="text-xs text-[#0077b5] font-bold ml-1">— {edu.field_of_study}</span>}
                                             <span className="mx-2 text-slate-300">•</span>
                                             <span className="text-slate-500 font-medium">{edu.school}</span>
                                         </div>
@@ -554,6 +561,32 @@ const LinkedInScraper = () => {
                                             <span className="text-slate-500 font-medium">{cert.issuer}</span>
                                         </div>
                                         <span className="text-[10px] font-black text-slate-400">{cert.date}</span>
+                                    </div>
+                                ))}
+                            </section>
+                        )}
+
+                        {resume.projects && resume.projects.length > 0 && (
+                            <section className="space-y-4">
+                                <h4 className="text-[10px] font-black text-[#0077b5] uppercase tracking-widest px-2 py-1 bg-blue-50 w-fit rounded-lg">Projects</h4>
+                                {resume.projects.map((proj: any, i: number) => (
+                                    <div key={i} className="space-y-1.5">
+                                        <h5 className="font-bold text-slate-900 text-sm">{proj.name}</h5>
+                                        {proj.description && <p className="text-xs text-slate-500 font-medium leading-relaxed">{proj.description}</p>}
+                                        {proj.tech_stack && proj.tech_stack.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {proj.tech_stack.map((t: string, j: number) => (
+                                                    <span key={j} className="px-2 py-0.5 bg-blue-50 text-[#0077b5] rounded text-[10px] font-bold border border-blue-100">{t}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {proj.outcomes && proj.outcomes.length > 0 && (
+                                            <ul className="space-y-1 list-disc list-inside">
+                                                {proj.outcomes.map((o: string, j: number) => (
+                                                    <li key={j} className="text-xs text-slate-500 font-medium marker:text-blue-500">{o}</li>
+                                                ))}
+                                            </ul>
+                                        )}
                                     </div>
                                 ))}
                             </section>

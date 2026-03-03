@@ -202,11 +202,12 @@ async def test_generate_then_export(app, mock_generate_output):
         with (
             patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
             patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
-            patch("app.routes.v1.generate.run_resume_validation", return_value={}),
+            patch("app.routes.v1.generate.validate_resume_fields", return_value={"valid": True, "errors": [], "warnings": [], "field_report": {}}),
+            patch("app.routes.v1.generate.validate_resume_output", return_value={"field_validation": {"valid": True}, "ai_validation": None}),
         ):
             gen_resp = await c.post(
                 "/api/v1/generate/resume",
-                json={"profile": "Python dev with 5 years experience"},
+                json={"profile": "Python developer with 5 years experience building scalable web applications"},
             )
         assert gen_resp.status_code == 200
         resume_json = gen_resp.json()["resume"]

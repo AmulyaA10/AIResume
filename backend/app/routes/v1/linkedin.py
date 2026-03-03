@@ -7,6 +7,7 @@ from app.models import SearchRequest, LinkedInScrapeRequest, LinkedInParseReques
 from app.config import LINKEDIN_LOGIN, LINKEDIN_PASSWORD
 from app.common import build_llm_config, build_linkedin_creds, safe_log_activity
 from app.common import decrypt_value
+from app.common import validate_resume_fields, validate_resume_output
 from services.agent_controller import generate_resume_from_linkedin, parse_linkedin_profile_text
 from services.db.lancedb_client import store_resume, get_user_settings, migrate_orphaned_settings
 
@@ -178,10 +179,16 @@ async def linkedin_scrape(
     if not output.get("resume"):
         raise HTTPException(status_code=422, detail="Could not extract resume data from the LinkedIn profile. The profile may be private or the scraper credentials may be missing.")
 
-    # Return only non-sensitive fields — never expose credentials or API keys
+    # Common validation routine (same as generate path)
+    resume = output["resume"]
+    field_validation = validate_resume_fields(resume)
+    output_validation = validate_resume_output(resume, llm_config, file_name="linkedin_scrape")
+
     return {
-        "resume": output.get("resume"),
+        "resume": resume,
         "error": output.get("error"),
+        "field_validation": field_validation,
+        "output_validation": output_validation.get("ai_validation"),
     }
 
 
@@ -229,7 +236,14 @@ async def linkedin_parse(
                    "Please ensure you copied the full LinkedIn profile page content."
         )
 
+    # Common validation routine (same as generate and scrape paths)
+    resume = output["resume"]
+    field_validation = validate_resume_fields(resume)
+    output_validation = validate_resume_output(resume, llm_config, file_name="linkedin_parse")
+
     return {
-        "resume": output.get("resume"),
+        "resume": resume,
         "error": output.get("error"),
+        "field_validation": field_validation,
+        "output_validation": output_validation.get("ai_validation"),
     }

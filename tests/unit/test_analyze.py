@@ -149,7 +149,7 @@ async def test_quality_blocked_not_resume(app, auth_headers, mock_not_resume_val
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/analyze/quality",
-                json={"resume_text": "Buy milk, eggs, bread"},
+                json={"resume_text": "Buy milk, eggs, bread, butter, cheese, and other groceries from the store today"},
                 headers=auth_headers,
             )
     assert resp.status_code == 422
@@ -211,7 +211,7 @@ async def test_screening_blocked_not_resume(app, auth_headers, mock_not_resume_v
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/analyze/screen",
-                json={"resume_text": "Shopping list: apples, oranges", "jd_text": "Software Engineer role"},
+                json={"resume_text": "Shopping list: apples, oranges, bananas, and grapes for the weekly meal prep", "jd_text": "Software Engineer role with expertise in Python and cloud computing"},
                 headers=auth_headers,
             )
     assert resp.status_code == 422
@@ -270,7 +270,7 @@ async def test_gap_blocked_not_resume(app, auth_headers, sample_jd_text, mock_no
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/analyze/gap",
-                json={"resume_text": "Buy milk, eggs, bread", "jd_text": sample_jd_text},
+                json={"resume_text": "Buy milk, eggs, bread, butter, cheese, and other groceries from the store today", "jd_text": sample_jd_text},
                 headers=auth_headers,
             )
     assert resp.status_code == 422
