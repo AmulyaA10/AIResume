@@ -214,8 +214,8 @@ def log_activity(user_id: str, activity_type: str, filename: str, score: int, de
     }])
     print(f"DEBUG: Logged activity: {activity_type} for {filename} (User: {user_id})")
 
-def get_dashboard_stats(user_id: str):
-    print(f"DEBUG: [stats] Fetching stats for user: {user_id}")
+def get_dashboard_stats(user_id: str, is_recruiter: bool = False):
+    print(f"DEBUG: [stats] Fetching stats for user: {user_id} (IsRecruiter: {is_recruiter})")
     resumes_table = get_or_create_table()
     activity_table = get_or_create_activity_table()
     applied_table = get_or_create_job_applied_table()
@@ -225,13 +225,13 @@ def get_dashboard_stats(user_id: str):
     
     total_resumes = 0
     if not resumes_df.empty:
-        # Trace available IDs
-        available = resumes_df['user_id'].unique().tolist()
-        print(f"DEBUG: [stats] Resumes table Users: {available}")
-        
-        user_resumes = resumes_df[resumes_df['user_id'] == user_id]
-        total_resumes = user_resumes['filename'].nunique()
-        print(f"DEBUG: [stats] Found {total_resumes} resumes for {user_id}")
+        if is_recruiter:
+            # Recruiter sees total unique filenames across all users
+            total_resumes = resumes_df['filename'].nunique()
+        else:
+            user_resumes = resumes_df[resumes_df['user_id'] == user_id]
+            total_resumes = user_resumes['filename'].nunique()
+        print(f"DEBUG: [stats] Found {total_resumes} resumes (Global: {is_recruiter})")
     
     # Activity Stats
     activity_df = activity_table.to_pandas()
@@ -246,26 +246,30 @@ def get_dashboard_stats(user_id: str):
     # Applied Stats
     applied_df = applied_table.to_pandas()
     if not applied_df.empty:
-        user_applied = applied_df[applied_df['user_id'] == user_id]
-        total_applied = len(user_applied)
-        print(f"DEBUG: [stats] Found {total_applied} applied jobs for {user_id}")
+        if is_recruiter:
+            total_applied = len(applied_df)
+        else:
+            user_applied = applied_df[applied_df['user_id'] == user_id]
+            total_applied = len(user_applied)
+        print(f"DEBUG: [stats] Found {total_applied} applied jobs (Global: {is_recruiter})")
 
 
     if not activity_df.empty:
-        available_act = activity_df['user_id'].unique().tolist()
-        print(f"DEBUG: [stats] Activity table Users: {available_act}")
-
-        # Filter by user_id
-        user_activity = activity_df[activity_df['user_id'] == user_id]
-        print(f"DEBUG: [stats] Found {len(user_activity)} activities for {user_id}")
+        # Filter by user_id for jobseekers, show all for recruiters
+        if is_recruiter:
+            view_activity = activity_df
+        else:
+            view_activity = activity_df[activity_df['user_id'] == user_id]
+            
+        print(f"DEBUG: [stats] Found {len(view_activity)} activities for view")
         
-        total_screened = len(user_activity[user_activity['type'] == 'screen'])
-        high_matches = len(user_activity[user_activity['score'] >= 80])
-        skill_gaps = len(user_activity[user_activity['type'] == 'skill_gap'])
-        quality_scored = len(user_activity[user_activity['type'] == 'quality'])
+        total_screened = len(view_activity[view_activity['type'] == 'screen'])
+        high_matches = len(view_activity[view_activity['score'] >= 80])
+        skill_gaps = len(view_activity[view_activity['type'] == 'skill_gap'])
+        quality_scored = len(view_activity[view_activity['type'] == 'quality'])
         
         # Get 5 most recent activities
-        recent_df = user_activity.sort_values(by="timestamp", ascending=False).head(5)
+        recent_df = view_activity.sort_values(by="timestamp", ascending=False).head(5)
         for _, row in recent_df.iterrows():
             recent_activity.append({
                 "type": row['type'],
@@ -370,8 +374,8 @@ def migrate_orphaned_settings(old_user_id: str, new_user_id: str):
         print(f"MIGRATION: Failed to migrate settings from {old_user_id} to {new_user_id}: {e}")
 
 # ---------- SEARCH ----------
-def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None):
-    print(f"DEBUG: Semantic search query: {query} (User: {user_id})")
+def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None, is_recruiter: bool = False):
+    print(f"DEBUG: Semantic search query: {query} (User: {user_id}, IsRecruiter: {is_recruiter})")
     table = get_or_create_table()
     
     total_rows = len(table)
@@ -388,6 +392,10 @@ def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: s
         raise e
     
     # Use LanceDB's where clause for filtering
-    results = table.search(query_vector).where(f"user_id = '{user_id}'").limit(limit).to_pandas()
-    print(f"DEBUG: Found {len(results)} matches for user {user_id}")
+    search_op = table.search(query_vector)
+    if not is_recruiter:
+        search_op = search_op.where(f"user_id = '{user_id}'")
+        
+    results = search_op.limit(limit).to_pandas()
+    print(f"DEBUG: Found {len(results)} matches (Global: {is_recruiter})")
     return results

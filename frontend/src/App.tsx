@@ -20,6 +20,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function App() {
+    const { persona } = useAuth();
     return (
         <Routes>
             <Route path="/login" element={<Login />} />
@@ -44,7 +45,7 @@ function App() {
 
             <Route path="/search" element={
                 <ProtectedRoute>
-                    <JobSearch />
+                    {(persona?.trim().toLowerCase() === 'recruiter' || persona?.trim().toLowerCase() === 'manager') ? <AISearch /> : <JobSearch />}
                 </ProtectedRoute>
             } />
 

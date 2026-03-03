@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText } from 'lucide-react';
+import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText, Sparkles, Target, Info } from 'lucide-react';
 import api from '../../api';
-import { motion } from 'framer-motion';
-import { PageHeader } from '../../common';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const AISearch = () => {
     const [query, setQuery] = useState('');
     const [searching, setSearching] = useState(false);
     const [results, setResults] = useState<any[]>([]);
+    const [cutoff, setCutoff] = useState(10);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -15,7 +15,7 @@ const AISearch = () => {
         setSearching(true);
         try {
             const response = await api.post('/search', { query });
-            setResults(response.data.results);
+            setResults(response.data.results || []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -23,111 +23,179 @@ const AISearch = () => {
         }
     };
 
-    return (
-        <div className="space-y-8">
-            <PageHeader
-                title="Semantic AI Search"
-                subtitle="Find the best candidates using natural language reasoning powered by GPT-4o."
-            />
+    const filteredResults = results.filter(res => (res.score || 0) >= cutoff);
 
-            <form onSubmit={handleSearch} className="relative">
-                <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="e.g. Senior Backend Engineer with Python and AWS experience..."
-                        className="w-full bg-white border border-slate-200 rounded-xl py-4 pl-12 pr-32 focus:border-primary-500 outline-none text-lg transition-all shadow-sm focus:ring-4 focus:ring-primary-500/5 text-slate-900 placeholder:text-slate-400"
-                    />
+    return (
+        <div className="max-w-6xl mx-auto space-y-8 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                        <Sparkles size={12} /> AI-Powered Candidate Search
+                    </div>
+                    <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
+                        Find the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Perfect Talent</span>
+                    </h1>
+                    <p className="text-slate-500 max-w-lg">
+                        Our semantic engine uses natural language reasoning to find candidates that match your specific requirements.
+                    </p>
+                </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="glass-card p-2 rounded-2xl shadow-xl border-slate-200 bg-white/80 backdrop-blur-xl">
+                <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="e.g. Senior Backend Engineer with Python and AWS experience..."
+                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                        />
+                    </div>
                     <button
                         type="submit"
                         disabled={searching}
-                        className="absolute right-2 top-2 bottom-2 bg-primary-600 hover:bg-primary-500 text-white px-6 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50 transition-all font-inter shadow-md shadow-primary-500/20"
+                        className="bg-slate-900 text-white px-8 py-4 rounded-xl font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200 disabled:opacity-50"
                     >
-                        {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
+                        {searching ? (
+                            <span className="flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin" /> Searching...
+                            </span>
+                        ) : 'Search Candidates'}
                     </button>
-                </div>
-            </form>
+                </form>
 
-            <div className="space-y-6">
-                {searching && (
-                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 italic font-medium">
-                        <Loader2 className="w-10 h-10 animate-spin mb-4 text-primary-500/50" />
-                        <p>Scanning vector database and reasoning with AI...</p>
+                <div className="flex flex-wrap items-center gap-6 px-4 py-3 border-t border-slate-100 mt-2">
+                    <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Target size={14} /> Min Match: {cutoff}%
+                        </span>
+                        <input
+                            type="range"
+                            min="0"
+                            max="95"
+                            step="5"
+                            value={cutoff}
+                            onChange={(e) => setCutoff(Number(e.target.value))}
+                            className="flex-1 h-1.5 bg-slate-100 rounded-full accent-blue-600 cursor-pointer"
+                        />
                     </div>
-                )}
+                </div>
+            </div>
 
-                {results.map((res, i) => (
-                    <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="glass-card p-8 border-l-4 border-l-primary-500 shadow-sm hover:shadow-md transition-shadow"
-                    >
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h3 className="text-xl font-bold mb-1 flex items-center gap-3 text-slate-900 tracking-tight">
-                                    <FileText className="w-5 h-5 text-primary-500" />
-                                    {res.filename}
-                                </h3>
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-xs font-black ring-1 ring-amber-200">
-                                        <Star className="w-3 h-3 fill-current" />
-                                        MATCH {res.score}%
-                                    </div>
-                                    <span className={`text-xs font-black px-2 py-0.5 rounded ring-1 ${res.auto_screen.toLowerCase() === 'selected'
-                                        ? 'text-emerald-700 bg-emerald-50 ring-emerald-200'
-                                        : 'text-red-700 bg-red-50 ring-red-200'
-                                        }`}>
-                                        {res.auto_screen.toUpperCase()}
-                                    </span>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    window.open(`${api.defaults.baseURL}/resumes/download/${res.filename}`, '_blank');
-                                }}
-                                className="flex items-center gap-2 text-slate-400 hover:text-primary-600 transition-colors text-sm font-bold"
+            {/* Results */}
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        {searching ? (
+                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                            <Sparkles size={18} className="text-blue-500" />
+                        )}
+                        {searching ? 'AI Reasoning in Progress...' : `${filteredResults.length} Candidates Found`}
+                    </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <AnimatePresence mode="popLayout">
+                        {filteredResults.map((res, idx) => (
+                            <motion.div
+                                key={res.filename + idx}
+                                layout
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                                className="glass-card p-6 bg-white border-slate-200 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/5 transition-all group relative overflow-hidden"
                             >
-                                <Download className="w-4 h-4" />
-                                Resume
-                            </button>
-                        </div>
-
-                        <p className="text-slate-600 text-sm leading-relaxed mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100 font-medium">
-                            {res.justification}
-                        </p>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
-                                    <AlertTriangle className="w-3 h-3 text-amber-500" />
-                                    Missing Skills
-                                </h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {res.missing_skills.length > 0 ? res.missing_skills.map((s: string, j: number) => (
-                                        <span key={j} className="text-xs bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-md font-semibold shadow-sm">{s}</span>
-                                    )) : <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                                        <CheckCircle className="w-3 h-3" /> Perfect skill match</span>}
+                                {/* Score Badge */}
+                                <div className="absolute top-0 right-0 p-4">
+                                    <div className={`px-3 py-1 rounded-bl-xl absolute top-0 right-0 font-black text-xs shadow-lg ${res.score >= 80 ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'}`}>
+                                        {res.score}% Match
+                                    </div>
                                 </div>
-                            </div>
-                            <div>
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
-                                    <CheckCircle className="w-3 h-3 text-emerald-500" />
-                                    Key Highlights
-                                </h4>
-                                <p className="text-xs text-slate-500 italic font-medium">Demonstrates expertise in the core requirements defined in the query.</p>
-                            </div>
-                        </div>
-                    </motion.div>
-                ))}
 
-                {!searching && results.length === 0 && (
-                    <div className="text-center py-20 text-slate-500">
-                        <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                        <p>Enter a query to start searching resumes.</p>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${res.auto_screen?.toLowerCase() === 'selected'
+                                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                : 'bg-red-100 text-red-700 border-red-200'
+                                                }`}>
+                                                {res.auto_screen?.toUpperCase() || 'SCORED'}
+                                            </span>
+                                            <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                                RESUME
+                                            </span>
+                                        </div>
+                                        <h4 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1 pr-16">
+                                            {res.filename}
+                                        </h4>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                            <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <Info size={12} className="text-blue-500" /> AI Justification
+                                            </h5>
+                                            <p className="text-slate-600 text-sm leading-relaxed italic line-clamp-3">
+                                                "{res.justification}"
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                <AlertTriangle size={12} className="text-amber-500" /> Missing Skills
+                                            </h5>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {res.missing_skills?.length > 0 ? res.missing_skills.map((skill: string) => (
+                                                    <span key={skill} className="px-2 py-1 bg-white border border-slate-200 text-slate-500 rounded text-[10px] font-bold">
+                                                        {skill}
+                                                    </span>
+                                                )) : (
+                                                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3" /> Perfect skill match
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                                        <div className="flex items-center gap-1">
+                                            {[1, 2, 3, 4, 5].map((s) => (
+                                                <Star key={s} size={10} className={s <= Math.round((res.score / 100) * 5) ? 'text-blue-500 fill-blue-500' : 'text-slate-200'} />
+                                            ))}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => {
+                                                    window.open(`${api.defaults.baseURL}/resumes/download/${res.filename}`, '_blank');
+                                                }}
+                                                className="bg-white text-slate-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1 hover:bg-slate-50 transition-all px-4 py-2 rounded-lg border border-slate-200 shadow-sm"
+                                            >
+                                                <Download size={14} /> Download
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                </div>
+
+                {!searching && filteredResults.length === 0 && (
+                    <div className="text-center py-24 glass-card bg-slate-50/50 border-dashed border-slate-200">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                            <FileText size={32} />
+                        </div>
+                        <h4 className="text-slate-900 font-bold text-lg">No candidates found</h4>
+                        <p className="text-slate-500 max-w-xs mx-auto text-sm mt-1">
+                            {results.length > 0 ? 'Try lowering the minimum match score.' : 'Enter a query to search through the candidate database.'}
+                        </p>
                     </div>
                 )}
             </div>
