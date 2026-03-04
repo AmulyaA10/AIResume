@@ -71,6 +71,7 @@ const ResumeGenerator = () => {
     const [generating, setGenerating] = useState(false);
     const [resume, setResume] = useState<any>(null);
     const [outputValidation, setOutputValidation] = useState<any>(null);
+    const [fieldValidation, setFieldValidation] = useState<any>(null);
     const [validationError, setValidationError] = useState<any>(null);
     const [inputValidationWarning, setInputValidationWarning] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -81,6 +82,7 @@ const ResumeGenerator = () => {
         setGenerating(true);
         setResume(null);
         setOutputValidation(null);
+        setFieldValidation(null);
         setValidationError(null);
         setInputValidationWarning(null);
         setError(null);
@@ -88,6 +90,9 @@ const ResumeGenerator = () => {
         try {
             const response = await api.post('/generate/resume', { profile });
             setResume(response.data.resume_json);
+            if (response.data.field_validation) {
+                setFieldValidation(response.data.field_validation);
+            }
             if (response.data.output_validation) {
                 setOutputValidation(response.data.output_validation);
             }
@@ -291,6 +296,32 @@ const ResumeGenerator = () => {
                                 </div>
                             </motion.div>
 
+                            {/* Field validation (structural checks) */}
+                            {fieldValidation && (fieldValidation.errors?.length > 0 || fieldValidation.warnings?.length > 0) && (
+                                <div className={`rounded-xl p-4 text-sm font-medium border ${fieldValidation.errors?.length > 0
+                                    ? 'bg-red-50 border-red-200 text-red-700'
+                                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                                }`}>
+                                    <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
+                                        <AlertCircle className="w-3.5 h-3.5" />
+                                        {fieldValidation.errors?.length > 0 ? 'Missing Required Fields' : 'Field Warnings'}
+                                    </div>
+                                    <ul className="space-y-1 text-xs">
+                                        {(fieldValidation.errors || []).map((e: string, i: number) => (
+                                            <li key={`e-${i}`} className="flex items-start gap-2">
+                                                <span className="text-red-400 mt-0.5">&#8226;</span> {e}
+                                            </li>
+                                        ))}
+                                        {(fieldValidation.warnings || []).map((w: string, i: number) => (
+                                            <li key={`w-${i}`} className="flex items-start gap-2 text-amber-600">
+                                                <span className="text-amber-400 mt-0.5">&#8226;</span> {w}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* AI quality validation */}
                             {outputValidation && (
                                 <ValidationBanner
                                     validation={outputValidation}

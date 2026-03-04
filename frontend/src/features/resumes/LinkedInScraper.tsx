@@ -17,6 +17,8 @@ const LinkedInScraper = () => {
     const [parseLoading, setParseLoading] = useState(false);
     const [securityChallenge, setSecurityChallenge] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const [fieldValidation, setFieldValidation] = useState<any>(null);
+    const [outputValidation, setOutputValidation] = useState<any>(null);
     const inputRef = React.useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
     const { maskedCredentials, loadMaskedCredentials, isLoaded, isLoading, loadError } = useCredentials();
@@ -44,6 +46,8 @@ const LinkedInScraper = () => {
         setError(null);
         setShowPasteFallback(false);
         setSecurityChallenge(false);
+        setFieldValidation(null);
+        setOutputValidation(null);
         try {
             // On retry, send the cached session_id so the backend can resume
             // the same Selenium driver (no fresh login = no throttled notification)
@@ -55,6 +59,8 @@ const LinkedInScraper = () => {
             if (response.data.resume) {
                 setResume(response.data.resume);
                 setSessionId(null);  // clear session on success
+                if (response.data.field_validation) setFieldValidation(response.data.field_validation);
+                if (response.data.output_validation) setOutputValidation(response.data.output_validation);
             } else if (response.data.error) {
                 const errorMsg = response.data.error;
                 const errorCode = response.data.error_code;
@@ -102,11 +108,15 @@ const LinkedInScraper = () => {
         setParseLoading(true);
         setResume(null);
         setError(null);
+        setFieldValidation(null);
+        setOutputValidation(null);
         try {
             const response = await api.post('/linkedin/parse', { profile_text: pastedText });
             if (response.data.resume) {
                 setResume(response.data.resume);
                 setShowPasteFallback(false);
+                if (response.data.field_validation) setFieldValidation(response.data.field_validation);
+                if (response.data.output_validation) setOutputValidation(response.data.output_validation);
             } else if (response.data.error) {
                 setError(response.data.error);
             } else {
@@ -592,6 +602,48 @@ const LinkedInScraper = () => {
                             </section>
                         )}
                     </div>
+
+                    {/* Field validation banner */}
+                    {fieldValidation && (fieldValidation.errors?.length > 0 || fieldValidation.warnings?.length > 0) && (
+                        <div className={`rounded-xl p-4 text-sm font-medium border ${fieldValidation.errors?.length > 0
+                            ? 'bg-red-50 border-red-200 text-red-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                        }`}>
+                            <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                {fieldValidation.errors?.length > 0 ? 'Missing Required Fields' : 'Field Warnings'}
+                            </div>
+                            <ul className="space-y-1 text-xs">
+                                {(fieldValidation.errors || []).map((e: string, i: number) => (
+                                    <li key={`e-${i}`} className="flex items-start gap-2">
+                                        <span className="text-red-400 mt-0.5">&#8226;</span> {e}
+                                    </li>
+                                ))}
+                                {(fieldValidation.warnings || []).map((w: string, i: number) => (
+                                    <li key={`w-${i}`} className="flex items-start gap-2 text-amber-600">
+                                        <span className="text-amber-400 mt-0.5">&#8226;</span> {w}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* AI quality validation */}
+                    {outputValidation && (
+                        <div className={`rounded-xl p-4 text-sm font-medium border ${
+                            outputValidation.classification === 'resume_valid_strong' || outputValidation.classification === 'resume_valid_good'
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                : 'bg-amber-50 border-amber-200 text-amber-700'
+                        }`}>
+                            <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
+                                <FileCheck className="w-3.5 h-3.5" />
+                                AI Quality: {outputValidation.classification?.replace(/_/g, ' ').toUpperCase()} ({outputValidation.total_score}/30)
+                            </div>
+                            {outputValidation.summary && (
+                                <p className="text-xs leading-relaxed">{outputValidation.summary}</p>
+                            )}
+                        </div>
+                    )}
                 </motion.div>
             )}
 

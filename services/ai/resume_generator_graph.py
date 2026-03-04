@@ -5,6 +5,45 @@ import json
 
 from services.ai.common import get_llm, safe_parse_json
 
+# ─── Skill extraction safety net ──────────────────────────────────────────────
+# Common technology keywords to extract from experience text when LLM fails
+_SKILL_PATTERNS = [
+    # Languages
+    "Python", "Java", "JavaScript", "TypeScript", "C\\+\\+", "C#", "Go", "Rust",
+    "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "SQL", "Bash",
+    # Frameworks
+    "React", "Angular", "Vue", "Django", "Flask", "FastAPI", "Spring", "Express",
+    "Next\\.js", "Node\\.js", "Rails", ".NET", "Laravel", "Svelte",
+    # Cloud / DevOps
+    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "Jenkins",
+    "CI/CD", "GitHub Actions", "CircleCI", "Ansible",
+    # Data / ML
+    "TensorFlow", "PyTorch", "Spark", "Hadoop", "Kafka", "Airflow",
+    "Pandas", "NumPy", "Scikit-learn", "LangChain", "OpenAI",
+    # Databases
+    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "DynamoDB",
+    "Cassandra", "SQLite", "Oracle",
+    # Tools
+    "Git", "Jira", "Figma", "Tableau", "Power BI", "Grafana", "Splunk",
+    "Linux", "REST", "GraphQL", "gRPC", "Microservices", "Agile", "Scrum",
+]
+
+import re
+
+def _extract_skills_from_text(text: str) -> list:
+    """Extract technology/tool mentions from free text as a fallback."""
+    found = []
+    seen_lower = set()
+    for pattern in _SKILL_PATTERNS:
+        if re.search(r'\b' + pattern + r'\b', text, re.IGNORECASE):
+            # Use the canonical casing from the pattern list
+            canonical = pattern.replace("\\+", "+").replace("\\.", ".")
+            if canonical.lower() not in seen_lower:
+                found.append(canonical)
+                seen_lower.add(canonical.lower())
+    return found
+
+
 class GeneratorState(TypedDict):
     profile_description: str
     resume_json: Optional[dict]
@@ -109,7 +148,23 @@ CRITICAL RULES:
         if not result.get("summary"):
             result["summary"] = "Professional summary not available."
         if not result.get("skills") or len(result.get("skills", [])) == 0:
-            result["skills"] = ["Not specified"]
+            # Safety net: extract skills from experience descriptions + profile input
+            all_text = state["profile_description"]
+            for exp in result.get("experience", []):
+                all_text += " " + " ".join(exp.get("bullets", []))
+            extracted = _extract_skills_from_text(all_text)
+            result["skills"] = extracted if extracted else ["Not specified"]
+        elif len(result.get("skills", [])) < 6:
+            # Augment sparse skills from experience text
+            all_text = state["profile_description"]
+            for exp in result.get("experience", []):
+                all_text += " " + " ".join(exp.get("bullets", []))
+            extracted = _extract_skills_from_text(all_text)
+            existing_lower = {s.lower() for s in result["skills"]}
+            for skill in extracted:
+                if skill.lower() not in existing_lower:
+                    result["skills"].append(skill)
+                    existing_lower.add(skill.lower())
         if not result.get("experience"):
             result["experience"] = []
         if not result.get("education"):
