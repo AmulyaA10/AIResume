@@ -3,7 +3,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, clean_json_output
+from services.ai.common import get_llm, safe_parse_json
 from services.linkedin_scraper import (
     scrape_linkedin_profile,
     resume_linkedin_session,
@@ -265,8 +265,7 @@ Return ONLY the JSON object. No markdown. No commentary.
     )
 
     try:
-        clean_content = clean_json_output(response.content)
-        parsed_data = json.loads(clean_content)
+        parsed_data = safe_parse_json(response.content)
 
         # Quality gate: ensure the LLM actually extracted meaningful data
         exp_count = len(parsed_data.get("experience") or [])
@@ -288,7 +287,7 @@ Return ONLY the JSON object. No markdown. No commentary.
         return {"parsed_profile": parsed_data}
     except Exception as e:
         print(f"Error parsing profile JSON: {e}")
-        print(f"Raw content: {response.content}")
+        print(f"Raw content: {response.content[:500]}")
         return {"parsed_profile": None, "error": f"Failed to parse LinkedIn profile data: {e}"}
 
 def resume_writer_agent(state: LinkedInResumeState):
@@ -387,8 +386,7 @@ CRITICAL RULES:
     )
 
     try:
-        clean_content = clean_json_output(response.content)
-        resume_json = json.loads(clean_content)
+        resume_json = safe_parse_json(response.content)
 
         # Log the generated resume quality
         exp_count = len(resume_json.get("experience") or [])

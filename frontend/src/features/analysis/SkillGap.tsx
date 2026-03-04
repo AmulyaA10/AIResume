@@ -11,6 +11,7 @@ const SkillGap = () => {
     const [gaps, setGaps] = useState<any>(null);
     const [validationError, setValidationError] = useState<any>(null);
     const [validationWarning, setValidationWarning] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const handleAnalyze = async () => {
         if (!resumeText.trim() || !jdText.trim()) return;
@@ -18,6 +19,7 @@ const SkillGap = () => {
         setGaps(null);
         setValidationError(null);
         setValidationWarning(null);
+        setError(null);
         try {
             const response = await api.post('/analyze/gap', {
                 resume_text: resumeText,
@@ -31,7 +33,8 @@ const SkillGap = () => {
             if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
                 setValidationError(err.response.data.detail.validation);
             } else {
-                console.error(err);
+                const msg = err.response?.data?.detail || err.message || 'Skill gap analysis failed. Please try again.';
+                setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             }
         } finally {
             setAnalyzing(false);
@@ -87,8 +90,19 @@ const SkillGap = () => {
                         </div>
                     )}
 
+                    {error && !validationError && (
+                        <div className="mb-4">
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium">
+                                <div className="flex items-center gap-2 mb-1 font-black text-[10px] uppercase tracking-widest text-red-500">
+                                    <AlertCircle className="w-3.5 h-3.5" /> Analysis Error
+                                </div>
+                                {error}
+                            </div>
+                        </div>
+                    )}
+
                     <AnimatePresence mode="wait">
-                        {!gaps && !analyzing && !validationError && (
+                        {!gaps && !analyzing && !validationError && !error && (
                             <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <EmptyState
                                     icon={<Sparkles className="w-10 h-10" />}

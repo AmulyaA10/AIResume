@@ -1,21 +1,25 @@
 import React from 'react';
 import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
 
 const Dashboard = () => {
     const { persona, user } = useAuth();
+    const navigate = useNavigate();
     const [stats, setStats] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const fetchStats = async () => {
             try {
                 const response = await api.get('/dashboard/stats');
                 setStats(response.data);
-            } catch (error) {
-                console.error("Failed to fetch dashboard stats", error);
+            } catch (err: any) {
+                const msg = err.response?.data?.detail || err.message || 'Failed to load dashboard data.';
+                setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             } finally {
                 setLoading(false);
             }
@@ -54,11 +58,17 @@ const Dashboard = () => {
                             : `Our AI engine has analyzed ${stats?.total_resumes || 0} documents in your private corpus.`}
                     </p>
                     <div className="mt-6 flex gap-3">
-                        <button className="bg-white text-indigo-700 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95">
+                        <button
+                            onClick={() => navigate('/linkedin')}
+                            className="bg-white text-indigo-700 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+                        >
                             <Linkedin size={18} /> {isRecruiter ? 'Sync ATS' : 'Sync LinkedIn'}
                         </button>
-                        <button className="bg-indigo-800/30 text-white border border-white/20 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 hover:bg-indigo-800/50 transition-all active:scale-95">
-                            View Reports <ArrowRight size={18} />
+                        <button
+                            onClick={() => navigate(isRecruiter ? '/scoring' : '/generate')}
+                            className="bg-indigo-800/30 text-white border border-white/20 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 hover:bg-indigo-800/50 transition-all active:scale-95"
+                        >
+                            {isRecruiter ? 'View Reports' : 'Refine Resume'} <ArrowRight size={18} />
                         </button>
                     </div>
                 </div>
@@ -66,6 +76,17 @@ const Dashboard = () => {
                     {isRecruiter ? <Users size={240} /> : <User size={240} />}
                 </div>
             </div>
+
+            {/* Error Display */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-bold text-xs uppercase tracking-wider text-red-500 mb-1">Dashboard Error</p>
+                        {error}
+                    </div>
+                </div>
+            )}
 
             {/* Recruiter Stats Grid */}
             {isRecruiter && (
@@ -132,7 +153,7 @@ const Dashboard = () => {
                                 "Consider adding <strong>GraphQL</strong> to your skills list. It appears in 40% of the roles you're targeting."
                             </div>
                             <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-400 text-sm text-blue-800">
-                                <strong>Resume Tip:</strong> Your summary could be more impactful. Try our <span className="underline font-bold cursor-pointer">AI Refiner</span>.
+                                <strong>Resume Tip:</strong> Your summary could be more impactful. Try our <Link to="/generate" className="underline font-bold cursor-pointer hover:text-blue-600 transition-colors">AI Refiner</Link>.
                             </div>
                         </div>
                     )}

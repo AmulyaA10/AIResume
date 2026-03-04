@@ -35,6 +35,7 @@ const QualityScoring = () => {
     const [results, setResults] = useState<any>(null);
     const [validationError, setValidationError] = useState<any>(null);
     const [validationWarning, setValidationWarning] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const handleScore = async () => {
         if (!text.trim()) return;
@@ -42,6 +43,7 @@ const QualityScoring = () => {
         setResults(null);
         setValidationError(null);
         setValidationWarning(null);
+        setError(null);
         try {
             const response = await api.post('/analyze/quality', { resume_text: text });
             setResults(response.data);
@@ -52,7 +54,8 @@ const QualityScoring = () => {
             if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
                 setValidationError(err.response.data.detail.validation);
             } else {
-                console.error(err);
+                const msg = err.response?.data?.detail || err.message || 'Quality analysis failed. Please try again.';
+                setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             }
         } finally {
             setAnalyzing(false);
@@ -105,7 +108,18 @@ const QualityScoring = () => {
                         </div>
                     )}
 
-                    {!hasData && !analyzing && !validationError && (
+                    {error && !validationError && (
+                        <div className="w-full p-4">
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium">
+                                <div className="flex items-center gap-2 mb-1 font-black text-[10px] uppercase tracking-widest text-red-500">
+                                    <Target className="w-3.5 h-3.5" /> Error
+                                </div>
+                                {error}
+                            </div>
+                        </div>
+                    )}
+
+                    {!hasData && !analyzing && !validationError && !error && (
                         <EmptyState
                             icon={<Target className="w-10 h-10" />}
                             heading="Ready for Analysis"
@@ -139,9 +153,9 @@ const QualityScoring = () => {
                             </div>
 
                             <div className="grid grid-cols-3 gap-4 border-y border-slate-100 py-8">
-                                <ScoreRing value={results.score.clarity || 85} label="Clarity" color="blue" />
-                                <ScoreRing value={results.score.skills || 90} label="Skills" color="amber" />
-                                <ScoreRing value={results.score.format || 75} label="Format" color="emerald" />
+                                <ScoreRing value={results.score.clarity ?? 0} label="Clarity" color="blue" />
+                                <ScoreRing value={results.score.skills ?? 0} label="Skills" color="amber" />
+                                <ScoreRing value={results.score.format ?? 0} label="Format" color="emerald" />
                             </div>
 
                             <div className="bg-slate-50/80 p-6 rounded-xl border border-slate-100 shadow-inner">
@@ -159,14 +173,12 @@ const QualityScoring = () => {
             </div>
 
             {hasData && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {[
-                        { label: 'Formatting & Layout', icon: Layout, color: 'blue', val: 92 },
-                        { label: 'Impact Metrics', icon: Zap, color: 'amber', val: 78 },
-                        { label: 'Keyword Optimization', icon: Search, color: 'emerald', val: results.score.overall },
-                        { label: 'Experience Depth', icon: BarChart3, color: 'indigo', val: 85 },
-                        { label: 'Clarity & Conciseness', icon: ListChecks, color: 'purple', val: 90 },
-                        { label: 'Contact Information', icon: User, color: 'slate', val: 100 }
+                        { label: 'Formatting & Layout', icon: Layout, color: 'blue', val: results.score.format ?? 0 },
+                        { label: 'Skills Coverage', icon: Zap, color: 'amber', val: results.score.skills ?? 0 },
+                        { label: 'Overall Quality', icon: Search, color: 'emerald', val: results.score.overall ?? 0 },
+                        { label: 'Clarity & Conciseness', icon: ListChecks, color: 'purple', val: results.score.clarity ?? 0 },
                     ].map((item, i) => (
                         <motion.div
                             key={i}

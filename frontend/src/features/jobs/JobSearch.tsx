@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Target, Briefcase, MapPin, PoundSterling, Filter, Sparkles, ExternalLink, ArrowRight, Star, X, Info } from 'lucide-react';
+import { Search, Target, Briefcase, MapPin, PoundSterling, Filter, Sparkles, ExternalLink, ArrowRight, Star, X, Info, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { matchApi } from '../../api';
 
@@ -10,6 +10,8 @@ const JobSearch = () => {
     const [cutoff, setCutoff] = useState(45);
     const [searchMode, setSearchMode] = useState<'recommend' | 'search'>('recommend');
     const [selectedJob, setSelectedJob] = useState<any | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
     // For now, we'll try to match using a mock resume_id or look up the user's first resume
     const [resumeId, setResumeId] = useState<string | null>(null);
@@ -25,11 +27,14 @@ const JobSearch = () => {
 
     const fetchRecommendations = async () => {
         setLoading(true);
+        setError(null);
         try {
             const response = await matchApi.matchResume("demo_resume_id");
-            setResults(response.data);
-        } catch (error) {
-            console.error("Failed to fetch recommendations", error);
+            setResults(Array.isArray(response.data) ? response.data : []);
+        } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Failed to fetch job recommendations.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+            setResults([]);
         } finally {
             setLoading(false);
         }
@@ -40,15 +45,23 @@ const JobSearch = () => {
         if (!query.trim()) return;
 
         setLoading(true);
+        setError(null);
         setSearchMode('search');
         try {
             const response = await matchApi.searchJobs(query);
-            setResults(response.data);
-        } catch (error) {
-            console.error("Search failed", error);
+            setResults(Array.isArray(response.data) ? response.data : []);
+        } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Job search failed.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+            setResults([]);
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleApply = (jobTitle: string) => {
+        setApplyMsg(`Application for "${jobTitle}" submitted! (Demo — real applications coming soon)`);
+        setTimeout(() => setApplyMsg(null), 4000);
     };
 
     const filteredResults = results.filter(r => (r.score * 100) >= cutoff);
@@ -131,6 +144,28 @@ const JobSearch = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Status Messages */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-black text-[10px] uppercase tracking-widest text-red-500 mb-1">Search Error</p>
+                        {error}
+                    </div>
+                </div>
+            )}
+
+            {applyMsg && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-700 font-bold flex items-center gap-2"
+                >
+                    <Sparkles className="w-4 h-4 text-emerald-500" /> {applyMsg}
+                </motion.div>
+            )}
 
             {/* Results */}
             <div className="space-y-6">
@@ -224,7 +259,13 @@ const JobSearch = () => {
                                             >
                                                 <Info size={12} /> View Details
                                             </button>
-                                            <button className="bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-1 hover:bg-blue-700 transition-all px-4 py-2 rounded-lg shadow-lg shadow-blue-200">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleApply(match.job.title);
+                                                }}
+                                                className="bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-1 hover:bg-blue-700 transition-all px-4 py-2 rounded-lg shadow-lg shadow-blue-200"
+                                            >
                                                 Apply Now <ArrowRight size={12} />
                                             </button>
                                         </div>
@@ -370,6 +411,10 @@ const JobSearch = () => {
                                     Close
                                 </button>
                                 <button
+                                    onClick={() => {
+                                        handleApply(selectedJob.job.title);
+                                        setSelectedJob(null);
+                                    }}
                                     className="flex-[2] px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
                                 >
                                     Apply Now <ArrowRight size={16} />

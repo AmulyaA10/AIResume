@@ -30,6 +30,7 @@ const Sidebar = () => {
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/upload', label: 'My Documents', icon: Upload },
             { path: '/linkedin', label: 'Sync LinkedIn', icon: Linkedin },
+            { path: '/settings', label: 'Settings', icon: Settings },
         ],
         recruiter: [
             { path: '/upload', label: 'Resume Database', icon: Upload },

@@ -5,7 +5,7 @@ from langchain_core.prompts import PromptTemplate
 
 import json
 
-from services.ai.common import get_llm
+from services.ai.common import get_llm, safe_parse_json
 
 # -----------------------------
 # State
@@ -51,7 +51,13 @@ Return ONLY valid JSON:
         prompt.format(resume=state["parsed"])
     )
 
-    return {"score": json.loads(response.content)}
+    try:
+        score_data = safe_parse_json(response.content)
+    except Exception as e:
+        print(f"Error parsing quality score JSON: {e}")
+        score_data = {"clarity": 0, "skills": 0, "format": 0, "overall": 0}
+
+    return {"score": score_data}
 
 
 # -----------------------------

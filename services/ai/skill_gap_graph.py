@@ -5,7 +5,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, clean_json_output
+from services.ai.common import get_llm, safe_parse_json
 
 class SkillGapState(TypedDict):
     resume_text: str
@@ -34,11 +34,10 @@ Return ONLY valid JSON:
 
     response = llm.invoke(prompt.format(resume=state["resume_text"]))
     try:
-        clean_content = clean_json_output(response.content)
-        skills = json.loads(clean_content).get("skills", [])
+        skills = safe_parse_json(response.content).get("skills", [])
     except json.JSONDecodeError:
-        print(f"Error parsing resume skills: {response.content}")
-        skills = [] # Fallback to empty list or handle error appropriately
+        print(f"Error parsing resume skills: {response.content[:500]}")
+        skills = []
 
     return {"resume_skills": skills}
 
@@ -62,10 +61,9 @@ Return ONLY valid JSON:
 
     response = llm.invoke(prompt.format(jd=state["jd_text"]))
     try:
-        clean_content = clean_json_output(response.content)
-        skills = json.loads(clean_content).get("skills", [])
+        skills = safe_parse_json(response.content).get("skills", [])
     except json.JSONDecodeError:
-        print(f"Error parsing JD skills: {response.content}")
+        print(f"Error parsing JD skills: {response.content[:500]}")
         skills = []
 
     return {"jd_skills": skills}

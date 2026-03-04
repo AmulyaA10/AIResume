@@ -3,6 +3,7 @@ import { Upload, File, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, S
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageHeader } from '../../common';
+import { useAuth } from '../../context/AuthContext';
 
 const classificationConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
     not_resume: { label: 'Not a Resume', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
@@ -199,6 +200,8 @@ const ValidationCard = ({ validation, filename }: { validation: any; filename: s
 };
 
 const ResumeUpload = () => {
+    const { persona } = useAuth();
+    const isRecruiter = persona === 'recruiter';
     const [files, setFiles] = useState<any[]>([]);
     const [uploading, setUploading] = useState(false);
     const [results, setResults] = useState<any[]>([]);
@@ -242,8 +245,11 @@ const ResumeUpload = () => {
     return (
         <div className="space-y-8">
             <PageHeader
-                title="Resume Manager"
-                subtitle="Upload candidate resumes to your private vector search database."
+                title={isRecruiter ? "Resume Manager" : "My Documents"}
+                subtitle={isRecruiter
+                    ? "Upload candidate resumes to your private vector search database."
+                    : "Upload your resume for AI validation, quality scoring, and optimization."
+                }
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -259,8 +265,14 @@ const ResumeUpload = () => {
                         <div className="w-16 h-16 bg-primary-50 rounded-2xl flex items-center justify-center mb-4 border border-primary-100 shadow-sm group-hover:scale-110 transition-transform">
                             <Upload className="text-primary-600 w-8 h-8" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900 mb-2">Click or drag resumes here</h3>
-                        <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium">Supports PDF and DOCX files. Files are validated by AI and indexed for semantic search.</p>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">
+                            {isRecruiter ? 'Click or drag resumes here' : 'Click or drag your resume here'}
+                        </h3>
+                        <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium">
+                            {isRecruiter
+                                ? 'Supports PDF and DOCX files. Files are validated by AI and indexed for semantic search.'
+                                : 'Supports PDF and DOCX files. Your resume will be validated by AI and stored securely.'}
+                        </p>
 
                         {files.length > 0 && !uploading && (
                             <button

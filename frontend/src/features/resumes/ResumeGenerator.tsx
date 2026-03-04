@@ -52,9 +52,9 @@ function getSectionStatus(resume: any, tabId: string): 'valid' | 'warning' | 'mi
         case 'education':
             return (resume.education || []).length >= 1 ? 'valid' : 'missing';
         case 'certifications':
-            return (resume.certifications || []).length >= 1 ? 'valid' : 'valid'; // optional, always valid
+            return (resume.certifications || []).length >= 1 ? 'valid' : 'warning'; // optional — amber if empty
         case 'projects':
-            return (resume.projects || []).length >= 1 ? 'valid' : 'valid'; // optional, always valid
+            return (resume.projects || []).length >= 1 ? 'valid' : 'warning'; // optional — amber if empty
         default:
             return 'valid';
     }
@@ -74,6 +74,7 @@ const ResumeGenerator = () => {
     const [validationError, setValidationError] = useState<any>(null);
     const [inputValidationWarning, setInputValidationWarning] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
+    const [error, setError] = useState<string | null>(null);
 
     const handleGenerate = async () => {
         if (!profile.trim()) return;
@@ -82,6 +83,7 @@ const ResumeGenerator = () => {
         setOutputValidation(null);
         setValidationError(null);
         setInputValidationWarning(null);
+        setError(null);
         setActiveTab('overview');
         try {
             const response = await api.post('/generate/resume', { profile });
@@ -96,7 +98,8 @@ const ResumeGenerator = () => {
             if (err.response?.status === 422 && err.response?.data?.detail?.error === 'not_a_resume') {
                 setValidationError(err.response.data.detail.validation);
             } else {
-                console.error(err);
+                const msg = err.response?.data?.detail || err.message || 'Resume generation failed. Please try again.';
+                setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             }
         } finally {
             setGenerating(false);
@@ -214,7 +217,18 @@ const ResumeGenerator = () => {
                         </div>
                     )}
 
-                    {!resume && !generating && !validationError && (
+                    {error && !validationError && (
+                        <div className="mb-4">
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium">
+                                <div className="flex items-center gap-2 mb-1 font-black text-[10px] uppercase tracking-widest text-red-500">
+                                    <AlertCircle className="w-3.5 h-3.5" /> Generation Error
+                                </div>
+                                {error}
+                            </div>
+                        </div>
+                    )}
+
+                    {!resume && !generating && !validationError && !error && (
                         <EmptyState
                             icon={<FileText className="w-10 h-10" />}
                             heading="Preview Engine Standby"

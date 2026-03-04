@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText } from 'lucide-react';
+import { Search, Loader2, Star, AlertTriangle, AlertCircle, CheckCircle, Download, FileText } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
 import { PageHeader } from '../../common';
@@ -8,15 +8,19 @@ const AISearch = () => {
     const [query, setQuery] = useState('');
     const [searching, setSearching] = useState(false);
     const [results, setResults] = useState<any[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim()) return;
         setSearching(true);
+        setError(null);
         try {
             const response = await api.post('/search', { query });
-            setResults(response.data.results);
-        } catch (err) {
+            setResults(Array.isArray(response.data.results) ? response.data.results : []);
+        } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Search failed. Please try again.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             console.error(err);
         } finally {
             setSearching(false);
@@ -51,6 +55,16 @@ const AISearch = () => {
             </form>
 
             <div className="space-y-6">
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="font-bold text-xs uppercase tracking-wider text-red-500 mb-1">Search Error</p>
+                            {error}
+                        </div>
+                    </div>
+                )}
+
                 {searching && (
                     <div className="flex flex-col items-center justify-center py-20 text-slate-400 italic font-medium">
                         <Loader2 className="w-10 h-10 animate-spin mb-4 text-primary-500/50" />
