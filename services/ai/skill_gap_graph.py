@@ -5,7 +5,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, safe_parse_json
+from services.ai.common import get_llm, safe_parse_json, extract_skills_from_text
 
 class SkillGapState(TypedDict):
     resume_text: str
@@ -39,6 +39,15 @@ Return ONLY valid JSON:
         print(f"Error parsing resume skills: {e}")
         skills = []
 
+    # Keyword fallback: augment if LLM returned few/no skills
+    if len(skills) < 3:
+        extracted = extract_skills_from_text(state["resume_text"])
+        existing_lower = {s.lower() for s in skills}
+        for s in extracted:
+            if s.lower() not in existing_lower:
+                skills.append(s)
+                existing_lower.add(s.lower())
+
     return {"resume_skills": skills}
 
 
@@ -65,6 +74,15 @@ Return ONLY valid JSON:
     except Exception as e:
         print(f"Error parsing JD skills: {e}")
         skills = []
+
+    # Keyword fallback: augment if LLM returned few/no skills
+    if len(skills) < 3:
+        extracted = extract_skills_from_text(state["jd_text"])
+        existing_lower = {s.lower() for s in skills}
+        for s in extracted:
+            if s.lower() not in existing_lower:
+                skills.append(s)
+                existing_lower.add(s.lower())
 
     return {"jd_skills": skills}
 

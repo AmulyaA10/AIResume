@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, De
 from fastapi.responses import FileResponse
 from typing import List, Optional
 import os
+import re
 import shutil
 
 from app.dependencies import get_current_user, resolve_credentials
@@ -11,6 +12,7 @@ from app.common import precheck_resume_validation
 from services.resume_parser import extract_text
 from services.db.lancedb_client import store_resume
 from services.agent_controller import run_resume_validation
+from services.ai.common import extract_skills_from_text
 
 # Allowed file extensions for upload
 ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt", "rtf"}
@@ -88,11 +90,29 @@ async def upload_resumes(
                 print(f"Storing in DB: {safe_filename}")
                 store_resume(safe_filename, text, user_id, api_key=creds["openrouter_key"])
 
+            # Quick text-based field presence check (no structured JSON needed)
+            extracted_skills = extract_skills_from_text(text) if text.strip() else []
+            text_field_check = {
+                "skills_detected": len(extracted_skills),
+                "skills_sample": extracted_skills[:10],
+                "has_email": bool(re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)),
+                "has_phone": bool(re.search(r'[\+\(]?[\d\s\-\(\)]{7,}', text)),
+                "has_education_keywords": bool(re.search(
+                    r'\b(university|college|bachelor|master|ph\.?d|degree|b\.?s\.?|m\.?s\.?|b\.?a\.?|m\.?b\.?a)\b',
+                    text, re.IGNORECASE
+                )),
+                "has_experience_keywords": bool(re.search(
+                    r'\b(experience|worked|employed|managed|led|developed|engineered)\b',
+                    text, re.IGNORECASE
+                )),
+            }
+
             classification = (validation or {}).get("classification", "N/A")
             results.append({
                 "filename": safe_filename,
                 "status": "indexed",
-                "validation": validation
+                "validation": validation,
+                "field_check": text_field_check,
             })
             safe_log_activity(user_id, "upload", safe_filename, 0, classification)
 

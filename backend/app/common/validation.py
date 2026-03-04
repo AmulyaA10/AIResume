@@ -27,6 +27,7 @@ MANDATORY_CONTACT_FIELDS = [
     ("email", "Email", True),
     ("phone", "Phone", True),
     ("location", "Location", False),
+    ("linkedin", "LinkedIn URL", False),
 ]
 
 MANDATORY_SECTIONS = [

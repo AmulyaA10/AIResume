@@ -9,6 +9,7 @@ from app.routes.v1.user import router as user_router
 from app.routes.v1.health import router as health_router
 from app.routes.v1.jobs import router as jobs_router
 from app.routes.v1.match import router as match_router
+from app.routes.v1.validate import router as validate_router
 
 __all__ = [
     "auth_router",
@@ -22,4 +23,5 @@ __all__ = [
     "health_router",
     "jobs_router",
     "match_router",
+    "validate_router",
 ]

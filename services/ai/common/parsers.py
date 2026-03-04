@@ -144,6 +144,46 @@ def repair_json(text: str) -> str:
     return text
 
 
+# ─── Keyword-based skill extraction (deterministic fallback) ─────────────────
+SKILL_PATTERNS = [
+    # Languages
+    "Python", "Java", "JavaScript", "TypeScript", "C\\+\\+", "C#", "Go", "Rust",
+    "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "SQL", "Bash",
+    # Frameworks
+    "React", "Angular", "Vue", "Django", "Flask", "FastAPI", "Spring", "Express",
+    "Next\\.js", "Node\\.js", "Rails", ".NET", "Laravel", "Svelte",
+    # Cloud / DevOps
+    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "Jenkins",
+    "CI/CD", "GitHub Actions", "CircleCI", "Ansible",
+    # Data / ML
+    "TensorFlow", "PyTorch", "Spark", "Hadoop", "Kafka", "Airflow",
+    "Pandas", "NumPy", "Scikit-learn", "LangChain", "OpenAI",
+    # Databases
+    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "DynamoDB",
+    "Cassandra", "SQLite", "Oracle",
+    # Tools
+    "Git", "Jira", "Figma", "Tableau", "Power BI", "Grafana", "Splunk",
+    "Linux", "REST", "GraphQL", "gRPC", "Microservices", "Agile", "Scrum",
+]
+
+
+def extract_skills_from_text(text: str) -> list:
+    """Extract technology/tool mentions from free text using keyword matching.
+
+    Shared safety-net used by resume_generator_graph, skill_gap_graph, and
+    any other module that needs deterministic skill extraction as an LLM fallback.
+    """
+    found = []
+    seen_lower: set = set()
+    for pattern in SKILL_PATTERNS:
+        if re.search(r'\b' + pattern + r'\b', text, re.IGNORECASE):
+            canonical = pattern.replace("\\+", "+").replace("\\.", ".")
+            if canonical.lower() not in seen_lower:
+                found.append(canonical)
+                seen_lower.add(canonical.lower())
+    return found
+
+
 def safe_parse_json(raw_content: str) -> dict:
     """Parse LLM output as JSON with automatic repair.
 

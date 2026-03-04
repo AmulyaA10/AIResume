@@ -111,8 +111,14 @@ const ResumeGenerator = () => {
         }
     };
 
+    const hasRequiredFieldErrors = fieldValidation?.errors?.length > 0;
+
     const handleExport = async () => {
         if (!resume) return;
+        if (hasRequiredFieldErrors) {
+            setError('Cannot export: required fields are missing. Please fix the errors shown below before exporting.');
+            return;
+        }
         try {
             const response = await api.post('/generate/export', resume, {
                 responseType: 'blob'
@@ -126,6 +132,27 @@ const ResumeGenerator = () => {
             link.remove();
         } catch (err) {
             console.error('Export failed:', err);
+        }
+    };
+
+    const handleRefine = async () => {
+        if (!resume) return;
+        setGenerating(true);
+        setError(null);
+        try {
+            const response = await api.post('/generate/refine', resume);
+            setResume(response.data.resume_json);
+            if (response.data.field_validation) {
+                setFieldValidation(response.data.field_validation);
+            }
+            if (response.data.output_validation) {
+                setOutputValidation(response.data.output_validation);
+            }
+        } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Refine failed. Please try again.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        } finally {
+            setGenerating(false);
         }
     };
 
@@ -256,12 +283,28 @@ const ResumeGenerator = () => {
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                         <FileText className="w-3.5 h-3.5" /> Live Preview
                                     </span>
-                                    <button
-                                        onClick={handleExport}
-                                        className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95"
-                                    >
-                                        <Download className="w-3.5 h-3.5" /> Export DOCX
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={handleRefine}
+                                            disabled={generating}
+                                            className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                            title="Re-extract skills from experience text and re-validate"
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5" /> Refine Skills
+                                        </button>
+                                        <button
+                                            onClick={handleExport}
+                                            disabled={hasRequiredFieldErrors}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 ${
+                                                hasRequiredFieldErrors
+                                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                                            }`}
+                                            title={hasRequiredFieldErrors ? 'Fix required field errors before exporting' : 'Export as DOCX'}
+                                        >
+                                            <Download className="w-3.5 h-3.5" /> Export DOCX
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Category tabs */}
