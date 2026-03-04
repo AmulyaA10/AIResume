@@ -35,8 +35,8 @@ Return ONLY valid JSON:
     response = llm.invoke(prompt.format(resume=state["resume_text"]))
     try:
         skills = safe_parse_json(response.content).get("skills", [])
-    except json.JSONDecodeError:
-        print(f"Error parsing resume skills: {response.content[:500]}")
+    except Exception as e:
+        print(f"Error parsing resume skills: {e}")
         skills = []
 
     return {"resume_skills": skills}
@@ -62,8 +62,8 @@ Return ONLY valid JSON:
     response = llm.invoke(prompt.format(jd=state["jd_text"]))
     try:
         skills = safe_parse_json(response.content).get("skills", [])
-    except json.JSONDecodeError:
-        print(f"Error parsing JD skills: {response.content[:500]}")
+    except Exception as e:
+        print(f"Error parsing JD skills: {e}")
         skills = []
 
     return {"jd_skills": skills}

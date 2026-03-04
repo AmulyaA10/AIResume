@@ -205,6 +205,7 @@ const ResumeUpload = () => {
     const [files, setFiles] = useState<any[]>([]);
     const [uploading, setUploading] = useState(false);
     const [results, setResults] = useState<any[]>([]);
+    const [uploadError, setUploadError] = useState<string | null>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -222,6 +223,7 @@ const ResumeUpload = () => {
         if (files.length === 0) return;
         setUploading(true);
         setResults([]);
+        setUploadError(null);
 
         const formData = new FormData();
         files.forEach(f => formData.append('files', f.file));
@@ -235,6 +237,8 @@ const ResumeUpload = () => {
             setResults(response.data.processed);
             setFiles(prev => prev.map(f => ({ ...f, status: 'indexed' })));
         } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Upload failed. Please try again.';
+            setUploadError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             console.error("Upload error details:", err.response?.data || err.message);
             setFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
         } finally {
@@ -251,6 +255,16 @@ const ResumeUpload = () => {
                     : "Upload your resume for AI validation, quality scoring, and optimization."
                 }
             />
+
+            {uploadError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-bold text-xs uppercase tracking-wider text-red-500 mb-1">Upload Error</p>
+                        {uploadError}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">
