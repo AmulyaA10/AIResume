@@ -19,6 +19,7 @@ class AnalyzeRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     profile: str
+    refinement_instructions: Optional[str] = None
 
 
 class LinkedInScrapeRequest(BaseModel):

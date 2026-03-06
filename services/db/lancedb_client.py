@@ -373,6 +373,90 @@ def migrate_orphaned_settings(old_user_id: str, new_user_id: str):
     except Exception as e:
         print(f"MIGRATION: Failed to migrate settings from {old_user_id} to {new_user_id}: {e}")
 
+# ---------- RESUME METADATA (validation scores) ----------
+resume_meta_schema = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("user_id", pa.string()),
+    pa.field("filename", pa.string()),
+    pa.field("validation_json", pa.string()),
+    pa.field("uploaded_at", pa.string()),
+])
+
+def get_or_create_resume_meta_table():
+    if "resume_meta" in db.table_names():
+        return db.open_table("resume_meta")
+    return db.create_table("resume_meta", schema=resume_meta_schema, mode="create")
+
+def store_resume_validation(user_id: str, filename: str, validation: dict):
+    """Upsert validation results for a resume."""
+    import json
+    from datetime import datetime
+    table = get_or_create_resume_meta_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+    except Exception:
+        pass
+    table.add([{
+        "id": str(uuid4()),
+        "user_id": user_id,
+        "filename": filename,
+        "validation_json": json.dumps(validation or {}),
+        "uploaded_at": datetime.now().isoformat(),
+    }])
+
+def get_resume_validations(user_id: str) -> dict:
+    """Return {filename: validation_dict} for all resumes of a user."""
+    import json
+    table = get_or_create_resume_meta_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return {}
+        user_df = df[df['user_id'] == user_id]
+        result = {}
+        for _, row in user_df.iterrows():
+            try:
+                result[row['filename']] = json.loads(row['validation_json'])
+            except Exception:
+                result[row['filename']] = {}
+        return result
+    except Exception as e:
+        print(f"DEBUG: Failed to get resume validations for {user_id}: {e}")
+        return {}
+
+def delete_resume_validation(user_id: str, filename: str):
+    """Remove validation record for a resume."""
+    table = get_or_create_resume_meta_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+    except Exception:
+        pass
+
+# ---------- DELETE USER RESUME ----------
+def delete_user_resume(user_id: str, filename: str):
+    """Delete all LanceDB entries for a specific user's resume."""
+    table = get_or_create_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+        print(f"DEBUG: Deleted resume '{filename}' for user {user_id}")
+    except Exception as e:
+        print(f"DEBUG: Failed to delete resume '{filename}' for {user_id}: {e}")
+        raise e
+
+# ---------- LIST USER RESUMES ----------
+def list_user_resumes(user_id: str) -> list:
+    """Return a list of unique filenames uploaded by the given user."""
+    table = get_or_create_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return []
+        user_df = df[df['user_id'] == user_id]
+        return user_df['filename'].drop_duplicates().tolist()
+    except Exception as e:
+        print(f"DEBUG: Failed to list resumes for {user_id}: {e}")
+        return []
+
 # ---------- SEARCH ----------
 def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None, is_recruiter: bool = False):
     print(f"DEBUG: Semantic search query: {query} (User: {user_id}, IsRecruiter: {is_recruiter})")

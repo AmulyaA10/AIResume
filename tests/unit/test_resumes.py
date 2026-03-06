@@ -110,3 +110,39 @@ async def test_download_nonexistent_file(app, auth_headers):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/resumes/download/nonexistent.pdf", headers=auth_headers)
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_resume_text_returns_ats_normalized_text(app, auth_headers):
+    """GET /api/v1/resumes/text/<file> returns ATS-style normalized text."""
+    raw_text = """JANE DOE
+jane@example.com | +1 555 123 4567
+LinkedIn: https://linkedin.com/in/janedoe
+
+Summary
+Senior backend engineer with 8 years experience.
+
+Technical Skills
+Python, FastAPI, SQL
+
+Work Experience
+Senior Engineer | Acme | 2021 - Present
+• Reduced API latency by 35%
+
+Education
+BS Computer Science | State University | 2017
+"""
+    with (
+        patch("app.routes.v1.resumes.os.path.exists", return_value=True),
+        patch("app.routes.v1.resumes.extract_text", return_value=raw_text),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/resumes/text/sample.docx", headers=auth_headers)
+
+    assert resp.status_code == 200
+    text = resp.json()["text"]
+    assert "PROFESSIONAL SUMMARY" in text
+    assert "CORE COMPETENCIES" in text
+    assert "PROFESSIONAL EXPERIENCE" in text
+    assert "EDUCATION" in text
+    assert "- Reduced API latency by 35%" in text
