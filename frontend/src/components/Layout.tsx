@@ -15,8 +15,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                         <span className="text-xs font-black text-blue-600 bg-blue-50 px-2.5 py-1 rounded tracking-widest">
                             {persona ? persona.toUpperCase() : 'GUEST'} MODE
                         </span>
-                        <div className="h-4 w-px bg-slate-200"></div>
-                        <span className="text-xs font-semibold text-slate-400">Environment: <span className="text-slate-900">PROD-LLM-01</span></span>
                     </div>
                     {user && (
                         <div className="flex items-center gap-3">
