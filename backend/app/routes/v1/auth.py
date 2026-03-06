@@ -6,6 +6,7 @@ import urllib.parse
 from app.models import LoginRequest
 from app.config import (
     GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
     LINKEDIN_CLIENT_ID,
     LINKEDIN_CLIENT_SECRET,
     FRONTEND_URL,
@@ -33,9 +34,35 @@ async def auth_google():
 
 @router.get("/google/callback")
 async def auth_google_callback(code: str):
-    # In a real app, exchange code for token here
-    # For now, redirect to frontend with a mock token
-    return RedirectResponse(url=f"{FRONTEND_URL}/auth/callback?token=mock-google-token&name=Alex%20Chen")
+    import requests as req
+    display_name = "Google User"
+    email = "user@example.com"
+
+    if GOOGLE_CLIENT_ID != "placeholder_id" and GOOGLE_CLIENT_SECRET != "placeholder_secret":
+        try:
+            token_res = req.post("https://oauth2.googleapis.com/token", data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": f"{BACKEND_URL}/api/auth/google/callback",
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+            })
+            token_data = token_res.json()
+            if "access_token" in token_data:
+                userinfo_res = req.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {token_data['access_token']}"}
+                )
+                if userinfo_res.status_code == 200:
+                    user_data = userinfo_res.json()
+                    display_name = user_data.get("name", display_name)
+                    email = user_data.get("email", email)
+        except Exception as e:
+            print(f"--- Google Auth Exception: {e} ---")
+
+    encoded_name = urllib.parse.quote(display_name)
+    encoded_email = urllib.parse.quote(email)
+    return RedirectResponse(url=f"{FRONTEND_URL}/auth/callback?token=mock-google-token&name={encoded_name}&email={encoded_email}")
 
 
 @router.get("/linkedin")
