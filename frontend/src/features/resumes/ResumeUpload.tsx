@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Upload, File, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Shield, AlertTriangle, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, File, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Shield, AlertTriangle, BarChart3, ChevronDown, ChevronUp, Download, Trash2 } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PageHeader } from '../../common';
 
 const classificationConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
     not_resume: { label: 'Not a Resume', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
@@ -202,6 +201,30 @@ const ResumeUpload = () => {
     const [files, setFiles] = useState<any[]>([]);
     const [uploading, setUploading] = useState(false);
     const [results, setResults] = useState<any[]>([]);
+    const [myResumes, setMyResumes] = useState<{ filename: string; validation: any }[]>([]);
+
+    const fetchMyResumes = async () => {
+        try {
+            const response = await api.get('/resumes/list');
+            setMyResumes(response.data.resumes || []);
+        } catch (err) {
+            console.error('Failed to fetch resumes:', err);
+        }
+    };
+
+    useEffect(() => {
+        fetchMyResumes();
+    }, []);
+
+    const handleDelete = async (filename: string) => {
+        if (!window.confirm(`Delete "${filename}"?`)) return;
+        try {
+            await api.delete(`/resumes/${encodeURIComponent(filename)}`);
+            fetchMyResumes();
+        } catch (err) {
+            console.error('Delete failed:', err);
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -231,6 +254,7 @@ const ResumeUpload = () => {
             console.log("Upload response:", response.data);
             setResults(response.data.processed);
             setFiles(prev => prev.map(f => ({ ...f, status: 'indexed' })));
+            fetchMyResumes();
         } catch (err: any) {
             console.error("Upload error details:", err.response?.data || err.message);
             setFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
@@ -240,118 +264,249 @@ const ResumeUpload = () => {
     };
 
     return (
-        <div className="space-y-8">
-            <PageHeader
-                title="Resume Manager"
-                subtitle="Upload candidate resumes to your private vector search database."
-            />
+        <div className="space-y-6">
+            {/* ── Page Header ── */}
+            <div className="flex items-center justify-between gap-6 pb-5 border-b border-slate-100">
+                <div>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Resume Manager</h1>
+                    <p className="text-slate-400 text-sm font-medium mt-0.5">Upload, manage, and index your resumes for AI-powered job matching.</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0 bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/60 rounded-2xl px-4 py-2.5 shadow-xl shadow-slate-900/20">
+                    <Sparkles className="w-3.5 h-3.5 text-primary-400 mr-1" />
+                    {['Validation', 'Embeddings', 'ATS Check'].map((label) => (
+                        <div key={label} className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">{label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="glass-card p-16 border-2 border-dashed border-slate-200 hover:border-primary-300 hover:bg-slate-50/50 transition-all cursor-pointer flex flex-col items-center justify-center text-center relative group">
+            {/* ── Main Grid ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                {/* Left — Upload + Queue */}
+                <div className="lg:col-span-2 space-y-5">
+
+                    {/* Drop zone */}
+                    <div className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white hover:border-primary-300 hover:from-primary-50/40 hover:to-white transition-all duration-300 cursor-pointer group overflow-hidden">
                         <input
                             type="file"
                             multiple
                             onChange={handleFileChange}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
                             accept=".pdf,.docx"
                         />
-                        <div className="w-16 h-16 bg-primary-50 rounded-2xl flex items-center justify-center mb-4 border border-primary-100 shadow-sm group-hover:scale-110 transition-transform">
-                            <Upload className="text-primary-600 w-8 h-8" />
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-900 mb-2">Click or drag resumes here</h3>
-                        <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium">Supports PDF and DOCX files. Files are validated by AI and indexed for semantic search.</p>
+                        {/* Decorative glow */}
+                        <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary-100 rounded-full blur-3xl opacity-0 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none" />
 
-                        {files.length > 0 && !uploading && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleUpload(); }}
-                                className="mt-6 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3 rounded-lg text-base font-bold flex items-center gap-2 shadow-lg shadow-primary-500/20 transition-all relative z-20"
-                            >
-                                <Upload className="w-5 h-5" />
-                                Process {files.length} Files
-                            </button>
-                        )}
-                        {uploading && (
-                            <div className="mt-6 flex items-center gap-3 text-primary-600 font-bold bg-primary-50 px-6 py-3 rounded-lg border border-primary-100">
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Validating & Indexing...
+                        <div className="flex flex-col items-center justify-center text-center py-14 px-8">
+                            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-5 border border-slate-200 shadow-md shadow-slate-100 group-hover:shadow-primary-100 group-hover:border-primary-200 group-hover:scale-105 transition-all duration-300">
+                                <Upload className="text-primary-500 w-7 h-7" />
                             </div>
-                        )}
-                    </div>
+                            <h3 className="text-base font-bold text-slate-800 mb-1">Drop resumes here or click to browse</h3>
+                            <p className="text-slate-400 text-xs font-medium max-w-xs">
+                                PDF & DOCX supported · AI validation · Vector indexed
+                            </p>
 
-                    <div className="glass-card">
-                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-                            <h3 className="font-bold flex items-center gap-2 text-slate-800">
-                                <File className="w-4 h-4 text-primary-500" />
-                                Processing Queue
-                            </h3>
-                            <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 tracking-widest">{files.length} FILES</span>
-                        </div>
-                        <div className="divide-y divide-slate-100">
-                            {files.length === 0 && (
-                                <div className="p-12 text-center text-slate-300 italic font-medium">
-                                    Queue is empty. Select files to see progress.
+                            {files.length > 0 && !uploading && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleUpload(); }}
+                                    className="mt-6 relative z-20 bg-primary-600 hover:bg-primary-500 active:scale-95 text-white px-7 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary-500/25 transition-all"
+                                >
+                                    <Upload className="w-4 h-4" />
+                                    Process {files.length} {files.length === 1 ? 'File' : 'Files'}
+                                </button>
+                            )}
+                            {uploading && (
+                                <div className="mt-6 flex items-center gap-2.5 text-primary-600 font-bold bg-primary-50 px-5 py-2.5 rounded-xl border border-primary-100 text-sm">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Validating & Indexing…
                                 </div>
                             )}
-                            {files.map((file, i) => (
-                                <div key={i} className="p-4 flex items-center gap-4 hover:bg-slate-50/50 transition-colors">
-                                    <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center border border-slate-200">
+                        </div>
+                    </div>
+
+                    {/* Processing Queue */}
+                    <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+                        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                            <h3 className="font-bold text-sm flex items-center gap-2 text-slate-700">
+                                <File className="w-4 h-4 text-primary-400" />
+                                Processing Queue
+                            </h3>
+                            <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200 tracking-widest">
+                                {files.length} FILES
+                            </span>
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                            {files.length === 0 ? (
+                                <div className="py-12 text-center text-slate-300 text-sm font-medium">
+                                    Queue is empty — select files above to begin.
+                                </div>
+                            ) : files.map((file, i) => (
+                                <div key={i} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/60 transition-colors">
+                                    <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 flex-shrink-0">
                                         <FileText className="w-4 h-4 text-slate-400" />
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-sm font-bold text-slate-700">{file.name}</span>
-                                            <span className={`text-[10px] font-black uppercase tracking-widest ${file.status === 'indexed' ? 'text-emerald-600' :
-                                                file.status === 'error' ? 'text-red-600' : 'text-primary-600'
-                                                }`}>{file.status}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <span className="text-sm font-semibold text-slate-700 truncate pr-2">{file.name}</span>
+                                            <span className={`text-[10px] font-black uppercase tracking-widest flex-shrink-0 ${
+                                                file.status === 'indexed' ? 'text-emerald-500' :
+                                                file.status === 'error' ? 'text-red-500' : 'text-primary-500'
+                                            }`}>{file.status}</span>
                                         </div>
-                                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+                                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
-                                                animate={{ width: file.status === 'indexed' ? '100%' : uploading ? '60%' : '0%' }}
-                                                className={`h-full ${file.status === 'indexed' ? 'bg-emerald-500' : 'bg-primary-500'}`}
+                                                animate={{ width: file.status === 'indexed' ? '100%' : uploading ? '65%' : '0%' }}
+                                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                                                className={`h-full rounded-full ${file.status === 'indexed' ? 'bg-emerald-400' : 'bg-primary-400'}`}
                                             />
                                         </div>
                                     </div>
-                                    {file.status === 'indexed' && <CheckCircle2 className="text-emerald-500 w-5 h-5 flex-shrink-0" />}
-                                    {file.status === 'error' && <AlertCircle className="text-red-500 w-5 h-5 flex-shrink-0" />}
+                                    {file.status === 'indexed' && <CheckCircle2 className="text-emerald-400 w-5 h-5 flex-shrink-0" />}
+                                    {file.status === 'error' && <AlertCircle className="text-red-400 w-5 h-5 flex-shrink-0" />}
                                 </div>
                             ))}
                         </div>
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="glass-card p-6 bg-primary-600 text-white shadow-lg shadow-primary-500/20">
-                        <h4 className="font-bold mb-4 flex items-center gap-2 text-primary-50">
-                            <Sparkles className="w-4 h-4" />
-                            AI Validation Active
-                        </h4>
-                        <p className="text-sm text-primary-100 leading-relaxed mb-6 font-medium">
-                            Our system validates documents, scores resume quality, and indexes embeddings into your vector store for sub-second semantic retrieval.
-                        </p>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-3 text-xs font-bold bg-white/10 p-2 rounded border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                Resume Validation: ON
-                            </div>
-                            <div className="flex items-center gap-3 text-xs font-bold bg-white/10 p-2 rounded border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                Vector Embeddings: ON
-                            </div>
-                            <div className="flex items-center gap-3 text-xs font-bold bg-white/10 p-2 rounded border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                ATS Compatibility Check
-                            </div>
+                {/* Right — My Documents */}
+                <div>
+                    <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden h-full">
+                        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+                            <h3 className="font-bold text-sm flex items-center gap-2 text-slate-700">
+                                <FileText className="w-4 h-4 text-primary-400" />
+                                My Documents
+                            </h3>
+                            <span className="text-[10px] font-black text-white bg-primary-500 px-2 py-0.5 rounded-full tracking-widest">
+                                {myResumes.length}
+                            </span>
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                            {myResumes.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                                    <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-3">
+                                        <FileText className="w-5 h-5 text-slate-300" />
+                                    </div>
+                                    <p className="text-sm font-semibold text-slate-300">No resumes yet</p>
+                                    <p className="text-xs text-slate-300 mt-0.5">Upload a file to get started</p>
+                                </div>
+                            ) : myResumes.map(({ filename, validation }, i) => {
+                                const ext = filename.split('.').pop()?.toUpperCase() || '';
+                                const totalScore: number | null = validation?.total_score ?? null;
+                                const classification: string | null = validation?.classification ?? null;
+                                const atsScore: number | null = validation?.scores?.ats_friendliness ?? null;
+                                const qualityScore: number | null = validation?.scores?.achievement_quality ?? null;
+                                const scorePct = totalScore !== null ? Math.round((totalScore / 30) * 100) : null;
+                                const classConfig = classification ? (classificationConfig[classification] || classificationConfig.resume_valid_good) : null;
+                                const barColor = scorePct !== null
+                                    ? scorePct >= 83 ? 'bg-emerald-400' : scorePct >= 60 ? 'bg-amber-400' : 'bg-red-400'
+                                    : 'bg-slate-200';
+
+                                return (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, x: 8 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: i * 0.04 }}
+                                        className="px-4 py-3.5 hover:bg-slate-50/70 transition-colors group/row"
+                                    >
+                                        {/* Top row: icon + name + actions */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-primary-50 border border-primary-100 flex items-center justify-center flex-shrink-0">
+                                                <FileText className="w-4 h-4 text-primary-400" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-slate-700 truncate">{filename}</p>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className="text-[10px] font-black text-slate-400 tracking-widest">{ext}</span>
+                                                    {classConfig && (
+                                                        <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${classConfig.color} ${classConfig.bg} ${classConfig.border}`}>
+                                                            {classConfig.label}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity flex-shrink-0">
+                                                <a
+                                                    href={`${api.defaults.baseURL}/resumes/download/${encodeURIComponent(filename)}`}
+                                                    download={filename}
+                                                    className="w-7 h-7 rounded-lg hover:bg-primary-50 flex items-center justify-center text-slate-400 hover:text-primary-600 transition-colors"
+                                                    title="Download"
+                                                >
+                                                    <Download className="w-3.5 h-3.5" />
+                                                </a>
+                                                <button
+                                                    onClick={() => handleDelete(filename)}
+                                                    className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Score row */}
+                                        {totalScore !== null && (
+                                            <div className="mt-2.5 ml-12 space-y-2">
+                                                {/* Overall score bar */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                        <motion.div
+                                                            initial={{ width: 0 }}
+                                                            animate={{ width: `${scorePct}%` }}
+                                                            transition={{ duration: 0.7, ease: 'easeOut' }}
+                                                            className={`h-full rounded-full ${barColor}`}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-slate-500 flex-shrink-0">{totalScore}/30</span>
+                                                </div>
+                                                {/* Key metric chips */}
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                    {atsScore !== null && (
+                                                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-md px-1.5 py-0.5">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ATS</span>
+                                                            <span className={`text-[10px] font-black ${atsScore >= 4 ? 'text-emerald-500' : atsScore >= 3 ? 'text-amber-500' : 'text-red-400'}`}>{atsScore}/5</span>
+                                                        </div>
+                                                    )}
+                                                    {qualityScore !== null && (
+                                                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-md px-1.5 py-0.5">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Quality</span>
+                                                            <span className={`text-[10px] font-black ${qualityScore >= 4 ? 'text-emerald-500' : qualityScore >= 3 ? 'text-amber-500' : 'text-red-400'}`}>{qualityScore}/5</span>
+                                                        </div>
+                                                    )}
+                                                    {validation?.scores?.completeness != null && (
+                                                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-md px-1.5 py-0.5">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Complete</span>
+                                                            <span className={`text-[10px] font-black ${validation.scores.completeness >= 4 ? 'text-emerald-500' : validation.scores.completeness >= 3 ? 'text-amber-500' : 'text-red-400'}`}>{validation.scores.completeness}/5</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {totalScore === null && (
+                                            <p className="mt-1.5 ml-12 text-[10px] text-slate-300 italic">No validation data</p>
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
             </div>
 
+            {/* ── Validation Results ── */}
             <AnimatePresence>
                 {results.length > 0 && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                        <h3 className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Validation Results</h3>
+                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="h-px flex-1 bg-slate-100" />
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Validation Results</span>
+                            <div className="h-px flex-1 bg-slate-100" />
+                        </div>
                         {results.map((res, i) => (
                             <ValidationCard key={i} validation={res.validation} filename={res.filename} />
                         ))}
