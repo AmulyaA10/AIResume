@@ -122,10 +122,10 @@ const MyApplications: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-6 text-right">
                                     <Link
-                                        to={`/jobs/${job.job_id}`}
+                                        to="/search"
                                         className="inline-flex items-center gap-1 text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest transition-all"
                                     >
-                                        Details <ExternalLink size={14} />
+                                        Find Jobs <ExternalLink size={14} />
                                     </Link>
                                 </td>
                             </motion.tr>
@@ -162,10 +162,10 @@ const MyApplications: React.FC = () => {
                         </div>
 
                         <Link
-                            to={`/jobs/${job.job_id}`}
+                            to="/search"
                             className="w-full inline-flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 text-slate-600 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all"
                         >
-                            View Details <ArrowRight size={14} />
+                            Find More Jobs <ArrowRight size={14} />
                         </Link>
                     </motion.div>
                 ))}

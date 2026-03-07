@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { FileText, Loader2, Download, Sparkles, CheckCircle2, ChevronRight, Save, RotateCcw, ArrowRight, TrendingUp, TrendingDown, Minus, PenLine, AlertCircle } from 'lucide-react';
+import { FileText, Loader2, Download, Sparkles, CheckCircle2, ChevronRight, Save, RotateCcw, ArrowRight, TrendingUp, TrendingDown, Minus, PenLine, AlertCircle, User, Briefcase, GraduationCap, Award, FolderOpen } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmptyState, LoadingOverlay, ActionButton, FormTextarea, ValidationBanner } from '../../common';
@@ -663,60 +663,7 @@ const ResumeGenerator = () => {
                                     }
                                     onDismiss={() => setOutputValidation(null)}
                                 />
-                                    <div className="mb-10">
-                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Professional Summary</h3>
-                                        <p className="text-xs leading-relaxed text-slate-700 text-justify font-medium">{resume.summary}</p>
-                                    </div>
-
-                                    <div className="mb-10">
-                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Core Competencies</h3>
-                                        <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                                            {resume.skills?.map((s: string, i: number) => (
-                                                <div key={i} className="text-[11px] flex items-center gap-3 font-semibold text-slate-800">
-                                                    <div className="w-1.5 h-1.5 bg-primary-500 rounded-full shrink-0" />{s}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="mb-10">
-                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-6 text-slate-400">Professional Experience</h3>
-                                        <div className="space-y-8">
-                                            {resume.experience?.map((exp: any, i: number) => (
-                                                <div key={i} className="group">
-                                                    <div className="flex justify-between items-baseline mb-1">
-                                                        <h4 className="font-black text-sm text-slate-900 group-hover:text-primary-600 transition-colors uppercase tracking-tight">{exp.title}</h4>
-                                                        <span className="text-[10px] italic font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{exp.period}</span>
-                                                    </div>
-                                                    <p className="text-[10px] font-black text-primary-600 mb-3 uppercase tracking-widest">{exp.company}</p>
-                                                    <ul className="space-y-2 list-none">
-                                                        {exp.bullets?.map((b: string, j: number) => (
-                                                            <li key={j} className="text-[11px] leading-relaxed text-slate-600 flex items-start gap-2 font-medium">
-                                                                <span className="text-slate-300 mt-1.5">•</span>{b}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <h3 className="text-xs font-black uppercase tracking-[0.3em] border-b border-slate-200 pb-1 mb-4 text-slate-400">Education</h3>
-                                        <div className="space-y-4">
-                                            {resume.education?.map((edu: any, i: number) => (
-                                                <div key={i} className="flex justify-between items-center">
-                                                    <div>
-                                                        <p className="text-[11px] font-black text-slate-900">{edu.degree}</p>
-                                                        <p className="text-[10px] text-slate-500 font-bold tracking-tight">{edu.school}</p>
-                                                    </div>
-                                                    <span className="text-[10px] font-black text-slate-400">{edu.year}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
+                            )}
 
                             {/* Quality Comparison */}
                             {(() => {
