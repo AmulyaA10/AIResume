@@ -128,6 +128,20 @@ async def create_job(job: JobCreate, user_id: str = Depends(get_current_user)):
     table.add([job_dict])
     return _serialize_job(job_dict)
 
+@router.get("/public", response_model=List[JobResponse])
+async def list_public_jobs(
+    skip: int = 0,
+    limit: int = 50,
+    user_id: str = Depends(get_current_user)
+):
+    """Return all jobs for job seekers to browse (no user_id filter)."""
+    table = get_or_create_jobs_table()
+    try:
+        results = table.search().limit(limit + skip).to_list()
+        return [_serialize_job(r) for r in results[skip:skip + limit]]
+    except Exception:
+        return []
+
 @router.get("", response_model=List[JobResponse])
 async def list_jobs(
     skip: int = 0,

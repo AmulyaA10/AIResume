@@ -17,13 +17,25 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     token = authorization.replace("Bearer ", "") if authorization else "guest"
     print(f"DEBUG: [auth] Authorization Header: '{authorization}' -> Token: '{token}'")
 
-    if "recruiter" in token:
+    if "manager" in token:
+        user_id = "user_manager_789"
+    elif "recruiter" in token:
         user_id = "user_recruiter_456"
     else:
         user_id = "user_alex_chen_123"
 
     print(f"DEBUG: [auth] Resolved User ID: {user_id}")
     return user_id
+
+
+async def get_user_role(authorization: Optional[str] = Header(None)) -> str:
+    """Return the role of the current user: 'manager', 'recruiter', or 'jobseeker'."""
+    token = authorization.replace("Bearer ", "") if authorization else "guest"
+    if "manager" in token:
+        return "manager"
+    if "recruiter" in token:
+        return "recruiter"
+    return "jobseeker"
 
 
 async def resolve_credentials(

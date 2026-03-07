@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 
-from app.dependencies import get_current_user, resolve_credentials
+from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.config import UPLOAD_DIR
 from app.common import build_llm_config, safe_log_activity
 from app.common import precheck_resume_validation
@@ -160,17 +160,105 @@ async def delete_resume(filename: str, user_id: str = Depends(get_current_user))
     return {"success": True, "deleted": filename}
 
 
-@router.get("/text/{filename}")
+@router.get("")
+async def list_resumes_all(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+):
+    """Return distinct resume filenames with role-based access.
+    - jobseeker: only their own resumes
+    - recruiter/manager: all resumes across all users, with uploader attribution
+    """
+    from services.db.lancedb_client import get_or_create_table, list_all_resumes_with_users
+    try:
+        if role in ("recruiter", "manager"):
+            all_resumes = list_all_resumes_with_users()
+            return {"resumes": [r["filename"] for r in all_resumes], "all_resumes": all_resumes}
+        table = get_or_create_table()
+        rows = table.search().where(f"user_id = '{user_id}'").to_list()
+        seen = set()
+        filenames = []
+        for row in rows:
+            fn = row.get("filename")
+            if fn and fn not in seen:
+                seen.add(fn)
+                filenames.append(fn)
+        return {"resumes": filenames}
+    except Exception:
+        return {"resumes": []}
+
+
+@router.get("/{filename}/text")
 async def get_resume_text(filename: str, user_id: str = Depends(get_current_user)):
-    """Return ATS-normalized plain text for refinement input."""
+    """Return extracted text for a resume file."""
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
+    text = extract_text(file_path)
+    return {"filename": filename, "text": text}
+
+
+class ResumeTextUpdate(BaseModel):
+    text: str
+
+
+class ResumeRename(BaseModel):
+    new_filename: str
+
+
+@router.put("/{filename}/text")
+async def update_resume_text(
+    filename: str,
+    body: ResumeTextUpdate,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user)
+):
+    """Update extracted text for a resume and re-index in vector DB."""
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    from services.db.lancedb_client import update_resume_text as db_update
     try:
-        text = to_ats_text(extract_text(file_path))
-        return {"filename": filename, "text": text}
+        db_update(filename, user_id, body.text, api_key=creds["openrouter_key"])
+        return {"success": True, "filename": filename}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{filename}/rename")
+async def rename_resume(
+    filename: str,
+    body: ResumeRename,
+    user_id: str = Depends(get_current_user)
+):
+    """Rename a resume and propagate the change to all dependent data."""
+    from services.db.lancedb_client import rename_resume as db_rename
+
+    new_filename = body.new_filename.strip()
+    if not new_filename:
+        raise HTTPException(status_code=400, detail="New filename cannot be empty")
+    if new_filename == filename:
+        return {"success": True, "filename": new_filename}
+
+    old_path = os.path.join(UPLOAD_DIR, filename)
+    new_path = os.path.join(UPLOAD_DIR, new_filename)
+
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=409, detail="A file with that name already exists")
+
+    file_renamed = False
+    if os.path.exists(old_path):
+        os.rename(old_path, new_path)
+        file_renamed = True
+
+    try:
+        db_rename(filename, new_filename, user_id)
+    except Exception as e:
+        if file_renamed:
+            os.rename(new_path, old_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    safe_log_activity(user_id, "rename", new_filename, 0, "N/A")
+    return {"success": True, "filename": new_filename}
 
 
 @router.get("/download/{filename}")

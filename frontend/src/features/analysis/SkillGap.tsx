@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
-import api from '../../api';
+import React, { useState, useEffect } from 'react';
+import { BrainCircuit, Loader2, Sparkles, AlertCircle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
+import api, { jobsApi } from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageHeader, EmptyState, ActionButton, FormTextarea, ValidationBanner } from '../../common';
 
@@ -12,6 +12,55 @@ const SkillGap = () => {
     const [validationError, setValidationError] = useState<any>(null);
     const [validationWarning, setValidationWarning] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [resumes, setResumes] = useState<string[]>([]);
+    const [selectedResume, setSelectedResume] = useState('');
+    const [loadingResume, setLoadingResume] = useState(false);
+    const [jobs, setJobs] = useState<any[]>([]);
+    const [selectedJob, setSelectedJob] = useState('');
+    const [loadingJob, setLoadingJob] = useState(false);
+
+    useEffect(() => {
+        api.get('/resumes').then(r => setResumes(r.data.resumes || [])).catch(() => {});
+        jobsApi.list({ limit: 100 }).then(r => setJobs(r.data || [])).catch(() => {});
+    }, []);
+
+    const handleResumeSelect = async (filename: string) => {
+        setSelectedResume(filename);
+        if (!filename) { setResumeText(''); return; }
+        setLoadingResume(true);
+        try {
+            const r = await api.get(`/resumes/${encodeURIComponent(filename)}/text`);
+            setResumeText(r.data.text || '');
+        } catch {
+            setResumeText('');
+        } finally {
+            setLoadingResume(false);
+        }
+    };
+
+    const handleJobSelect = async (jobId: string) => {
+        setSelectedJob(jobId);
+        if (!jobId) { setJdText(''); return; }
+        setLoadingJob(true);
+        try {
+            const r = await jobsApi.get(jobId);
+            const job = r.data;
+            const details = [
+                job.title && `Job Title: ${job.title}`,
+                job.employer_name && `Company: ${job.employer_name}`,
+                job.location_name && `Location: ${job.location_name}`,
+                job.employment_type && `Employment Type: ${job.employment_type}`,
+                job.job_level && `Level: ${job.job_level}`,
+                job.skills_required?.length && `Required Skills: ${job.skills_required.join(', ')}`,
+                job.description && `\n${job.description}`,
+            ].filter(Boolean).join('\n');
+            setJdText(details);
+        } catch {
+            setJdText('');
+        } finally {
+            setLoadingJob(false);
+        }
+    };
 
     const handleAnalyze = async () => {
         if (!resumeText.trim() || !jdText.trim()) return;
@@ -50,12 +99,62 @@ const SkillGap = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="glass-card p-8 flex flex-col gap-6 bg-white/70 border-slate-100 shadow-sm">
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                            Select Resume from Database
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={selectedResume}
+                                onChange={e => handleResumeSelect(e.target.value)}
+                                disabled={loadingResume}
+                                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-60"
+                            >
+                                <option value="">— choose a resume —</option>
+                                {resumes.map(fn => (
+                                    <option key={fn} value={fn}>{fn}</option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                                {loadingResume
+                                    ? <Loader2 size={16} className="text-slate-400 animate-spin" />
+                                    : <ChevronDown size={16} className="text-slate-400" />
+                                }
+                            </div>
+                        </div>
+                    </div>
                     <FormTextarea
                         label="Candidate Profile"
                         value={resumeText}
                         onChange={setResumeText}
                         placeholder="Paste resume text here..."
                     />
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                            Select Job from Database
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={selectedJob}
+                                onChange={e => handleJobSelect(e.target.value)}
+                                disabled={loadingJob}
+                                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-60"
+                            >
+                                <option value="">— choose a job —</option>
+                                {jobs.map(j => (
+                                    <option key={j.job_id} value={j.job_id}>
+                                        {j.title}{j.employer_name ? ` — ${j.employer_name}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                                {loadingJob
+                                    ? <Loader2 size={16} className="text-slate-400 animate-spin" />
+                                    : <ChevronDown size={16} className="text-slate-400" />
+                                }
+                            </div>
+                        </div>
+                    </div>
                     <FormTextarea
                         label="Job Description"
                         value={jdText}

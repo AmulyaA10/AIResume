@@ -35,6 +35,7 @@ api.interceptors.request.use((config) => {
 
 export const jobsApi = {
     list: (params: any) => api.get('/jobs', { params }),
+    listPublic: (params?: any) => api.get('/jobs/public', { params }),
     get: (id: string) => api.get(`/jobs/${id}`),
     create: (data: any) => api.post('/jobs', data),
     update: (id: string, data: any) => api.put(`/jobs/${id}`, data),
@@ -48,8 +49,22 @@ export const jobsApi = {
     getAppliedJobs: () => api.get('/jobs/my-applied'),
 };
 
+export const resumesApi = {
+    list: () => api.get('/resumes'),
+    getText: (filename: string) => api.get(`/resumes/${encodeURIComponent(filename)}/text`),
+    updateText: (filename: string, text: string) => api.put(`/resumes/${encodeURIComponent(filename)}/text`, { text }),
+    rename: (filename: string, newFilename: string) => api.put(`/resumes/${encodeURIComponent(filename)}/rename`, { new_filename: newFilename }),
+};
+
+export interface ResumeWithUser {
+    filename: string;
+    user_id: string;
+}
+
 export const matchApi = {
     matchResume: (resumeId: string, limit: number = 50) => api.get(`/match/resume/${resumeId}`, { params: { limit } }),
+    matchResumeSkills: (resumeId: string, limit: number = 100) => api.get(`/match/resume/${resumeId}/skills-match`, { params: { limit } }),
+    extractSkills: (resumeId: string) => api.get(`/match/resume/${resumeId}/extract-skills`),
     searchJobs: (query: string, limit: number = 50, filters: any = {}) => api.get('/match/search/jobs', { params: { q: query, limit, ...filters } }),
 };
 export default api;

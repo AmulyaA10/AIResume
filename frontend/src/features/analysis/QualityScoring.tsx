@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     BarChart3,
     Loader2,
@@ -10,7 +10,8 @@ import {
     ListChecks,
     User,
     CheckCircle2,
-    Target
+    Target,
+    ChevronDown
 } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
@@ -36,6 +37,27 @@ const QualityScoring = () => {
     const [validationError, setValidationError] = useState<any>(null);
     const [validationWarning, setValidationWarning] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [resumes, setResumes] = useState<string[]>([]);
+    const [selectedResume, setSelectedResume] = useState('');
+    const [loadingResume, setLoadingResume] = useState(false);
+
+    useEffect(() => {
+        api.get('/resumes').then(r => setResumes(r.data.resumes || [])).catch(() => {});
+    }, []);
+
+    const handleResumeSelect = async (filename: string) => {
+        setSelectedResume(filename);
+        if (!filename) { setText(''); return; }
+        setLoadingResume(true);
+        try {
+            const r = await api.get(`/resumes/${encodeURIComponent(filename)}/text`);
+            setText(r.data.text || '');
+        } catch {
+            setText('');
+        } finally {
+            setLoadingResume(false);
+        }
+    };
 
     const handleScore = async () => {
         if (!text.trim()) return;
@@ -73,6 +95,30 @@ const QualityScoring = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                            Select Resume from Database
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={selectedResume}
+                                onChange={e => handleResumeSelect(e.target.value)}
+                                disabled={loadingResume}
+                                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-60"
+                            >
+                                <option value="">— choose a resume —</option>
+                                {resumes.map(fn => (
+                                    <option key={fn} value={fn}>{fn}</option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                                {loadingResume
+                                    ? <Loader2 size={16} className="text-slate-400 animate-spin" />
+                                    : <ChevronDown size={16} className="text-slate-400" />
+                                }
+                            </div>
+                        </div>
+                    </div>
                     <FormTextarea
                         label="Candidate Resume"
                         value={text}
