@@ -124,7 +124,7 @@ const ResumeGenerator = () => {
         setPrevRefinedValidation(null);
         setRefinementInstructions(null);
         try {
-            const res = await api.get(`/resumes/text/${encodeURIComponent(filename)}`);
+            const res = await api.get(`/resumes/${encodeURIComponent(filename)}/text`);
             setProfile(res.data.text || '');
         } catch (err) {
             console.error('Failed to load resume text:', err);

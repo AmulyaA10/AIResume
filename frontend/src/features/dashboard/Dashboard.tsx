@@ -1,13 +1,14 @@
 import React from 'react';
 import { Linkedin, History, AlertCircle, User, ArrowRight, Users, CheckCircle, Target, Zap, Shield, FileCheck, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
 
 const Dashboard = () => {
     const { persona, user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [stats, setStats] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -26,7 +27,9 @@ const Dashboard = () => {
         };
 
         fetchStats();
-    }, []);
+        const interval = setInterval(fetchStats, 25000);
+        return () => clearInterval(interval);
+    }, [location.key]);
 
     const isRecruiter = persona === 'recruiter';
 

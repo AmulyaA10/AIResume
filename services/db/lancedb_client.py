@@ -457,6 +457,90 @@ def list_user_resumes(user_id: str) -> list:
         print(f"DEBUG: Failed to list resumes for {user_id}: {e}")
         return []
 
+# ---------- UPDATE ----------
+def update_resume_text(filename: str, user_id: str, new_text: str, api_key: str = None):
+    """Delete existing chunks for a resume and re-store with updated text."""
+    table = get_or_create_table()
+    try:
+        table.delete(f"filename = '{filename}' AND user_id = '{user_id}'")
+        print(f"DEBUG: Deleted old chunks for {filename} (user: {user_id})")
+    except Exception as e:
+        print(f"DEBUG: Error deleting old chunks: {e}")
+    store_resume(filename, new_text, user_id, api_key=api_key)
+
+
+def rename_resume(old_filename: str, new_filename: str, user_id: str):
+    """Propagate a resume rename across all tables that reference it by filename."""
+    safe_old = old_filename.replace("'", "''")
+
+    # 1. Update resumes table — keep existing vectors, just swap filename
+    table = get_or_create_table()
+    try:
+        import pandas as pd
+        df = table.to_pandas()
+        if not df.empty:
+            mask = (df['filename'] == old_filename) & (df['user_id'] == user_id)
+            rows = df[mask].copy()
+            if not rows.empty:
+                table.delete(f"filename = '{safe_old}' AND user_id = '{user_id}'")
+                rows['filename'] = new_filename
+                table.add(rows.to_dict('records'))
+                print(f"DEBUG: Renamed {len(rows)} resume chunks: {old_filename} -> {new_filename}")
+    except Exception as e:
+        print(f"DEBUG: Error renaming in resumes table: {e}")
+        raise
+
+    # 2. Update activity table
+    try:
+        activity_table = get_or_create_activity_table()
+        act_df = activity_table.to_pandas()
+        if not act_df.empty:
+            mask = (act_df['filename'] == old_filename) & (act_df['user_id'] == user_id)
+            rows = act_df[mask].copy()
+            if not rows.empty:
+                activity_table.delete(f"filename = '{safe_old}' AND user_id = '{user_id}'")
+                rows['filename'] = new_filename
+                activity_table.add(rows.to_dict('records'))
+                print(f"DEBUG: Updated {len(rows)} activity records for renamed resume")
+    except Exception as e:
+        print(f"DEBUG: Error updating activity table on rename: {e}")
+
+    # 3. Update job_resume_applied table (resume_id stores the filename)
+    try:
+        applied_table = get_or_create_job_applied_table()
+        applied_df = applied_table.to_pandas()
+        if not applied_df.empty:
+            mask = (applied_df['resume_id'] == old_filename) & (applied_df['user_id'] == user_id)
+            rows = applied_df[mask].copy()
+            if not rows.empty:
+                applied_table.delete(f"resume_id = '{safe_old}' AND user_id = '{user_id}'")
+                rows['resume_id'] = new_filename
+                applied_table.add(rows.to_dict('records'))
+                print(f"DEBUG: Updated {len(rows)} job application records for renamed resume")
+    except Exception as e:
+        print(f"DEBUG: Error updating job_resume_applied table on rename: {e}")
+
+
+# ---------- LIST ALL (recruiter/manager) ----------
+def list_all_resumes_with_users():
+    """Return all distinct resumes across all users with their uploader's user_id."""
+    table = get_or_create_table()
+    try:
+        import pandas as pd
+        df = table.to_pandas()[["filename", "user_id"]]
+        seen = set()
+        results = []
+        for _, row in df.iterrows():
+            fn = row["filename"]
+            if fn and fn not in seen:
+                seen.add(fn)
+                results.append({"filename": fn, "user_id": row["user_id"]})
+        return results
+    except Exception as e:
+        print(f"DEBUG: list_all_resumes_with_users error: {e}")
+        return []
+
+
 # ---------- SEARCH ----------
 def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None, is_recruiter: bool = False):
     print(f"DEBUG: Semantic search query: {query} (User: {user_id}, IsRecruiter: {is_recruiter})")

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase } from 'lucide-react';
+import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase, FileText, AlertCircle } from 'lucide-react';
 import { PageHeader, LoadingOverlay } from '../../common';
 import { jobsApi } from '../../api';
 
@@ -20,6 +20,8 @@ const JobForm = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isParsing, setIsParsing] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [parseError, setParseError] = useState<string | null>(null);
 
     useEffect(() => {
         if (isEdit) {
@@ -51,12 +53,36 @@ const JobForm = () => {
         setFormData((prev: any) => ({ ...prev, [name]: value }));
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0]) return;
+    // Required fields that must be found in the document
+    const REQUIRED_PARSED_FIELDS: Array<{ key: string; label: string }> = [
+        { key: 'title', label: 'Job Title' },
+        { key: 'employer_name', label: 'Employer Name' },
+        { key: 'description', label: 'Job Description' },
+    ];
+
+    const processFile = async (file: File) => {
+        const allowed = ['.docx', '.txt'];
+        const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!allowed.includes(ext)) {
+            setParseError(`Invalid file type. Please upload a .docx or .txt file.`);
+            return;
+        }
+
         setIsParsing(true);
+        setParseError(null);
         try {
-            const response = await jobsApi.parseUpload(e.target.files[0]);
+            const response = await jobsApi.parseUpload(file);
             const parsed = response.data;
+
+            // Validate that required fields were found in the document
+            const missing = REQUIRED_PARSED_FIELDS.filter(f => !parsed[f.key]?.toString().trim());
+            if (missing.length > 0) {
+                setParseError(
+                    `Document rejected: the following required fields were not found — ${missing.map(f => f.label).join(', ')}. Please ensure the document contains this information.`
+                );
+                return;
+            }
+
             setFormData((prev: any) => ({
                 ...prev,
                 title: parsed.title || prev.title,
@@ -68,10 +94,36 @@ const JobForm = () => {
             }));
         } catch (error) {
             console.error('Failed to parse file:', error);
-            alert('Failed to parse job description');
+            setParseError('Failed to parse job description. Please try again.');
         } finally {
             setIsParsing(false);
         }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.[0]) return;
+        processFile(e.target.files[0]);
+        e.target.value = ''; // reset so same file can be re-selected
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) processFile(file);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -117,17 +169,48 @@ const JobForm = () => {
             />
 
             {!isEdit && (
-                <div className="glass-card p-6 border-dashed border-2 border-slate-700 flex flex-col items-center justify-center gap-4 group">
-                    <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                        {isParsing ? <Loader2 size={24} className="animate-spin" /> : <Upload size={24} />}
+                <div className="space-y-2">
+                    <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`glass-card p-6 border-dashed border-2 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer
+                            ${isDragging
+                                ? 'border-blue-400 bg-blue-500/10 scale-[1.01]'
+                                : 'border-slate-700 hover:border-slate-500 group'
+                            }`}
+                    >
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform
+                            ${isDragging ? 'bg-blue-500/20 text-blue-400 scale-110' : 'bg-blue-500/10 text-blue-500 group-hover:scale-110'}`}>
+                            {isParsing
+                                ? <Loader2 size={24} className="animate-spin" />
+                                : isDragging
+                                    ? <FileText size={24} />
+                                    : <Upload size={24} />
+                            }
+                        </div>
+                        <div className="text-center">
+                            {isParsing ? (
+                                <p className="text-blue-400 font-bold">Parsing document...</p>
+                            ) : isDragging ? (
+                                <p className="text-blue-400 font-bold">Drop to upload</p>
+                            ) : (
+                                <label className="text-blue-500 font-bold cursor-pointer hover:text-blue-400">
+                                    Drag & drop or click to upload Job Description
+                                    <input type="file" className="hidden" onChange={handleFileChange} accept=".docx,.txt" />
+                                </label>
+                            )}
+                            <p className="text-xs text-slate-500 mt-1">
+                                Accepts .docx or .txt — must contain Job Title, Employer Name, and Job Description.
+                            </p>
+                        </div>
                     </div>
-                    <div className="text-center">
-                        <label className="text-blue-500 font-bold cursor-pointer hover:text-blue-400">
-                            Upload Job Description
-                            <input type="file" className="hidden" onChange={handleFileChange} accept=".docx,.txt" />
-                        </label>
-                        <p className="text-xs text-slate-500 mt-1">AI will attempt to auto-fill the form fields below.</p>
-                    </div>
+                    {parseError && (
+                        <div className="flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            <span>{parseError}</span>
+                        </div>
+                    )}
                 </div>
             )}
 

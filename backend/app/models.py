@@ -77,3 +77,9 @@ class JobResponse(JobCreate):
 class JobMatchResponse(BaseModel):
     score: float
     job: JobResponse
+
+
+class JobSkillMatchResponse(BaseModel):
+    score: float
+    job: JobResponse
+    matched_skills: List[str] = []
