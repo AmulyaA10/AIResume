@@ -86,7 +86,7 @@ async def test_recruiter_token_resolves_correct_user(app, mock_dashboard_stats):
                 headers={"Authorization": "Bearer mock-recruiter-token"},
             )
     assert resp.status_code == 200
-    mock_fn.assert_called_with("user_recruiter_456")
+    mock_fn.assert_called_with("user_recruiter_456", is_recruiter=True)
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_default_token_resolves_jobseeker_user(app, mock_dashboard_stats):
                 headers={"Authorization": "Bearer some-random-token"},
             )
     assert resp.status_code == 200
-    mock_fn.assert_called_with("user_alex_chen_123")
+    mock_fn.assert_called_with("user_alex_chen_123", is_recruiter=False)
 
 
 # ── Upload → Validation → Storage pipeline ──────────────────────────────────

@@ -61,6 +61,7 @@ def mock_dashboard_stats():
         "high_matches": 2,
         "skill_gaps": 1,
         "quality_scored": 4,
+        "total_applied": 7,
         "recent_activity": [
             {
                 "type": "screen",
