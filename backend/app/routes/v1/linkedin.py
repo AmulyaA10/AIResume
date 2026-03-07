@@ -181,6 +181,15 @@ async def linkedin_scrape(
 
     # Common validation routine (same as generate path)
     resume = output["resume"]
+
+    # Inject the scraped URL as contact.linkedin if the LLM didn't extract it
+    # (LinkedIn profile pages don't contain the URL in their scraped text)
+    if request.query:
+        if not resume.get("contact"):
+            resume["contact"] = {}
+        if not resume["contact"].get("linkedin"):
+            resume["contact"]["linkedin"] = request.query
+
     field_validation = validate_resume_fields(resume)
     output_validation = validate_resume_output(resume, llm_config, file_name="linkedin_scrape")
 
