@@ -31,6 +31,14 @@ def _serialize_job(row: dict) -> dict:
     
     return out
 
+_ALLOWED_JOB_EXTENSIONS = {".pdf", ".docx", ".txt"}
+_PLACEHOLDER_VALUES = {"", "unknown", "n/a", "none", "null", "not specified", "not provided"}
+
+
+def _is_placeholder(value: str) -> bool:
+    return not value or value.strip().lower() in _PLACEHOLDER_VALUES
+
+
 @router.post("/parse-upload")
 async def parse_job_upload(
     file: UploadFile = File(...),
@@ -38,23 +46,47 @@ async def parse_job_upload(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
+    # 1. File type validation
+    ext = Path(file.filename).suffix.lower()
+    if ext not in _ALLOWED_JOB_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported file type '{ext}'. "
+                "Only PDF (.pdf), Word documents (.docx), and plain text files (.txt) are accepted."
+            )
+        )
+
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
-    
-    # 1. Save file temporarily
+
+    # 2. Save file temporarily
     temp_filename = f"jd_parse_{uuid.uuid4()}_{file.filename}"
     temp_path = os.path.join(UPLOAD_DIR, temp_filename)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    
+
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
-    try:
-        # 2. Extract text using proper parser
-        text = extract_text(temp_path)
-        if not text.strip():
-            return {"error": "Could not extract text from file."}
 
-        # 3. Use AI to structure the JD
+    try:
+        # 3. Extract text
+        text = extract_text(temp_path)
+
+        if not text or not text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="The file appears to be empty or contains no readable text."
+            )
+
+        if len(text.strip()) < 100:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The file content is too short to be a valid job description. "
+                    "Please provide a document with a full job title, description, and employer details."
+                )
+            )
+
+        # 4. Use AI to structure the JD
         from langchain_openai import ChatOpenAI
         from langchain_core.prompts import PromptTemplate
         from langchain_core.output_parsers import StrOutputParser
@@ -62,10 +94,10 @@ async def parse_job_upload(
         prompt = PromptTemplate(
             input_variables=["text"],
             template="""Analyze this job description text and extract structured information.
-            
+
             TEXT:
             {text}
-            
+
             Return ONLY a JSON object:
             {{
               "title": "Exact job title",
@@ -84,23 +116,46 @@ async def parse_job_upload(
         )
 
         chain = prompt | llm | StrOutputParser()
-        raw_res = chain.invoke({"text": text[:10000]}) # Limit text length for safety
-        
+        raw_res = chain.invoke({"text": text[:10000]})
+
         clean_res = clean_json_output(raw_res)
         structured = json.loads(clean_res)
-        
+
+        # 5. Content validation — ensure required job fields were extracted
+        missing = []
+        if _is_placeholder(structured.get("title", "")):
+            missing.append("job title")
+        if _is_placeholder(structured.get("employer_name", "")):
+            missing.append("employer / company name")
+        if not structured.get("description") or len(structured["description"].strip()) < 50:
+            missing.append("job description")
+
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The document does not contain sufficient job information. "
+                    f"Could not extract: {', '.join(missing)}. "
+                    "Please ensure the file includes a job title, a description of responsibilities, "
+                    "and the employer or company name."
+                )
+            )
+
         return structured
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"DEBUG: [jobs] Parse failed: {e}")
-        return {
-            "title": file.filename.split('.')[0],
-            "description": "Failed to parse automatically. Please paste content here.",
-            "skills_required": [],
-            "job_level": "MID"
-        }
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Failed to parse the job document. "
+                "Please ensure the file contains valid job description content "
+                "(job title, responsibilities, requirements, and employer details)."
+            )
+        )
     finally:
-        # Cleanup temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
