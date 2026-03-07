@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Mock login logic for others
         let newPersona: Persona = 'jobseeker';
-        let newUser: User = { name: 'Alex Chen', email: 'alex@gmail.com' };
+        let newUser: User = { name: 'User', email: 'user@example.com' };
 
         if (method === 'corporate') {
             newPersona = 'recruiter';

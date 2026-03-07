@@ -15,7 +15,7 @@ _generator_graph = build_resume_generator_graph()
 _validation_graph = build_resume_validation_graph()
 graph = build_resume_graph()
 
-def run_resume_pipeline(task: str, resumes: list = None, query: str = None, llm_config: dict = None, threshold: int = 75):
+def run_resume_pipeline(task: str, resumes: list = None, query: str = None, llm_config: dict = None, threshold: int = 75, refinement_instructions: str = None):
     if task == "score":
         return _quality_graph.invoke(
             {"resumes": resumes, "config": llm_config}
@@ -36,6 +36,7 @@ def run_resume_pipeline(task: str, resumes: list = None, query: str = None, llm_
     elif task == "generate":
         return _generator_graph.invoke({
             "profile_description": query,
+            "refinement_instructions": refinement_instructions or "",
             "config": llm_config
         })
 

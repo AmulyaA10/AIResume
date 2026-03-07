@@ -137,6 +137,53 @@ def store_resume(filename: str, text: str, user_id: str, api_key: str = None):
     table.add(data)
     print(f"DEBUG: Successfully stored {filename}")
 
+# ---------- JOB RESUME APPLIED SCHEMA ----------
+job_resume_applied_schema = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("user_id", pa.string()),
+    pa.field("job_id", pa.string()),
+    pa.field("resume_id", pa.string()),
+    pa.field("applied_status", pa.string()),
+    pa.field("timestamp", pa.string())
+])
+
+def get_or_create_job_applied_table():
+    if "job_resume_applied" in db.table_names():
+        table = db.open_table("job_resume_applied")
+        # Check if schema is up to date
+        if "applied_status" not in table.schema.names:
+            print("DEBUG: [db] job_resume_applied schema mismatch (missing applied_status), dropping and recreating...")
+            db.drop_table("job_resume_applied")
+            return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
+        return table
+    return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
+
+def apply_for_job(user_id: str, job_id: str, resume_id: str):
+    from datetime import datetime
+    table = get_or_create_job_applied_table()
+    
+    # Optional: check if already applied to prevent duplicates
+    try:
+        df = table.to_pandas()
+        if not df.empty:
+            existing = df[(df['user_id'] == user_id) & (df['job_id'] == job_id) & (df['resume_id'] == resume_id)]
+            if not existing.empty:
+                print(f"DEBUG: User {user_id} already applied to job {job_id} with resume {resume_id}")
+                return False
+    except Exception as e:
+        print(f"DEBUG: Error checking existing applications: {e}")
+        
+    table.add([{
+        "id": str(uuid4()),
+        "user_id": user_id,
+        "job_id": job_id,
+        "resume_id": resume_id,
+        "applied_status": "applied",
+        "timestamp": datetime.now().isoformat()
+    }])
+    print(f"DEBUG: Applied job {job_id} using resume {resume_id} for user {user_id}")
+    return True
+
 # ---------- ACTIVITY SCHEMA ----------
 activity_schema = pa.schema([
     pa.field("id", pa.string()),
@@ -167,23 +214,24 @@ def log_activity(user_id: str, activity_type: str, filename: str, score: int, de
     }])
     print(f"DEBUG: Logged activity: {activity_type} for {filename} (User: {user_id})")
 
-def get_dashboard_stats(user_id: str):
-    print(f"DEBUG: [stats] Fetching stats for user: {user_id}")
+def get_dashboard_stats(user_id: str, is_recruiter: bool = False):
+    print(f"DEBUG: [stats] Fetching stats for user: {user_id} (IsRecruiter: {is_recruiter})")
     resumes_table = get_or_create_table()
     activity_table = get_or_create_activity_table()
+    applied_table = get_or_create_job_applied_table()
     
     import pandas as pd
     resumes_df = resumes_table.to_pandas()
     
     total_resumes = 0
     if not resumes_df.empty:
-        # Trace available IDs
-        available = resumes_df['user_id'].unique().tolist()
-        print(f"DEBUG: [stats] Resumes table Users: {available}")
-        
-        user_resumes = resumes_df[resumes_df['user_id'] == user_id]
-        total_resumes = user_resumes['filename'].nunique()
-        print(f"DEBUG: [stats] Found {total_resumes} resumes for {user_id}")
+        if is_recruiter:
+            # Recruiter sees total unique filenames across all users
+            total_resumes = resumes_df['filename'].nunique()
+        else:
+            user_resumes = resumes_df[resumes_df['user_id'] == user_id]
+            total_resumes = user_resumes['filename'].nunique()
+        print(f"DEBUG: [stats] Found {total_resumes} resumes (Global: {is_recruiter})")
     
     # Activity Stats
     activity_df = activity_table.to_pandas()
@@ -192,23 +240,36 @@ def get_dashboard_stats(user_id: str):
     high_matches = 0
     skill_gaps = 0
     quality_scored = 0
+    total_applied = 0
     recent_activity = []
 
-    if not activity_df.empty:
-        available_act = activity_df['user_id'].unique().tolist()
-        print(f"DEBUG: [stats] Activity table Users: {available_act}")
+    # Applied Stats
+    applied_df = applied_table.to_pandas()
+    if not applied_df.empty:
+        if is_recruiter:
+            total_applied = len(applied_df)
+        else:
+            user_applied = applied_df[applied_df['user_id'] == user_id]
+            total_applied = len(user_applied)
+        print(f"DEBUG: [stats] Found {total_applied} applied jobs (Global: {is_recruiter})")
 
-        # Filter by user_id
-        user_activity = activity_df[activity_df['user_id'] == user_id]
-        print(f"DEBUG: [stats] Found {len(user_activity)} activities for {user_id}")
+
+    if not activity_df.empty:
+        # Filter by user_id for jobseekers, show all for recruiters
+        if is_recruiter:
+            view_activity = activity_df
+        else:
+            view_activity = activity_df[activity_df['user_id'] == user_id]
+            
+        print(f"DEBUG: [stats] Found {len(view_activity)} activities for view")
         
-        total_screened = len(user_activity[user_activity['type'] == 'screen'])
-        high_matches = len(user_activity[user_activity['score'] >= 80])
-        skill_gaps = len(user_activity[user_activity['type'] == 'skill_gap'])
-        quality_scored = len(user_activity[user_activity['type'] == 'quality'])
+        total_screened = len(view_activity[view_activity['type'] == 'screen'])
+        high_matches = len(view_activity[view_activity['score'] >= 80])
+        skill_gaps = len(view_activity[view_activity['type'] == 'skill_gap'])
+        quality_scored = len(view_activity[view_activity['type'] == 'quality'])
         
         # Get 5 most recent activities
-        recent_df = user_activity.sort_values(by="timestamp", ascending=False).head(5)
+        recent_df = view_activity.sort_values(by="timestamp", ascending=False).head(5)
         for _, row in recent_df.iterrows():
             recent_activity.append({
                 "type": row['type'],
@@ -224,6 +285,7 @@ def get_dashboard_stats(user_id: str):
         "high_matches": high_matches,
         "skill_gaps": skill_gaps,
         "quality_scored": quality_scored,
+        "total_applied": total_applied,
         "recent_activity": recent_activity
     }
 
@@ -311,9 +373,93 @@ def migrate_orphaned_settings(old_user_id: str, new_user_id: str):
     except Exception as e:
         print(f"MIGRATION: Failed to migrate settings from {old_user_id} to {new_user_id}: {e}")
 
+# ---------- RESUME METADATA (validation scores) ----------
+resume_meta_schema = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("user_id", pa.string()),
+    pa.field("filename", pa.string()),
+    pa.field("validation_json", pa.string()),
+    pa.field("uploaded_at", pa.string()),
+])
+
+def get_or_create_resume_meta_table():
+    if "resume_meta" in db.table_names():
+        return db.open_table("resume_meta")
+    return db.create_table("resume_meta", schema=resume_meta_schema, mode="create")
+
+def store_resume_validation(user_id: str, filename: str, validation: dict):
+    """Upsert validation results for a resume."""
+    import json
+    from datetime import datetime
+    table = get_or_create_resume_meta_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+    except Exception:
+        pass
+    table.add([{
+        "id": str(uuid4()),
+        "user_id": user_id,
+        "filename": filename,
+        "validation_json": json.dumps(validation or {}),
+        "uploaded_at": datetime.now().isoformat(),
+    }])
+
+def get_resume_validations(user_id: str) -> dict:
+    """Return {filename: validation_dict} for all resumes of a user."""
+    import json
+    table = get_or_create_resume_meta_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return {}
+        user_df = df[df['user_id'] == user_id]
+        result = {}
+        for _, row in user_df.iterrows():
+            try:
+                result[row['filename']] = json.loads(row['validation_json'])
+            except Exception:
+                result[row['filename']] = {}
+        return result
+    except Exception as e:
+        print(f"DEBUG: Failed to get resume validations for {user_id}: {e}")
+        return {}
+
+def delete_resume_validation(user_id: str, filename: str):
+    """Remove validation record for a resume."""
+    table = get_or_create_resume_meta_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+    except Exception:
+        pass
+
+# ---------- DELETE USER RESUME ----------
+def delete_user_resume(user_id: str, filename: str):
+    """Delete all LanceDB entries for a specific user's resume."""
+    table = get_or_create_table()
+    try:
+        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
+        print(f"DEBUG: Deleted resume '{filename}' for user {user_id}")
+    except Exception as e:
+        print(f"DEBUG: Failed to delete resume '{filename}' for {user_id}: {e}")
+        raise e
+
+# ---------- LIST USER RESUMES ----------
+def list_user_resumes(user_id: str) -> list:
+    """Return a list of unique filenames uploaded by the given user."""
+    table = get_or_create_table()
+    try:
+        df = table.to_pandas()
+        if df.empty:
+            return []
+        user_df = df[df['user_id'] == user_id]
+        return user_df['filename'].drop_duplicates().tolist()
+    except Exception as e:
+        print(f"DEBUG: Failed to list resumes for {user_id}: {e}")
+        return []
+
 # ---------- SEARCH ----------
-def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None):
-    print(f"DEBUG: Semantic search query: {query} (User: {user_id})")
+def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None, is_recruiter: bool = False):
+    print(f"DEBUG: Semantic search query: {query} (User: {user_id}, IsRecruiter: {is_recruiter})")
     table = get_or_create_table()
     
     total_rows = len(table)
@@ -330,6 +476,10 @@ def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: s
         raise e
     
     # Use LanceDB's where clause for filtering
-    results = table.search(query_vector).where(f"user_id = '{user_id}'").limit(limit).to_pandas()
-    print(f"DEBUG: Found {len(results)} matches for user {user_id}")
+    search_op = table.search(query_vector)
+    if not is_recruiter:
+        search_op = search_op.where(f"user_id = '{user_id}'")
+        
+    results = search_op.limit(limit).to_pandas()
+    print(f"DEBUG: Found {len(results)} matches (Global: {is_recruiter})")
     return results

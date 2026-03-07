@@ -24,19 +24,30 @@ async def search_resumes(
     start_time = time.time()
     print(f"--- [Search Start] Query: '{request.query}' for user {user_id} ---")
 
+    is_recruiter = user_id == "user_recruiter_456"
     # Perform semantic search to filter relevant resumes/chunks
     db_start = time.time()
-    df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"])
+    df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"], is_recruiter=is_recruiter)
     db_end = time.time()
     print(f"DEBUG: LanceDB search took {db_end - db_start:.2f}s. Found {len(df)} results.")
 
     if df.empty:
         return {"results": []}
 
-    # Format the filtered results for the Agentic AI
-    resumes_text = ""
+    # Aggregate results by filename
+    aggregated_resumes = {}
     for _, row in df.iterrows():
-        resumes_text += f"Filename: {row['filename']}\nExcerpt:\n{row['text']}\n--------------------\n"
+        fname = row['filename']
+        if fname not in aggregated_resumes:
+            aggregated_resumes[fname] = []
+        # Keep unique excerpts only
+        if row['text'] not in aggregated_resumes[fname]:
+            aggregated_resumes[fname].append(row['text'])
+
+    resumes_text = ""
+    for fname, excerpts in aggregated_resumes.items():
+        combined_text = "\n---\n".join(excerpts)
+        resumes_text += f"FILE: {fname}\nCONTENT_EXCERPTS:\n{combined_text}\n====================\n"
 
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import PromptTemplate
@@ -44,18 +55,35 @@ async def search_resumes(
 
     prompt = PromptTemplate(
         input_variables=["resumes", "query"],
-        template="""Identify resumes relevant to the query based on the excerpts provided.
-        Return ONLY valid JSON.
-        FORMAT: {{ "results": [ {{ "filename": "...", "score": 0, "justification": "...", "missing_skills": [], "auto_screen": "..." }} ] }}
+        template="""You are an expert technical recruiter. Analyze the following resume excerpts and evaluate their relevance to the search query.
 
-        Excerpts:
-        {resumes}
+For each resume, provide:
+1. A match score (0-100). Be generous if semantic keywords overlap. 
+2. A brief justification (1-2 sentences).
+3. A list of missing key skills from the query.
+4. An auto_screen decision ('SELECTED' if score > 70, otherwise 'WAITLIST').
 
-        Query: {query}"""
+QUERY: {query}
+
+RESUMES TO EVALUATE:
+{resumes}
+
+Return ONLY a JSON object in this format:
+{{
+  "results": [
+    {{
+      "filename": "file.pdf",
+      "score": 85,
+      "justification": "...",
+      "missing_skills": ["docker", "kubernetes"],
+      "auto_screen": "SELECTED"
+    }}
+  ]
+}}"""
     )
 
     llm_start = time.time()
-    print(f"DEBUG: Passing {len(df)} results to LLM ({creds['llm_model'] or 'gpt-4o-mini'})...")
+    print(f"DEBUG: Passing {len(aggregated_resumes)} aggregated files to LLM ({creds['llm_model'] or 'gpt-4o-mini'})...")
 
     # Initialize LLM with dynamic config if available
     llm = ChatOpenAI(
