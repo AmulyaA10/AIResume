@@ -2,15 +2,21 @@ from typing import Optional
 from fastapi import Header
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
     """Mock authentication dependency — returns user_id based on token.
 
     Token-to-user mapping:
+      - Token contains "manager"   -> user_manager_789
       - Token contains "recruiter" -> user_recruiter_456
-      - Everything else (including OAuth: google, linkedin) -> user_alex_chen_123
+      - Everything else            -> x_user_id header value (if provided and valid)
+                                      otherwise falls back to user_alex_chen_123
 
-    NOTE: LinkedIn OAuth users are jobseekers, not recruiters.
-    Only the corporate SSO "mock-recruiter-token" maps to the recruiter user.
+    The X-User-ID header allows each browser session to have a unique jobseeker
+    identity so that different candidates do not share the same resume pool.
+    It is ignored for recruiter/manager tokens to prevent privilege escalation.
 
     TODO: Replace with real JWT validation.
     """
@@ -21,6 +27,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
         user_id = "user_manager_789"
     elif "recruiter" in token:
         user_id = "user_recruiter_456"
+    elif x_user_id and x_user_id.startswith("uid_"):
+        # Use the per-browser stable identity for jobseekers
+        user_id = x_user_id
     else:
         user_id = "user_alex_chen_123"
 

@@ -9,11 +9,26 @@ const api = axios.create({
 // server-side with encryption. Only the non-sensitive llmModel preference
 // remains in localStorage. The backend's resolve_credentials() automatically
 // falls back to server-stored values when X- headers are absent.
+// Generate or retrieve a stable per-browser user identity for jobseeker isolation.
+// Recruiter/manager roles are determined by the token and cannot be overridden.
+const getOrCreateUserUid = (): string => {
+    let uid = localStorage.getItem('user_uid');
+    if (!uid) {
+        uid = 'uid_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem('user_uid', uid);
+    }
+    return uid;
+};
+
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Send a stable per-browser user ID so each jobseeker has isolated data.
+    // The backend only uses this for non-recruiter/non-manager tokens.
+    config.headers['X-User-ID'] = getOrCreateUserUid();
 
     // Only non-sensitive preference stays in localStorage
     const llmModel = localStorage.getItem('llmModel');
