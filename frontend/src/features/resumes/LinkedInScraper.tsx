@@ -17,6 +17,8 @@ const LinkedInScraper = () => {
     const [parseLoading, setParseLoading] = useState(false);
     const [securityChallenge, setSecurityChallenge] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const [fieldValidation, setFieldValidation] = useState<any>(null);
+    const [outputValidation, setOutputValidation] = useState<any>(null);
     const inputRef = React.useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
     const { maskedCredentials, loadMaskedCredentials, isLoaded, isLoading, loadError } = useCredentials();
@@ -44,6 +46,8 @@ const LinkedInScraper = () => {
         setError(null);
         setShowPasteFallback(false);
         setSecurityChallenge(false);
+        setFieldValidation(null);
+        setOutputValidation(null);
         try {
             // On retry, send the cached session_id so the backend can resume
             // the same Selenium driver (no fresh login = no throttled notification)
@@ -55,6 +59,8 @@ const LinkedInScraper = () => {
             if (response.data.resume) {
                 setResume(response.data.resume);
                 setSessionId(null);  // clear session on success
+                if (response.data.field_validation) setFieldValidation(response.data.field_validation);
+                if (response.data.output_validation) setOutputValidation(response.data.output_validation);
             } else if (response.data.error) {
                 const errorMsg = response.data.error;
                 const errorCode = response.data.error_code;
@@ -102,11 +108,15 @@ const LinkedInScraper = () => {
         setParseLoading(true);
         setResume(null);
         setError(null);
+        setFieldValidation(null);
+        setOutputValidation(null);
         try {
             const response = await api.post('/linkedin/parse', { profile_text: pastedText });
             if (response.data.resume) {
                 setResume(response.data.resume);
                 setShowPasteFallback(false);
+                if (response.data.field_validation) setFieldValidation(response.data.field_validation);
+                if (response.data.output_validation) setOutputValidation(response.data.output_validation);
             } else if (response.data.error) {
                 setError(response.data.error);
             } else {
@@ -127,7 +137,7 @@ const LinkedInScraper = () => {
         }
     };
 
-    const { user, login } = useAuth();
+    const { user, login, persona } = useAuth();
 
     // Auto-populate URL from OAuth redirect
     React.useEffect(() => {
@@ -226,12 +236,14 @@ const LinkedInScraper = () => {
                             <div className="space-y-2">
                                 <p className="text-sm font-bold text-red-700">Scraping Failed</p>
                                 <p className="text-xs text-red-600 leading-relaxed">{error}</p>
-                                <button
-                                    onClick={() => navigate('/settings')}
-                                    className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
-                                >
-                                    <Settings className="w-3.5 h-3.5" /> Check Settings
-                                </button>
+                                {persona === 'manager' && (
+                                    <button
+                                        onClick={() => navigate('/settings')}
+                                        className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                    >
+                                        <Settings className="w-3.5 h-3.5" /> Check Settings
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -365,14 +377,21 @@ const LinkedInScraper = () => {
                                         <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center gap-2">
                                             <Settings className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                                             <p className="text-[11px] text-blue-600 font-medium">
-                                                No saved LinkedIn credentials detected.{' '}
-                                                <button
-                                                    onClick={() => navigate('/settings')}
-                                                    className="font-bold text-[#0077b5] hover:text-[#006396] underline transition-colors"
-                                                >
-                                                    Add in Settings
-                                                </button>
-                                                {' '}for faster syncing, or just click the button below — the server may already have your credentials.
+                                                No saved LinkedIn credentials detected.
+                                                {persona === 'manager' ? (
+                                                    <>
+                                                        {' '}
+                                                        <button
+                                                            onClick={() => navigate('/settings')}
+                                                            className="font-bold text-[#0077b5] hover:text-[#006396] underline transition-colors"
+                                                        >
+                                                            Add in Settings
+                                                        </button>
+                                                        {' '}for faster syncing, or just click the button below — the server may already have your credentials.
+                                                    </>
+                                                ) : (
+                                                    ' Please click the button below to retry — the server may already have your credentials.'
+                                                )}
                                             </p>
                                         </div>
                                     )}
@@ -477,9 +496,12 @@ const LinkedInScraper = () => {
                     <div className="glass-card p-12 bg-white border-slate-100 shadow-2xl space-y-8 font-sans">
                         <div className="text-center space-y-2 border-b border-slate-100 pb-8">
                             <h2 className="text-4xl font-black text-slate-900">{resume.contact?.name}</h2>
-                            <p className="text-slate-500 font-bold tracking-widest uppercase text-xs">
-                                {resume.contact?.location} {resume.contact?.location && resume.contact?.email ? ' | ' : ''} {resume.contact?.email}
-                            </p>
+                            <div className="text-slate-500 font-bold tracking-widest uppercase text-xs flex justify-center gap-2 flex-wrap">
+                                {resume.contact?.email && <span>{resume.contact.email}</span>}
+                                {resume.contact?.phone && <><span className="opacity-30">|</span><span>{resume.contact.phone}</span></>}
+                                {resume.contact?.location && <><span className="opacity-30">|</span><span>{resume.contact.location}</span></>}
+                                {resume.contact?.linkedin && <><span className="opacity-30">|</span><span>{resume.contact.linkedin}</span></>}
+                            </div>
                         </div>
 
                         {resume.summary && (
@@ -512,7 +534,10 @@ const LinkedInScraper = () => {
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <h5 className="font-bold text-slate-900">{exp.title}</h5>
-                                                    <p className="text-sm text-[#0077b5] font-black">{exp.company}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-sm text-[#0077b5] font-black">{exp.company}</p>
+                                                        {exp.location && <><span className="text-slate-300 text-xs">|</span><p className="text-xs text-slate-400 font-medium">{exp.location}</p></>}
+                                                    </div>
                                                 </div>
                                                 <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full uppercase">{exp.period}</span>
                                             </div>
@@ -531,9 +556,10 @@ const LinkedInScraper = () => {
                             <section className="space-y-4">
                                 <h4 className="text-[10px] font-black text-[#0077b5] uppercase tracking-widest px-2 py-1 bg-blue-50 w-fit rounded-lg">Education</h4>
                                 {resume.education.map((edu: any, i: number) => (
-                                    <div key={i} className="flex justify-between items-center text-sm">
+                                    <div key={i} className="flex justify-between items-start text-sm">
                                         <div>
                                             <span className="font-bold text-slate-900">{edu.degree}</span>
+                                            {edu.field_of_study && <span className="text-xs text-[#0077b5] font-bold ml-1">— {edu.field_of_study}</span>}
                                             <span className="mx-2 text-slate-300">•</span>
                                             <span className="text-slate-500 font-medium">{edu.school}</span>
                                         </div>
@@ -558,7 +584,74 @@ const LinkedInScraper = () => {
                                 ))}
                             </section>
                         )}
+
+                        {resume.projects && resume.projects.length > 0 && (
+                            <section className="space-y-4">
+                                <h4 className="text-[10px] font-black text-[#0077b5] uppercase tracking-widest px-2 py-1 bg-blue-50 w-fit rounded-lg">Projects</h4>
+                                {resume.projects.map((proj: any, i: number) => (
+                                    <div key={i} className="space-y-1.5">
+                                        <h5 className="font-bold text-slate-900 text-sm">{proj.name}</h5>
+                                        {proj.description && <p className="text-xs text-slate-500 font-medium leading-relaxed">{proj.description}</p>}
+                                        {proj.tech_stack && proj.tech_stack.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {proj.tech_stack.map((t: string, j: number) => (
+                                                    <span key={j} className="px-2 py-0.5 bg-blue-50 text-[#0077b5] rounded text-[10px] font-bold border border-blue-100">{t}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {proj.outcomes && proj.outcomes.length > 0 && (
+                                            <ul className="space-y-1 list-disc list-inside">
+                                                {proj.outcomes.map((o: string, j: number) => (
+                                                    <li key={j} className="text-xs text-slate-500 font-medium marker:text-blue-500">{o}</li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                ))}
+                            </section>
+                        )}
                     </div>
+
+                    {/* Field validation banner */}
+                    {fieldValidation && (fieldValidation.errors?.length > 0 || fieldValidation.warnings?.length > 0) && (
+                        <div className={`rounded-xl p-4 text-sm font-medium border ${fieldValidation.errors?.length > 0
+                            ? 'bg-red-50 border-red-200 text-red-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                            }`}>
+                            <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                {fieldValidation.errors?.length > 0 ? 'Missing Required Fields' : 'Field Warnings'}
+                            </div>
+                            <ul className="space-y-1 text-xs">
+                                {(fieldValidation.errors || []).map((e: string, i: number) => (
+                                    <li key={`e-${i}`} className="flex items-start gap-2">
+                                        <span className="text-red-400 mt-0.5">&#8226;</span> {e}
+                                    </li>
+                                ))}
+                                {(fieldValidation.warnings || []).map((w: string, i: number) => (
+                                    <li key={`w-${i}`} className="flex items-start gap-2 text-amber-600">
+                                        <span className="text-amber-400 mt-0.5">&#8226;</span> {w}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* AI quality validation */}
+                    {outputValidation && (
+                        <div className={`rounded-xl p-4 text-sm font-medium border ${outputValidation.classification === 'resume_valid_strong' || outputValidation.classification === 'resume_valid_good'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                            }`}>
+                            <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
+                                <FileCheck className="w-3.5 h-3.5" />
+                                AI Quality: {outputValidation.classification?.replace(/_/g, ' ').toUpperCase()} ({outputValidation.total_score}/30)
+                            </div>
+                            {outputValidation.summary && (
+                                <p className="text-xs leading-relaxed">{outputValidation.summary}</p>
+                            )}
+                        </div>
+                    )}
                 </motion.div>
             )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase } from 'lucide-react';
+import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase,FileText, AlertCircle } from 'lucide-react';
+
 import { PageHeader, LoadingOverlay } from '../../common';
 import { jobsApi } from '../../api';
 
@@ -33,6 +34,7 @@ const JobForm = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isParsing, setIsParsing] = useState(false);
+
     const [isDragOver, setIsDragOver] = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +96,9 @@ const JobForm = () => {
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+    const [isDragging, setIsDragging] = useState(false);
+    const [parseError, setParseError] = useState<string | null>(null);
+
 
     useEffect(() => {
         if (isEdit) {
@@ -127,10 +132,38 @@ const JobForm = () => {
 
     const parseFile = async (file: File): Promise<{ success: boolean; errorMsg?: string }> => {
         setParseError(null);
+
+    // Required fields that must be found in the document
+    const REQUIRED_PARSED_FIELDS: Array<{ key: string; label: string }> = [
+        { key: 'title', label: 'Job Title' },
+        { key: 'employer_name', label: 'Employer Name' },
+        { key: 'description', label: 'Job Description' },
+    ];
+
+    const processFile = async (file: File) => {
+        const allowed = ['.docx', '.txt'];
+        const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!allowed.includes(ext)) {
+            setParseError(`Invalid file type. Please upload a .docx or .txt file.`);
+            return;
+        }
+
+
         setIsParsing(true);
+        setParseError(null);
         try {
             const response = await jobsApi.parseUpload(file);
             const parsed = response.data;
+
+            // Validate that required fields were found in the document
+            const missing = REQUIRED_PARSED_FIELDS.filter(f => !parsed[f.key]?.toString().trim());
+            if (missing.length > 0) {
+                setParseError(
+                    `Document rejected: the following required fields were not found — ${missing.map(f => f.label).join(', ')}. Please ensure the document contains this information.`
+                );
+                return;
+            }
+
             setFormData((prev: any) => ({
                 ...prev,
                 title: parsed.title || prev.title,
@@ -147,10 +180,12 @@ const JobForm = () => {
             setParseError(errorMsg);
             if (fileInputRef.current) fileInputRef.current.value = '';
             return { success: false, errorMsg };
+
         } finally {
             setIsParsing(false);
         }
     };
+
 
     const processQueueItem = async () => {
         const files = fileQueueRef.current;
@@ -198,6 +233,24 @@ const JobForm = () => {
         const files = Array.from(e.target.files || []);
         if (files.length > 0) startQueue(files);
         e.target.value = '';
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) processFile(file);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {

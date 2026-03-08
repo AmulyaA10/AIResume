@@ -16,14 +16,18 @@ def generate_docx(resume_json: dict) -> io.BytesIO:
     if contact.get("name"):
         name_p = doc.add_heading(contact["name"], 0)
         name_p.alignment = 1 # Center
-    
+
     contact_details = []
     if contact.get("email"): contact_details.append(contact["email"])
     if contact.get("phone"): contact_details.append(contact["phone"])
     if contact.get("location"): contact_details.append(contact["location"])
-    
+
     if contact_details:
         p = doc.add_paragraph(" | ".join(contact_details))
+        p.alignment = 1
+
+    if contact.get("linkedin"):
+        p = doc.add_paragraph(contact["linkedin"])
         p.alignment = 1
 
     # Professional Summary
@@ -66,9 +70,43 @@ def generate_docx(resume_json: dict) -> io.BytesIO:
     doc.add_heading('Education', level=1)
     for edu in resume_json.get("education", []):
         p = doc.add_paragraph()
-        run = p.add_run(f"{edu.get('degree', 'N/A')}")
+        degree_text = edu.get('degree', 'N/A')
+        field = edu.get('field_of_study', '')
+        if field:
+            degree_text = f"{degree_text} — {field}"
+        run = p.add_run(degree_text)
         run.bold = True
         doc.add_paragraph(f"{edu.get('school', 'N/A')} ({edu.get('year', 'N/A')})")
+
+    # Certifications
+    certs = resume_json.get("certifications", [])
+    if certs:
+        doc.add_heading('Certifications', level=1)
+        for cert in certs:
+            p = doc.add_paragraph()
+            run = p.add_run(cert.get('name', 'N/A'))
+            run.bold = True
+            issuer = cert.get('issuer', '')
+            date = cert.get('date', '')
+            detail_parts = [x for x in [issuer, date] if x]
+            if detail_parts:
+                doc.add_paragraph(" | ".join(detail_parts))
+
+    # Projects
+    projects = resume_json.get("projects", [])
+    if projects:
+        doc.add_heading('Projects', level=1)
+        for proj in projects:
+            p = doc.add_paragraph()
+            run = p.add_run(proj.get('name', 'N/A'))
+            run.bold = True
+            if proj.get('description'):
+                doc.add_paragraph(proj['description'])
+            tech = proj.get('tech_stack', [])
+            if tech:
+                doc.add_paragraph(f"Technologies: {', '.join(tech)}")
+            for outcome in proj.get('outcomes', []):
+                doc.add_paragraph(outcome, style='List Bullet')
 
     # Save to buffer
     file_stream = io.BytesIO()

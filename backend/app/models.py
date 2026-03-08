@@ -8,13 +8,13 @@ class LoginRequest(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1)
 
 
 class AnalyzeRequest(BaseModel):
-    resume_text: str
-    jd_text: Optional[str] = None
-    threshold: Optional[int] = 75
+    resume_text: str = Field(..., min_length=50)
+    jd_text: Optional[str] = Field(None, min_length=10)
+    threshold: Optional[int] = Field(75, ge=0, le=100)
 
 
 class GenerateRequest(BaseModel):
@@ -24,13 +24,13 @@ class GenerateRequest(BaseModel):
 
 class LinkedInScrapeRequest(BaseModel):
     """Request body for POST /linkedin/scrape."""
-    query: str
+    query: str = Field(..., min_length=10)
     retry: Optional[bool] = False
     session_id: Optional[str] = None
 
 class LinkedInParseRequest(BaseModel):
     """Request body for POST /linkedin/parse — raw profile text pasted by user."""
-    profile_text: str
+    profile_text: str = Field(..., min_length=100)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -77,3 +77,9 @@ class JobResponse(JobCreate):
 class JobMatchResponse(BaseModel):
     score: float
     job: JobResponse
+
+
+class JobSkillMatchResponse(BaseModel):
+    score: float
+    job: JobResponse
+    matched_skills: List[str] = []

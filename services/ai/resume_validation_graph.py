@@ -4,7 +4,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, clean_json_output
+from services.ai.common import get_llm, safe_parse_json
 
 
 # ---------- State ----------
@@ -138,8 +138,7 @@ Return ONLY valid JSON:
             target_role=state.get("target_role") or "Not specified"
         ))
 
-        clean_content = clean_json_output(response.content)
-        result = json.loads(clean_content)
+        result = safe_parse_json(response.content)
 
         # --- Python-side validation to prevent LLM hallucinations ---
         scores = result.get("scores", {})

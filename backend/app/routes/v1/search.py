@@ -7,7 +7,7 @@ import os
 from app.dependencies import get_current_user, resolve_credentials
 from app.models import SearchRequest
 from services.db.lancedb_client import search_resumes_semantic
-from services.ai.common import clean_json_output
+from services.ai.common import safe_parse_json
 
 router = APIRouter()
 
@@ -100,8 +100,7 @@ Return ONLY a JSON object in this format:
         print(f"DEBUG: LLM response received in {llm_end - llm_start:.2f}s.")
         print(f"DEBUG: LLM Raw Output (first 100 char): {raw_result[:100]}...")
 
-        clean_res = clean_json_output(raw_result)
-        parsed_result = json.loads(clean_res)
+        parsed_result = safe_parse_json(raw_result)
 
         total_time = time.time() - start_time
         print(f"--- [Search End] Total time: {total_time:.2f}s ---")

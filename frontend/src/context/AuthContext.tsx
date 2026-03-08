@@ -108,12 +108,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             newPersona = 'recruiter';
             newUser = { name: 'Recruiter Pro', email: 'admin@company.com' };
         } else if (method === 'manager') {
-            newPersona = 'recruiter'; // Map manager to recruiter for now as requested
+            newPersona = 'manager';
             newUser = { name: 'Hiring Lead', email: 'lead@company.com' };
         }
 
         // Persist mock session with distinct tokens for RBAC testing
-        const mockToken = newPersona === 'recruiter' ? 'mock-recruiter-token' : 'mock-token-123';
+        const mockToken = newPersona === 'manager'
+            ? 'mock-manager-token'
+            : newPersona === 'recruiter'
+            ? 'mock-recruiter-token'
+            : 'mock-token-123';
 
         localStorage.setItem('token', mockToken);
         localStorage.setItem('persona', newPersona);

@@ -203,14 +203,13 @@ async def test_linkedin_parse_success(app, mock_linkedin_output):
 
 @pytest.mark.asyncio
 async def test_linkedin_parse_too_short(app):
-    """LinkedIn parse rejects profile text that is too short."""
+    """LinkedIn parse rejects profile text that is too short (Pydantic min_length)."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/linkedin/parse",
             json={"profile_text": "Too short"},
         )
     assert resp.status_code == 422
-    assert "too short" in resp.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

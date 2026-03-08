@@ -28,7 +28,7 @@ async def test_dashboard_stats_recruiter_user(app, recruiter_auth_headers, mock_
             resp = await client.get("/api/v1/dashboard/stats", headers=recruiter_auth_headers)
     assert resp.status_code == 200
     # Verify the function was called with recruiter user_id
-    mock_fn.assert_called_once_with("user_recruiter_456")
+    mock_fn.assert_called_once_with("user_recruiter_456", is_recruiter=True)
 
 
 @pytest.mark.asyncio

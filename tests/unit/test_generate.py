@@ -13,12 +13,13 @@ async def test_generate_resume(app, mock_generate_output):
     with (
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
-        patch("app.routes.v1.generate.run_resume_validation", return_value={}),
+        patch("app.routes.v1.generate.validate_resume_output", return_value={"field_validation": {"valid": True, "errors": [], "warnings": []}, "ai_validation": None}),
+        patch("app.routes.v1.generate.validate_resume_fields", return_value={"valid": True, "errors": [], "warnings": [], "field_report": {}}),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/generate/resume",
-                json={"profile": "Experienced Python developer with 5 years building web APIs"},
+                json={"profile": "Experienced Python developer with 5 years building web APIs and microservices"},
             )
     assert resp.status_code == 200
     data = resp.json()
@@ -70,12 +71,13 @@ async def test_generate_with_output_validation(app, mock_generate_output, mock_g
     with (
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
-        patch("app.routes.v1.generate.run_resume_validation", return_value=mock_good_resume_validation),
+        patch("app.routes.v1.generate.validate_resume_fields", return_value={"valid": True, "errors": [], "warnings": [], "field_report": {}}),
+        patch("app.routes.v1.generate.validate_resume_output", return_value={"field_validation": {"valid": True}, "ai_validation": mock_good_resume_validation}),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/generate/resume",
-                json={"profile": "Senior Python developer specializing in distributed systems"},
+                json={"profile": "Senior Python developer specializing in distributed systems and cloud computing"},
             )
     assert resp.status_code == 200
     data = resp.json()
@@ -101,7 +103,7 @@ async def test_generate_blocked_not_resume(app, mock_not_resume_validation):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/generate/resume",
-                json={"profile": "Buy milk, eggs, bread"},
+                json={"profile": "Buy milk, eggs, bread, and butter from the grocery store today please"},
             )
     assert resp.status_code == 422
     assert resp.json()["detail"]["error"] == "not_a_resume"
@@ -114,12 +116,13 @@ async def test_generate_warning_weak_input(app, mock_generate_output, mock_weak_
     with (
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=mock_weak_resume_validation),
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
-        patch("app.routes.v1.generate.run_resume_validation", return_value={}),
+        patch("app.routes.v1.generate.validate_resume_fields", return_value={"valid": True, "errors": [], "warnings": [], "field_report": {}}),
+        patch("app.routes.v1.generate.validate_resume_output", return_value={"field_validation": {"valid": True}, "ai_validation": None}),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/generate/resume",
-                json={"profile": "I have some experience in coding"},
+                json={"profile": "I have some experience in coding and building web applications for companies"},
             )
     assert resp.status_code == 200
     data = resp.json()
@@ -134,12 +137,13 @@ async def test_generate_no_warning_good_input(app, mock_generate_output):
     with (
         patch("app.routes.v1.generate.precheck_resume_validation", return_value=None),
         patch("app.routes.v1.generate.run_resume_pipeline", return_value=mock_generate_output),
-        patch("app.routes.v1.generate.run_resume_validation", return_value={}),
+        patch("app.routes.v1.generate.validate_resume_fields", return_value={"valid": True, "errors": [], "warnings": [], "field_report": {}}),
+        patch("app.routes.v1.generate.validate_resume_output", return_value={"field_validation": {"valid": True}, "ai_validation": None}),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/generate/resume",
-                json={"profile": "Experienced Python developer with 5 years building web APIs"},
+                json={"profile": "Experienced Python developer with 5 years building web APIs and microservices"},
             )
     assert resp.status_code == 200
     assert "input_validation_warning" not in resp.json()

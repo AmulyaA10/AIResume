@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
     Layout,
     User,
@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
     const { persona, logout } = useAuth();
+    const navigate = useNavigate();
 
     // Default to jobseeker if null (shouldn't happen in authenticated layout)
     const currentPersona = persona || 'jobseeker';
@@ -41,12 +42,14 @@ const Sidebar = () => {
             { path: '/skill-gap', label: 'Skill Gap Analysis', icon: Cpu },
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/jd', label: 'Job Definitions', icon: Briefcase },
-            { path: '/settings', label: 'Settings', icon: Settings },
         ],
         manager: [
+            { path: '/upload', label: 'Resume Database', icon: Upload },
             { path: '/scoring', label: 'Active Rankings', icon: BarChart3 },
             { path: '/skill-gap', label: 'Skill Analysis', icon: Cpu },
-            { path: '/reports', label: 'Final Reports', icon: ShieldCheck },
+            { path: '/screen', label: 'Auto Screening', icon: ShieldCheck },
+            { path: '/jd', label: 'Job Definitions', icon: Briefcase },
+            { path: '/settings', label: 'Settings', icon: Settings },
         ]
     };
 
@@ -61,9 +64,19 @@ const Sidebar = () => {
             </div>
 
             <nav className="flex-1 px-4 space-y-2">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 px-2">
-                    {currentPersona === 'jobseeker' ? 'Candidate Portal' : 'Recruitment Suite'}
-                </div>
+                {(currentPersona === 'recruiter' || currentPersona === 'manager') ? (
+                    <button
+                        onClick={() => navigate('/')}
+                        title="Console View"
+                        className="text-xs font-semibold uppercase tracking-wider mb-4 px-3 py-1.5 rounded-md bg-slate-700 text-slate-300 shadow-md hover:bg-blue-600 hover:text-white hover:shadow-lg active:shadow-inner active:translate-y-px transition-all cursor-pointer text-left"
+                    >
+                        Recruitment Suite
+                    </button>
+                ) : (
+                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 px-2">
+                        Candidate Portal
+                    </div>
+                )}
                 {currentMenu.map((item: any) => (
                     <NavLink
                         key={item.path}

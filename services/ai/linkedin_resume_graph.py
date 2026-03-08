@@ -3,7 +3,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, clean_json_output
+from services.ai.common import get_llm, safe_parse_json
 from services.linkedin_scraper import (
     scrape_linkedin_profile,
     resume_linkedin_session,
@@ -265,8 +265,7 @@ Return ONLY the JSON object. No markdown. No commentary.
     )
 
     try:
-        clean_content = clean_json_output(response.content)
-        parsed_data = json.loads(clean_content)
+        parsed_data = safe_parse_json(response.content)
 
         # Quality gate: ensure the LLM actually extracted meaningful data
         exp_count = len(parsed_data.get("experience") or [])
@@ -288,7 +287,7 @@ Return ONLY the JSON object. No markdown. No commentary.
         return {"parsed_profile": parsed_data}
     except Exception as e:
         print(f"Error parsing profile JSON: {e}")
-        print(f"Raw content: {response.content}")
+        print(f"Raw content: {response.content[:500]}")
         return {"parsed_profile": None, "error": f"Failed to parse LinkedIn profile data: {e}"}
 
 def resume_writer_agent(state: LinkedInResumeState):
@@ -317,8 +316,8 @@ def resume_writer_agent(state: LinkedInResumeState):
 You are a professional resume writer.
 
 Convert the following parsed LinkedIn profile data into a structured resume format.
-Include ALL experience entries, education entries, certifications, and skills from the input data.
-Do not truncate or omit any entries.
+Include ALL experience entries, education entries, certifications, projects, and skills from the input data.
+Do not truncate or omit any entries. Every section below is MANDATORY.
 
 Profile Data:
 {profile}
@@ -326,18 +325,20 @@ Profile Data:
 Return ONLY valid JSON with this exact structure:
 {{
   "contact": {{
-    "name": "",
-    "email": "",
-    "phone": "",
-    "location": ""
+    "name": "Full Name",
+    "email": "email or empty string",
+    "phone": "phone or empty string",
+    "location": "City, Country",
+    "linkedin": "LinkedIn profile URL"
   }},
-  "summary": "Professional summary...",
-  "skills": ["Skill 1", "Skill 2"],
+  "summary": "3-5 sentence professional summary from headline and overall profile.",
+  "skills": ["Skill 1", "Skill 2", "Skill 3"],
   "experience": [
     {{
       "title": "Job Title",
       "company": "Company Name",
       "period": "Start Date - End Date",
+      "location": "City, Country",
       "bullets": ["Achievement 1", "Achievement 2"]
     }}
   ],
@@ -345,7 +346,8 @@ Return ONLY valid JSON with this exact structure:
     {{
       "degree": "Degree Name",
       "school": "University Name",
-      "year": "Year"
+      "field_of_study": "Major / Field of Study",
+      "year": "Year or Start - End"
     }}
   ],
   "certifications": [
@@ -354,15 +356,28 @@ Return ONLY valid JSON with this exact structure:
       "issuer": "Issuing Organization",
       "date": "Date"
     }}
+  ],
+  "projects": [
+    {{
+      "name": "Project Name",
+      "description": "Brief description",
+      "tech_stack": ["Tech 1", "Tech 2"],
+      "outcomes": ["Outcome or result"]
+    }}
   ]
 }}
 
-Important:
+CRITICAL RULES:
 - Include ALL work experiences — list every role even if there are multiple at the same company
-- Include ALL education entries
+- Include ALL education entries with field_of_study when available
 - Include ALL certifications and licenses
+- Include ALL projects (personal + professional) if present in the input
 - Write 2-4 achievement bullets per experience entry based on the description
 - Generate a compelling professional summary from the headline and overall profile
+- contact.name is REQUIRED — never leave blank
+- skills MUST include at least 6 entries when available in the profile
+- If certifications or projects are not in the input, return empty arrays []
+- Return ONLY the JSON object. No markdown. No commentary.
 """
     )
 
@@ -371,8 +386,7 @@ Important:
     )
 
     try:
-        clean_content = clean_json_output(response.content)
-        resume_json = json.loads(clean_content)
+        resume_json = safe_parse_json(response.content)
 
         # Log the generated resume quality
         exp_count = len(resume_json.get("experience") or [])
@@ -383,8 +397,41 @@ Important:
               f"{edu_count} education, {cert_count} certifications, "
               f"summary_len={summary_len} ---")
 
+        # Enforce mandatory fields with fallbacks
+        if not resume_json.get("contact"):
+            resume_json["contact"] = {}
+        contact = resume_json["contact"]
+        if not contact.get("name") and profile.get("name"):
+            contact["name"] = profile["name"]
+        if not contact.get("location") and profile.get("location"):
+            contact["location"] = profile["location"]
+        if not contact.get("linkedin"):
+            p_contact = profile.get("contact") or {}
+            contact["linkedin"] = p_contact.get("linkedin", "")
+
         if not resume_json.get("skills") and derived_skills:
             resume_json["skills"] = derived_skills
+        if not resume_json.get("summary"):
+            resume_json["summary"] = profile.get("summary", "Professional summary not available.")
+        if not resume_json.get("experience"):
+            resume_json["experience"] = []
+        if not resume_json.get("education"):
+            resume_json["education"] = []
+        if "certifications" not in resume_json:
+            resume_json["certifications"] = []
+        if "projects" not in resume_json:
+            # Pull from parsed profile projects if writer didn't include them
+            raw_projects = profile.get("projects") or []
+            resume_json["projects"] = [
+                {
+                    "name": p.get("name", ""),
+                    "description": p.get("description", ""),
+                    "tech_stack": p.get("tech_stack_explicit") or p.get("tech_stack") or [],
+                    "outcomes": p.get("outcomes") or [],
+                }
+                for p in raw_projects
+            ] if raw_projects else []
+
         return {"resume": resume_json}
     except Exception as e:
         print(f"Error parsing resume JSON: {e}")

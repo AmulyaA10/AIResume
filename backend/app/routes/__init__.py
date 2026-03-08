@@ -12,6 +12,7 @@ from app.routes.v1 import (
     health_router,
     jobs_router,
     match_router,
+    validate_router,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "health_router",
     "jobs_router",
     "match_router",
+    "validate_router",
 ]

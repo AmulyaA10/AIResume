@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Loader2, Star, AlertTriangle, CheckCircle, Download, FileText, Sparkles, Target, X, Info, ArrowRight } from 'lucide-react';
+import { Search, Loader2, Star, AlertTriangle, AlertCircle, CheckCircle, Download, FileText, Sparkles, Target, X, Info, ArrowRight } from 'lucide-react';
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -7,16 +7,20 @@ const AISearch = () => {
     const [query, setQuery] = useState('');
     const [searching, setSearching] = useState(false);
     const [results, setResults] = useState<any[]>([]);
+    const [error, setError] = useState<string | null>(null);
     const [cutoff, setCutoff] = useState(10);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim()) return;
         setSearching(true);
+        setError(null);
         try {
             const response = await api.post('/search', { query });
-            setResults(response.data.results || []);
-        } catch (err) {
+            setResults(Array.isArray(response.data.results) ? response.data.results : []);
+        } catch (err: any) {
+            const msg = err.response?.data?.detail || err.message || 'Search failed. Please try again.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
             console.error(err);
         } finally {
             setSearching(false);
@@ -85,6 +89,16 @@ const AISearch = () => {
                     </div>
                 </div>
             </div>
+
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 font-medium flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-bold text-xs uppercase tracking-wider text-red-500 mb-1">Search Error</p>
+                        {error}
+                    </div>
+                </div>
+            )}
 
             {/* Results */}
             <div className="space-y-6">

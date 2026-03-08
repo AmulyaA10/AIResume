@@ -20,6 +20,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Layout>{children}</Layout>;
 };
 
+// Persona-aware search page: recruiter sees candidate search, jobseeker sees job search
+const SearchPage = () => {
+    const { persona } = useAuth();
+    return persona === 'recruiter' ? <AISearch /> : <JobSearch />;
+};
+
 function App() {
     const { persona } = useAuth();
     return (
@@ -46,9 +52,7 @@ function App() {
 
             <Route path="/search" element={
                 <ProtectedRoute>
-                    {/* Debug Banner - can be removed after verification */}
-                    <div className="text-[10px] text-slate-400 p-1">Debug: persona="{persona}"</div>
-                    {(persona?.trim().toLowerCase() === 'recruiter' || persona?.trim().toLowerCase() === 'manager') ? <AISearch /> : <JobSearch />}
+                    <SearchPage />
                 </ProtectedRoute>
             } />
 
@@ -88,7 +92,7 @@ function App() {
 
             <Route path="/settings" element={
                 <ProtectedRoute>
-                    <Settings />
+                    {persona === 'manager' ? <Settings /> : <Navigate to="/" replace />}
                 </ProtectedRoute>
             } />
 

@@ -3,18 +3,25 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
+import re
 import shutil
 
-from app.dependencies import get_current_user, resolve_credentials
+from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.config import UPLOAD_DIR
 from app.common import build_llm_config, safe_log_activity
+from app.common import precheck_resume_validation
 from services.resume_parser import extract_text, to_ats_text
 from services.db.lancedb_client import (
     store_resume, list_user_resumes, delete_user_resume,
     store_resume_validation, get_resume_validations, delete_resume_validation,
 )
 from services.agent_controller import run_resume_validation
+from services.ai.common import extract_skills_from_text
 from services.export_service import generate_docx
+
+# Allowed file extensions for upload
+ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt", "rtf"}
+MAX_FILES_PER_UPLOAD = 20
 
 router = APIRouter()
 
@@ -47,6 +54,13 @@ async def upload_resumes(
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
 
+    # Limit number of files per upload
+    if len(files) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Too many files. Maximum {MAX_FILES_PER_UPLOAD} files per upload."
+        )
+
     print(f"--- Uploading {len(files)} files for user {user_id} ---")
     results = []
     store_db_bool = store_db.lower() == "true"
@@ -54,33 +68,65 @@ async def upload_resumes(
 
     for file in files:
         try:
-            print(f"Processing: {file.filename}")
-            file_path = os.path.join(UPLOAD_DIR, file.filename)
+            # Validate file extension
+            file_ext = os.path.splitext(file.filename or "")[1].lstrip(".").lower()
+            if file_ext not in ALLOWED_EXTENSIONS:
+                results.append({
+                    "filename": file.filename,
+                    "status": "rejected",
+                    "error": f"File type '.{file_ext}' not allowed. Accepted: {', '.join(ALLOWED_EXTENSIONS)}"
+                })
+                continue
+
+            # Sanitize filename — strip path separators to prevent traversal
+            safe_filename = os.path.basename(file.filename or "upload")
+            print(f"Processing: {safe_filename}")
+            file_path = os.path.join(UPLOAD_DIR, safe_filename)
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
             text = extract_text(file_path)
 
-            # --- AI Validation ---
+            # --- AI Validation (same routine as analyze/generate paths) ---
             validation = None
             if validate_bool and text.strip():
                 try:
-                    file_type = os.path.splitext(file.filename)[1].lstrip(".")
                     validation = run_resume_validation(
-                        file_name=file.filename,
-                        file_type=file_type,
+                        file_name=safe_filename,
+                        file_type=file_ext,
                         extracted_text=text,
                         llm_config=llm_config
                     )
-                    print(f"Validation complete: {file.filename} -> {validation.get('classification', 'unknown')}")
+                    # If the validation graph itself errored, don't treat as valid classification
+                    if validation.get("error"):
+                        print(f"DEBUG: Validation graph errored for {safe_filename}: {validation.get('error')}")
+                    else:
+                        print(f"Validation complete: {safe_filename} -> {validation.get('classification', 'unknown')}")
                 except Exception as e:
-                    print(f"DEBUG: Validation failed for {file.filename}: {e}")
+                    print(f"DEBUG: Validation failed for {safe_filename}: {e}")
                     validation = {"error": str(e)}
 
             # --- Store in DB (regardless of validation result) ---
             if store_db_bool:
-                print(f"Storing in DB: {file.filename}")
-                store_resume(file.filename, text, user_id, api_key=creds["openrouter_key"])
+                print(f"Storing in DB: {safe_filename}")
+                store_resume(safe_filename, text, user_id, api_key=creds["openrouter_key"])
+
+            # Quick text-based field presence check (no structured JSON needed)
+            extracted_skills = extract_skills_from_text(text) if text.strip() else []
+            text_field_check = {
+                "skills_detected": len(extracted_skills),
+                "skills_sample": extracted_skills[:10],
+                "has_email": bool(re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)),
+                "has_phone": bool(re.search(r'[\+\(]?[\d\s\-\(\)]{7,}', text)),
+                "has_education_keywords": bool(re.search(
+                    r'\b(university|college|bachelor|master|ph\.?d|degree|b\.?s\.?|m\.?s\.?|b\.?a\.?|m\.?b\.?a)\b',
+                    text, re.IGNORECASE
+                )),
+                "has_experience_keywords": bool(re.search(
+                    r'\b(experience|worked|employed|managed|led|developed|engineered)\b',
+                    text, re.IGNORECASE
+                )),
+            }
 
             # --- Persist validation metadata ---
             if validation and not validation.get("error"):
@@ -88,13 +134,14 @@ async def upload_resumes(
 
             classification = (validation or {}).get("classification", "N/A")
             results.append({
-                "filename": file.filename,
+                "filename": safe_filename,
                 "status": "indexed",
-                "validation": validation
+                "validation": validation,
+                "field_check": text_field_check,
             })
-            safe_log_activity(user_id, "upload", file.filename, 0, classification)
+            safe_log_activity(user_id, "upload", safe_filename, 0, classification)
 
-            print(f"Completed: {file.filename}")
+            print(f"Completed: {safe_filename}")
         except Exception as e:
             print(f"Error processing {file.filename}: {e}")
             results.append({"filename": file.filename, "status": "error", "error": str(e)})
@@ -113,25 +160,115 @@ async def delete_resume(filename: str, user_id: str = Depends(get_current_user))
     return {"success": True, "deleted": filename}
 
 
-@router.get("/text/{filename}")
+@router.get("")
+async def list_resumes_all(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+):
+    """Return distinct resume filenames with role-based access.
+    - jobseeker: only their own resumes
+    - recruiter/manager: all resumes across all users, with uploader attribution
+    """
+    from services.db.lancedb_client import get_or_create_table, list_all_resumes_with_users
+    try:
+        if role in ("recruiter", "manager"):
+            all_resumes = list_all_resumes_with_users()
+            return {"resumes": [r["filename"] for r in all_resumes], "all_resumes": all_resumes}
+        table = get_or_create_table()
+        rows = table.search().where(f"user_id = '{user_id}'").to_list()
+        seen = set()
+        filenames = []
+        for row in rows:
+            fn = row.get("filename")
+            if fn and fn not in seen:
+                seen.add(fn)
+                filenames.append(fn)
+        return {"resumes": filenames}
+    except Exception:
+        return {"resumes": []}
+
+
+@router.get("/{filename}/text")
 async def get_resume_text(filename: str, user_id: str = Depends(get_current_user)):
-    """Return ATS-normalized plain text for refinement input."""
+    """Return extracted text for a resume file."""
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
+    text = extract_text(file_path)
+    return {"filename": filename, "text": text}
+
+
+class ResumeTextUpdate(BaseModel):
+    text: str
+
+
+class ResumeRename(BaseModel):
+    new_filename: str
+
+
+@router.put("/{filename}/text")
+async def update_resume_text(
+    filename: str,
+    body: ResumeTextUpdate,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user)
+):
+    """Update extracted text for a resume and re-index in vector DB."""
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    from services.db.lancedb_client import update_resume_text as db_update
     try:
-        text = to_ats_text(extract_text(file_path))
-        return {"filename": filename, "text": text}
+        db_update(filename, user_id, body.text, api_key=creds["openrouter_key"])
+        return {"success": True, "filename": filename}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{filename}/rename")
+async def rename_resume(
+    filename: str,
+    body: ResumeRename,
+    user_id: str = Depends(get_current_user)
+):
+    """Rename a resume and propagate the change to all dependent data."""
+    from services.db.lancedb_client import rename_resume as db_rename
+
+    new_filename = body.new_filename.strip()
+    if not new_filename:
+        raise HTTPException(status_code=400, detail="New filename cannot be empty")
+    if new_filename == filename:
+        return {"success": True, "filename": new_filename}
+
+    old_path = os.path.join(UPLOAD_DIR, filename)
+    new_path = os.path.join(UPLOAD_DIR, new_filename)
+
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=409, detail="A file with that name already exists")
+
+    file_renamed = False
+    if os.path.exists(old_path):
+        os.rename(old_path, new_path)
+        file_renamed = True
+
+    try:
+        db_rename(filename, new_filename, user_id)
+    except Exception as e:
+        if file_renamed:
+            os.rename(new_path, old_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    safe_log_activity(user_id, "rename", new_filename, 0, "N/A")
+    return {"success": True, "filename": new_filename}
 
 
 @router.get("/download/{filename}")
 async def download_resume(filename: str):
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    # Sanitize filename to prevent path traversal
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
+    return FileResponse(path=file_path, filename=safe_filename, media_type='application/octet-stream')
 
 
 def _resume_json_to_text(resume_json: Dict[str, Any]) -> str:

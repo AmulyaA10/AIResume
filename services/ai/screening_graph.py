@@ -3,7 +3,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 import json
 
-from services.ai.common import get_llm, clean_json_output
+from services.ai.common import get_llm, safe_parse_json
 
 class ScreeningState(TypedDict):
     resume_text: str
@@ -55,8 +55,7 @@ Return ONLY valid JSON:
             jd=state["jd_text"],
             threshold=state.get("threshold", 75)
         ))
-        clean_content = clean_json_output(response.content)
-        result = json.loads(clean_content)
+        result = safe_parse_json(response.content)
         
         score_val = result.get("score", {}).get("overall", 0)
         threshold_val = state.get("threshold", 75)
