@@ -483,7 +483,7 @@ const ResumeManagerModal = ({ onClose, persona }: { onClose: () => void; persona
 
 const ResumeUpload = () => {
     const { persona } = useAuth();
-    const isRecruiter = persona === 'recruiter';
+    const isRecruiterMode = persona === 'recruiter' || persona === 'manager';
     const [files, setFiles] = useState<any[]>([]);
     const [uploading, setUploading] = useState(false);
     const [results, setResults] = useState<any[]>([]);
@@ -492,8 +492,16 @@ const ResumeUpload = () => {
 
     const fetchMyResumes = async () => {
         try {
-            const response = await api.get('/resumes/list');
-            setMyResumes(response.data.resumes || []);
+            if (isRecruiterMode) {
+                const response = await api.get('/resumes');
+                setMyResumes((response.data.all_resumes || response.data.resumes || []).map((item: any) => ({
+                    filename: typeof item === 'string' ? item : item.filename,
+                    validation: item.validation ?? null,
+                })));
+            } else {
+                const response = await api.get('/resumes/list');
+                setMyResumes(response.data.resumes || []);
+            }
         } catch (err) {
             console.error('Failed to fetch resumes:', err);
         }
@@ -501,7 +509,7 @@ const ResumeUpload = () => {
 
     useEffect(() => {
         fetchMyResumes();
-    }, []);
+    }, [persona]);
 
     const handleDelete = async (filename: string) => {
         if (!window.confirm(`Delete "${filename}"?`)) return;
@@ -559,10 +567,10 @@ const ResumeUpload = () => {
             <div className="flex items-center justify-between gap-6 pb-5 border-b border-slate-100">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                        {isRecruiter ? 'Resume Manager' : 'My Documents'}
+                        {isRecruiterMode ? 'Resume Manager' : 'My Documents'}
                     </h1>
                     <p className="text-slate-400 text-sm font-medium mt-0.5">
-                        {isRecruiter
+                        {isRecruiterMode
                             ? 'Upload candidate resumes to your private vector search database.'
                             : 'Upload, manage, and index your resumes for AI-powered job matching.'}
                     </p>

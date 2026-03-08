@@ -169,20 +169,12 @@ async def list_resumes_all(
     - jobseeker: only their own resumes
     - recruiter/manager: all resumes across all users, with uploader attribution
     """
-    from services.db.lancedb_client import get_or_create_table, list_all_resumes_with_users
+    from services.db.lancedb_client import list_all_resumes_with_users, list_user_resumes
     try:
         if role in ("recruiter", "manager"):
             all_resumes = list_all_resumes_with_users()
             return {"resumes": [r["filename"] for r in all_resumes], "all_resumes": all_resumes}
-        table = get_or_create_table()
-        rows = table.search().where(f"user_id = '{user_id}'").to_list()
-        seen = set()
-        filenames = []
-        for row in rows:
-            fn = row.get("filename")
-            if fn and fn not in seen:
-                seen.add(fn)
-                filenames.append(fn)
+        filenames = list_user_resumes(user_id)
         return {"resumes": filenames}
     except Exception:
         return {"resumes": []}
