@@ -33,7 +33,6 @@ const Sidebar = () => {
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/upload', label: 'My Documents', icon: Upload },
             { path: '/linkedin', label: 'Sync LinkedIn', icon: Linkedin },
-            { path: '/settings', label: 'Settings', icon: Settings },
         ],
         recruiter: [
             { path: '/upload', label: 'Resume Database', icon: Upload },
@@ -43,7 +42,6 @@ const Sidebar = () => {
             { path: '/skill-gap', label: 'Skill Gap Analysis', icon: Cpu },
             { path: '/generate', label: 'Resume Refiner', icon: FileText },
             { path: '/jd', label: 'Job Definitions', icon: Briefcase },
-            { path: '/settings', label: 'Settings', icon: Settings },
         ],
         manager: [
             { path: '/upload', label: 'Resume Database', icon: Upload },

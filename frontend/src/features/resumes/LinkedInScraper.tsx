@@ -137,7 +137,7 @@ const LinkedInScraper = () => {
         }
     };
 
-    const { user, login } = useAuth();
+    const { user, login, persona } = useAuth();
 
     // Auto-populate URL from OAuth redirect
     React.useEffect(() => {
@@ -236,12 +236,14 @@ const LinkedInScraper = () => {
                             <div className="space-y-2">
                                 <p className="text-sm font-bold text-red-700">Scraping Failed</p>
                                 <p className="text-xs text-red-600 leading-relaxed">{error}</p>
-                                <button
-                                    onClick={() => navigate('/settings')}
-                                    className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
-                                >
-                                    <Settings className="w-3.5 h-3.5" /> Check Settings
-                                </button>
+                                {persona === 'manager' && (
+                                    <button
+                                        onClick={() => navigate('/settings')}
+                                        className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                    >
+                                        <Settings className="w-3.5 h-3.5" /> Check Settings
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -375,14 +377,21 @@ const LinkedInScraper = () => {
                                         <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center gap-2">
                                             <Settings className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                                             <p className="text-[11px] text-blue-600 font-medium">
-                                                No saved LinkedIn credentials detected.{' '}
-                                                <button
-                                                    onClick={() => navigate('/settings')}
-                                                    className="font-bold text-[#0077b5] hover:text-[#006396] underline transition-colors"
-                                                >
-                                                    Add in Settings
-                                                </button>
-                                                {' '}for faster syncing, or just click the button below — the server may already have your credentials.
+                                                No saved LinkedIn credentials detected.
+                                                {persona === 'manager' ? (
+                                                    <>
+                                                        {' '}
+                                                        <button
+                                                            onClick={() => navigate('/settings')}
+                                                            className="font-bold text-[#0077b5] hover:text-[#006396] underline transition-colors"
+                                                        >
+                                                            Add in Settings
+                                                        </button>
+                                                        {' '}for faster syncing, or just click the button below — the server may already have your credentials.
+                                                    </>
+                                                ) : (
+                                                    ' Please click the button below to retry — the server may already have your credentials.'
+                                                )}
                                             </p>
                                         </div>
                                     )}
@@ -608,7 +617,7 @@ const LinkedInScraper = () => {
                         <div className={`rounded-xl p-4 text-sm font-medium border ${fieldValidation.errors?.length > 0
                             ? 'bg-red-50 border-red-200 text-red-700'
                             : 'bg-amber-50 border-amber-200 text-amber-700'
-                        }`}>
+                            }`}>
                             <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
                                 <AlertCircle className="w-3.5 h-3.5" />
                                 {fieldValidation.errors?.length > 0 ? 'Missing Required Fields' : 'Field Warnings'}
@@ -630,11 +639,10 @@ const LinkedInScraper = () => {
 
                     {/* AI quality validation */}
                     {outputValidation && (
-                        <div className={`rounded-xl p-4 text-sm font-medium border ${
-                            outputValidation.classification === 'resume_valid_strong' || outputValidation.classification === 'resume_valid_good'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                : 'bg-amber-50 border-amber-200 text-amber-700'
-                        }`}>
+                        <div className={`rounded-xl p-4 text-sm font-medium border ${outputValidation.classification === 'resume_valid_strong' || outputValidation.classification === 'resume_valid_good'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                            }`}>
                             <div className="flex items-center gap-2 mb-2 font-black text-[10px] uppercase tracking-widest">
                                 <FileCheck className="w-3.5 h-3.5" />
                                 AI Quality: {outputValidation.classification?.replace(/_/g, ' ').toUpperCase()} ({outputValidation.total_score}/30)

@@ -92,7 +92,7 @@ function App() {
 
             <Route path="/settings" element={
                 <ProtectedRoute>
-                    <Settings />
+                    {persona === 'manager' ? <Settings /> : <Navigate to="/" replace />}
                 </ProtectedRoute>
             } />
 
