@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase, FileText, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase,FileText, AlertCircle } from 'lucide-react';
+
 import { PageHeader, LoadingOverlay } from '../../common';
 import { jobsApi } from '../../api';
 
@@ -15,13 +16,89 @@ const DEFAULTS = {
 const JobForm = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const isEdit = !!id;
-    const [formData, setFormData] = useState<any>(DEFAULTS);
+    const [formData, setFormData] = useState<any>(() => {
+        const parsed = (location.state as any)?.parsed;
+        if (!parsed) return DEFAULTS;
+        return {
+            ...DEFAULTS,
+            title: parsed.title || '',
+            employer_name: parsed.employer_name || '',
+            location_name: parsed.location_name || '',
+            description: parsed.description || '',
+            skills_required: parsed.skills_required?.join(', ') || '',
+            job_level: parsed.job_level || 'MID',
+        };
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isParsing, setIsParsing] = useState(false);
+
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [parseError, setParseError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const dropZoneRef = useRef<HTMLDivElement>(null);
+    // Queue for multi-file drops
+    const fileQueueRef = useRef<File[]>([]);
+    const queueIndexRef = useRef(0);
+    const savedCountRef = useRef(0);
+    const dropHandlerRef = useRef<(files: File[]) => void>(() => {});
+    const [queueStatus, setQueueStatus] = useState<{ current: number; total: number } | null>(null);
+    const [queueErrors, setQueueErrors] = useState<Array<{ name: string; reason: string }>>([]);
+
+    // Prevent the browser from opening dropped files anywhere on the page
+    useEffect(() => {
+        const prevent = (e: DragEvent) => e.preventDefault();
+        document.addEventListener('dragover', prevent);
+        document.addEventListener('drop', prevent);
+        return () => {
+            document.removeEventListener('dragover', prevent);
+            document.removeEventListener('drop', prevent);
+        };
+    }, []);
+
+    // Native drag-and-drop listeners — more reliable than React synthetic events
+    useEffect(() => {
+        const el = dropZoneRef.current;
+        if (!el) return;
+
+        const onDragOver = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(true);
+        };
+
+        const onDragLeave = (e: DragEvent) => {
+            e.preventDefault();
+            // Only clear when the cursor truly leaves the zone (not just a child element)
+            if (!el.contains(e.relatedTarget as Node)) {
+                setIsDragOver(false);
+            }
+        };
+
+        const onDrop = (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(false);
+            const files = Array.from(e.dataTransfer?.files || []);
+            if (files.length > 0) dropHandlerRef.current(files);
+        };
+
+        el.addEventListener('dragover', onDragOver);
+        el.addEventListener('dragleave', onDragLeave);
+        el.addEventListener('drop', onDrop);
+
+        return () => {
+            el.removeEventListener('dragover', onDragOver);
+            el.removeEventListener('dragleave', onDragLeave);
+            el.removeEventListener('drop', onDrop);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [isDragging, setIsDragging] = useState(false);
     const [parseError, setParseError] = useState<string | null>(null);
+
 
     useEffect(() => {
         if (isEdit) {
@@ -53,6 +130,9 @@ const JobForm = () => {
         setFormData((prev: any) => ({ ...prev, [name]: value }));
     };
 
+    const parseFile = async (file: File): Promise<{ success: boolean; errorMsg?: string }> => {
+        setParseError(null);
+
     // Required fields that must be found in the document
     const REQUIRED_PARSED_FIELDS: Array<{ key: string; label: string }> = [
         { key: 'title', label: 'Job Title' },
@@ -67,6 +147,7 @@ const JobForm = () => {
             setParseError(`Invalid file type. Please upload a .docx or .txt file.`);
             return;
         }
+
 
         setIsParsing(true);
         setParseError(null);
@@ -92,20 +173,66 @@ const JobForm = () => {
                 skills_required: parsed.skills_required?.join(', ') || prev.skills_required,
                 job_level: parsed.job_level || prev.job_level,
             }));
-        } catch (error) {
-            console.error('Failed to parse file:', error);
-            setParseError('Failed to parse job description. Please try again.');
+            return { success: true };
+        } catch (error: any) {
+            const detail = error?.response?.data?.detail;
+            const errorMsg = detail || 'Failed to parse file. Please check the file and try again.';
+            setParseError(errorMsg);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return { success: false, errorMsg };
+
         } finally {
             setIsParsing(false);
         }
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0]) return;
-        processFile(e.target.files[0]);
-        e.target.value = ''; // reset so same file can be re-selected
+
+    const processQueueItem = async () => {
+        const files = fileQueueRef.current;
+        const index = queueIndexRef.current;
+
+        if (index >= files.length) {
+            setQueueStatus(null);
+            if (savedCountRef.current > 0) navigate('/jd');
+            // If nothing was saved (all failed), stay on page so errors are visible
+            return;
+        }
+
+        if (files.length > 1) setQueueStatus({ current: index + 1, total: files.length });
+        setFormData(DEFAULTS);
+
+        const result = await parseFile(files[index]);
+
+        if (!result.success) {
+            setQueueErrors(prev => [...prev, { name: files[index].name, reason: result.errorMsg! }]);
+            queueIndexRef.current = index + 1;
+            await processQueueItem(); // skip to next immediately
+        }
+        // On success: form is pre-filled — wait for user to save
     };
 
+    const startQueue = (files: File[]) => {
+        fileQueueRef.current = files;
+        queueIndexRef.current = 0;
+        savedCountRef.current = 0;
+        setQueueErrors([]);
+        processQueueItem();
+    };
+
+    const advanceQueue = () => {
+        savedCountRef.current += 1;
+        queueIndexRef.current += 1;
+        processQueueItem();
+    };
+
+    // Keep the drop handler ref current on every render so the native listener
+    // always calls the latest version (avoids stale closure over queue state).
+    dropHandlerRef.current = startQueue;
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length > 0) startQueue(files);
+        e.target.value = '';
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
@@ -140,10 +267,15 @@ const JobForm = () => {
 
             if (isEdit) {
                 await jobsApi.update(id!, payload);
+                navigate('/jd');
             } else {
                 await jobsApi.create(payload);
+                if (fileQueueRef.current.length > 1) {
+                    advanceQueue();
+                } else {
+                    navigate('/jd');
+                }
             }
-            navigate('/jd');
         } catch (error) {
             console.error('Failed to save job:', error);
             alert('Failed to save job definition');
@@ -168,47 +300,102 @@ const JobForm = () => {
                 subtitle="Define the requirements and criteria for automated candidate matching."
             />
 
+            {queueStatus && (
+                <div style={{
+                    background: '#1e40af', borderRadius: 10, padding: '12px 20px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    flexWrap: 'wrap', gap: 8,
+                }}>
+                    <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>
+                        Processing file {queueStatus.current} of {queueStatus.total}
+                    </span>
+                    <span style={{ color: '#bfdbfe', fontSize: '0.8rem' }}>
+                        Review the pre-filled details below, then save to continue to the next file.
+                    </span>
+                </div>
+            )}
+
+            {queueErrors.length > 0 && (
+                <div style={{
+                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)',
+                    borderRadius: 10, padding: '12px 20px',
+                }}>
+                    <p style={{ color: '#f87171', fontWeight: 700, margin: '0 0 8px 0', fontSize: '0.85rem' }}>
+                        Skipped {queueErrors.length} file{queueErrors.length > 1 ? 's' : ''} due to validation errors:
+                    </p>
+                    {queueErrors.map((err, i) => (
+                        <p key={i} style={{ color: '#fca5a5', fontSize: '0.8rem', margin: '2px 0' }}>
+                            <strong>{err.name}</strong> — {err.reason}
+                        </p>
+                    ))}
+                </div>
+            )}
+
             {!isEdit && (
-                <div className="space-y-2">
-                    <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        className={`glass-card p-6 border-dashed border-2 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer
-                            ${isDragging
-                                ? 'border-blue-400 bg-blue-500/10 scale-[1.01]'
-                                : 'border-slate-700 hover:border-slate-500 group'
-                            }`}
-                    >
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform
-                            ${isDragging ? 'bg-blue-500/20 text-blue-400 scale-110' : 'bg-blue-500/10 text-blue-500 group-hover:scale-110'}`}>
-                            {isParsing
-                                ? <Loader2 size={24} className="animate-spin" />
-                                : isDragging
-                                    ? <FileText size={24} />
-                                    : <Upload size={24} />
-                            }
-                        </div>
-                        <div className="text-center">
-                            {isParsing ? (
-                                <p className="text-blue-400 font-bold">Parsing document...</p>
-                            ) : isDragging ? (
-                                <p className="text-blue-400 font-bold">Drop to upload</p>
-                            ) : (
-                                <label className="text-blue-500 font-bold cursor-pointer hover:text-blue-400">
-                                    Drag & drop or click to upload Job Description
-                                    <input type="file" className="hidden" onChange={handleFileChange} accept=".docx,.txt" />
-                                </label>
-                            )}
-                            <p className="text-xs text-slate-500 mt-1">
-                                Accepts .docx or .txt — must contain Job Title, Employer Name, and Job Description.
-                            </p>
-                        </div>
+                <div
+                    ref={dropZoneRef}
+                    onClick={() => !isParsing && fileInputRef.current?.click()}
+                    style={{
+                        border: isDragOver ? '3px solid #3b82f6' : '3px dashed #94a3b8',
+                        borderRadius: '12px',
+                        minHeight: '220px',
+                        background: isDragOver ? 'rgba(59,130,246,0.1)' : '#1e293b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '16px',
+                        padding: '40px 24px',
+                        cursor: isParsing ? 'wait' : 'pointer',
+                        transition: 'border 0.15s, background 0.15s',
+                        userSelect: 'none',
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        style={{ display: 'none' }}
+                        onChange={handleFileChange}
+                        accept=".pdf,.docx,.txt"
+                        disabled={isParsing}
+                    />
+
+                    <div style={{
+                        width: 68, height: 68, borderRadius: '50%',
+                        background: isDragOver ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.15)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: isDragOver ? '#93c5fd' : '#60a5fa',
+                        transform: isDragOver ? 'scale(1.12)' : 'scale(1)',
+                        transition: 'all 0.15s',
+                    }}>
+                        {isParsing ? <Loader2 size={32} className="animate-spin" /> : <Upload size={32} />}
                     </div>
+
+                    <div style={{ textAlign: 'center' }}>
+                        <p style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 6px 0',
+                            color: isDragOver ? '#93c5fd' : '#f1f5f9' }}>
+                            {isParsing
+                            ? `Parsing${queueStatus ? ` file ${queueStatus.current} of ${queueStatus.total}` : ''}…`
+                            : isDragOver ? 'Release to upload'
+                            : 'Drop your job description here'}
+                        </p>
+                        <p style={{ fontSize: '0.875rem', color: '#94a3b8', margin: 0 }}>
+                            {isParsing ? 'AI is extracting job details…' : 'or click anywhere in this box to browse'}
+                        </p>
+                        <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 12,
+                            textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>
+                            Accepted formats &nbsp;·&nbsp; PDF &nbsp;·&nbsp; Word (.docx) &nbsp;·&nbsp; Text (.txt)
+                        </p>
+                    </div>
+
                     {parseError && (
-                        <div className="flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                            <span>{parseError}</span>
+                        <div style={{
+                            background: 'rgba(239,68,68,0.12)',
+                            border: '1px solid rgba(239,68,68,0.4)',
+                            borderRadius: 8, padding: '10px 16px', maxWidth: 440,
+                        }}>
+                            <p style={{ fontSize: '0.875rem', color: '#f87171', margin: 0 }}>{parseError}</p>
                         </div>
                     )}
                 </div>
@@ -337,7 +524,11 @@ const JobForm = () => {
                             className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-lg font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                            {isEdit ? 'Update Definition' : 'Save Definition'}
+                            {isEdit
+                                ? 'Update Definition'
+                                : queueStatus && queueStatus.current < queueStatus.total
+                                    ? `Save & Continue (${queueStatus.total - queueStatus.current} remaining)`
+                                    : 'Save Definition'}
                         </button>
                         <button
                             type="button"

@@ -142,4 +142,8 @@ def extract_text(file_path):
         doc = docx.Document(file_path)
         return "\n".join(p.text for p in doc.paragraphs)
 
+    if file_path.endswith(".txt"):
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+
     return ""

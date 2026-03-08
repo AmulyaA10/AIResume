@@ -59,7 +59,7 @@ const JobDefinitions = () => {
                     </div>
                     <h4 className="text-slate-900 font-bold text-lg">No Job Definitions</h4>
                     <p className="text-slate-500 max-w-xs mx-auto text-sm mt-1">
-                        Start by creating your first job definition or uploading a PD to automate candidate screening.
+                        Start by creating your first job definition or uploading a JD to automate candidate screening.
                     </p>
                     <button
                         onClick={() => navigate('/jd/new')}
