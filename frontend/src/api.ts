@@ -12,6 +12,17 @@ const api = axios.create({
 // Generate or retrieve a stable per-browser user identity for jobseeker isolation.
 // Recruiter/manager roles are determined by the token and cannot be overridden.
 const getOrCreateUserUid = (): string => {
+    // If a user is logged in, use their email as a stable identity
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        try {
+            const user = JSON.parse(storedUser);
+            if (user.email) return `uid_${user.email}`;
+        } catch (e) {
+            console.error('Failed to parse user for UID', e);
+        }
+    }
+
     let uid = localStorage.getItem('user_uid');
     if (!uid) {
         uid = 'uid_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
