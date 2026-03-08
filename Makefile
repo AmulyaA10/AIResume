@@ -60,7 +60,7 @@ install-dev: ## Install Python dependencies (prod + dev/test)
 
 install-frontend: ## Install Node.js frontend dependencies
 	@echo "$(CYAN)Installing frontend dependencies...$(NC)"
-	cd $(FRONTEND_DIR) && $(NPM) install --silent
+	cd "$(FRONTEND_DIR)" && $(NPM) install --silent
 	@echo "$(GREEN)Frontend dependencies installed.$(NC)"
 
 # ── Test ────────────────────────────────────────────────────────────────────
@@ -94,37 +94,37 @@ lint: ## Run Python linter (ruff)
 
 build: ## Build the React frontend for production
 	@echo "$(CYAN)Building frontend...$(NC)"
-	cd $(FRONTEND_DIR) && $(NPM) run build
+	cd "$(FRONTEND_DIR)" && $(NPM) run build
 	@echo "$(GREEN)Frontend built → $(FRONTEND_DIR)/dist/$(NC)"
 
 # ── Dev Servers ─────────────────────────────────────────────────────────────
 
 dev: ## Start backend + frontend dev servers (parallel)
 	@echo "$(CYAN)Starting dev servers...$(NC)"
-	@bash $(PROJECT_ROOT)/scripts/start_dev.sh
+	@bash "$(PROJECT_ROOT)/scripts/start_dev.sh"
 
 dev-backend: ## Start backend only (uvicorn --reload)
-	cd $(BACKEND_DIR) && $(PYTHON) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd "$(BACKEND_DIR)" && $(PYTHON) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 dev-frontend: ## Start frontend only (vite dev)
-	cd $(FRONTEND_DIR) && $(NPM) run dev
+	cd "$(FRONTEND_DIR)" && $(NPM) run dev
 
 # ── Synthetic Data ──────────────────────────────────────────────────────────
 
 synth-data: ## Generate synthetic test data (resumes + JDs)
 	@echo "$(CYAN)Generating synthetic data...$(NC)"
-	$(PYTHON) $(PROJECT_ROOT)/scripts/generate_synthetic_data.py
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/generate_synthetic_data.py"
 	@echo "$(GREEN)Synthetic data generated.$(NC)"
 
 # ── Clean ───────────────────────────────────────────────────────────────────
 
 clean: ## Remove generated artifacts (dist, caches, synth data)
 	@echo "$(CYAN)Cleaning...$(NC)"
-	rm -rf $(FRONTEND_DIR)/dist
-	rm -rf $(PROJECT_ROOT)/.pytest_cache
-	rm -rf $(PROJECT_ROOT)/tests/__pycache__
-	rm -rf $(PROJECT_ROOT)/tests/unit/__pycache__
-	rm -rf $(PROJECT_ROOT)/tests/integration/__pycache__
-	find $(PROJECT_ROOT) -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find $(PROJECT_ROOT) -name "*.pyc" -delete 2>/dev/null || true
+	rm -rf "$(FRONTEND_DIR)/dist"
+	rm -rf "$(PROJECT_ROOT)/.pytest_cache"
+	rm -rf "$(PROJECT_ROOT)/tests/__pycache__"
+	rm -rf "$(PROJECT_ROOT)/tests/unit/__pycache__"
+	rm -rf "$(PROJECT_ROOT)/tests/integration/__pycache__"
+	find "$(PROJECT_ROOT)" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find "$(PROJECT_ROOT)" -name "*.pyc" -delete 2>/dev/null || true
 	@echo "$(GREEN)Clean complete.$(NC)"
