@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase,FileText, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Plus, Upload, Loader2, Save, Briefcase, FileText, AlertCircle } from 'lucide-react';
 
 import { PageHeader, LoadingOverlay } from '../../common';
 import { jobsApi } from '../../api';
@@ -43,7 +43,7 @@ const JobForm = () => {
     const fileQueueRef = useRef<File[]>([]);
     const queueIndexRef = useRef(0);
     const savedCountRef = useRef(0);
-    const dropHandlerRef = useRef<(files: File[]) => void>(() => {});
+    const dropHandlerRef = useRef<(files: File[]) => void>(() => { });
     const [queueStatus, setQueueStatus] = useState<{ current: number; total: number } | null>(null);
     const [queueErrors, setQueueErrors] = useState<Array<{ name: string; reason: string }>>([]);
 
@@ -94,10 +94,8 @@ const JobForm = () => {
             el.removeEventListener('dragleave', onDragLeave);
             el.removeEventListener('drop', onDrop);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    const [isDragging, setIsDragging] = useState(false);
-    const [parseError, setParseError] = useState<string | null>(null);
 
 
     useEffect(() => {
@@ -133,19 +131,19 @@ const JobForm = () => {
     const parseFile = async (file: File): Promise<{ success: boolean; errorMsg?: string }> => {
         setParseError(null);
 
-    // Required fields that must be found in the document
-    const REQUIRED_PARSED_FIELDS: Array<{ key: string; label: string }> = [
-        { key: 'title', label: 'Job Title' },
-        { key: 'employer_name', label: 'Employer Name' },
-        { key: 'description', label: 'Job Description' },
-    ];
+        // Required fields that must be found in the document
+        const REQUIRED_PARSED_FIELDS: Array<{ key: string; label: string }> = [
+            { key: 'title', label: 'Job Title' },
+            { key: 'employer_name', label: 'Employer Name' },
+            { key: 'description', label: 'Job Description' },
+        ];
 
-    const processFile = async (file: File) => {
         const allowed = ['.docx', '.txt'];
         const ext = '.' + file.name.split('.').pop()?.toLowerCase();
         if (!allowed.includes(ext)) {
-            setParseError(`Invalid file type. Please upload a .docx or .txt file.`);
-            return;
+            const errorMsg = `Invalid file type. Please upload a .docx or .txt file.`;
+            setParseError(errorMsg);
+            return { success: false, errorMsg };
         }
 
 
@@ -158,10 +156,9 @@ const JobForm = () => {
             // Validate that required fields were found in the document
             const missing = REQUIRED_PARSED_FIELDS.filter(f => !parsed[f.key]?.toString().trim());
             if (missing.length > 0) {
-                setParseError(
-                    `Document rejected: the following required fields were not found — ${missing.map(f => f.label).join(', ')}. Please ensure the document contains this information.`
-                );
-                return;
+                const errorMsg = `Document rejected: the following required fields were not found — ${missing.map(f => f.label).join(', ')}. Please ensure the document contains this information.`;
+                setParseError(errorMsg);
+                return { success: false, errorMsg };
             }
 
             setFormData((prev: any) => ({
@@ -233,24 +230,6 @@ const JobForm = () => {
         const files = Array.from(e.target.files || []);
         if (files.length > 0) startQueue(files);
         e.target.value = '';
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    };
-
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        const file = e.dataTransfer.files?.[0];
-        if (file) processFile(file);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -373,18 +352,22 @@ const JobForm = () => {
                     </div>
 
                     <div style={{ textAlign: 'center' }}>
-                        <p style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 6px 0',
-                            color: isDragOver ? '#93c5fd' : '#f1f5f9' }}>
+                        <p style={{
+                            fontSize: '1.1rem', fontWeight: 700, margin: '0 0 6px 0',
+                            color: isDragOver ? '#93c5fd' : '#f1f5f9'
+                        }}>
                             {isParsing
-                            ? `Parsing${queueStatus ? ` file ${queueStatus.current} of ${queueStatus.total}` : ''}…`
-                            : isDragOver ? 'Release to upload'
-                            : 'Drop your job description here'}
+                                ? `Parsing${queueStatus ? ` file ${queueStatus.current} of ${queueStatus.total}` : ''}…`
+                                : isDragOver ? 'Release to upload'
+                                    : 'Drop your job description here'}
                         </p>
                         <p style={{ fontSize: '0.875rem', color: '#94a3b8', margin: 0 }}>
                             {isParsing ? 'AI is extracting job details…' : 'or click anywhere in this box to browse'}
                         </p>
-                        <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 12,
-                            textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>
+                        <p style={{
+                            fontSize: '0.7rem', color: '#64748b', marginTop: 12,
+                            textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700
+                        }}>
                             Accepted formats &nbsp;·&nbsp; PDF &nbsp;·&nbsp; Word (.docx) &nbsp;·&nbsp; Text (.txt)
                         </p>
                     </div>
