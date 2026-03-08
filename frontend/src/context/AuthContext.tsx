@@ -140,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('token');
         localStorage.removeItem('persona');
         localStorage.removeItem('user');
+        localStorage.removeItem('user_uid');
         localStorage.removeItem('linkedin_connected');
         localStorage.removeItem('linkedin_profile_url');
         setIsAuthenticated(false);
