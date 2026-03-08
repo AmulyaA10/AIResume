@@ -3,6 +3,7 @@ import { FileText, Loader2, Download, Sparkles, CheckCircle2, ChevronRight, Save
 import api from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmptyState, LoadingOverlay, ActionButton, FormTextarea, ValidationBanner } from '../../common';
+import { useAuth } from '../../context/AuthContext';
 
 const classificationConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
     not_resume: { label: 'Not a Resume', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
@@ -76,6 +77,7 @@ function StatusDot({ status }: { status: 'valid' | 'warning' | 'missing' }) {
 }
 
 const ResumeGenerator = () => {
+    const { persona } = useAuth();
     const editorRef = useRef<HTMLDivElement>(null);
     const [profile, setProfile] = useState('');
     const [generating, setGenerating] = useState(false);
@@ -104,10 +106,20 @@ const ResumeGenerator = () => {
     const [refinementInstructions, setRefinementInstructions] = useState<string | null>(null);
 
     useEffect(() => {
-        api.get('/resumes/list')
-            .then(r => setMyResumes(r.data.resumes || []))
-            .catch(console.error);
-    }, []);
+        const isRecruiterMode = persona === 'recruiter' || persona === 'manager';
+        if (isRecruiterMode) {
+            api.get('/resumes')
+                .then(r => setMyResumes((r.data.all_resumes || r.data.resumes || []).map((item: any) => ({
+                    filename: typeof item === 'string' ? item : item.filename,
+                    validation: item.validation ?? null,
+                }))))
+                .catch(console.error);
+        } else {
+            api.get('/resumes/list')
+                .then(r => setMyResumes(r.data.resumes || []))
+                .catch(console.error);
+        }
+    }, [persona]);
 
     const handleSelectResume = async (filename: string) => {
         setSelectedFile(filename);
@@ -133,8 +145,19 @@ const ResumeGenerator = () => {
         }
     };
 
-    const refreshResumes = () =>
-        api.get('/resumes/list').then(r => setMyResumes(r.data.resumes || [])).catch(console.error);
+    const refreshResumes = () => {
+        const isRecruiterMode = persona === 'recruiter' || persona === 'manager';
+        if (isRecruiterMode) {
+            api.get('/resumes')
+                .then(r => setMyResumes((r.data.all_resumes || r.data.resumes || []).map((item: any) => ({
+                    filename: typeof item === 'string' ? item : item.filename,
+                    validation: item.validation ?? null,
+                }))))
+                .catch(console.error);
+        } else {
+            api.get('/resumes/list').then(r => setMyResumes(r.data.resumes || [])).catch(console.error);
+        }
+    };
 
     const resumeJsonToText = (r: any): string => {
         const contact = r?.contact || {};
