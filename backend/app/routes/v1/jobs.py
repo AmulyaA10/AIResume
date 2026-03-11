@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header, BackgroundTasks
 import uuid
 import os
 import shutil
@@ -300,11 +300,33 @@ async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
     return {"message": "Deleted"}
 
 @router.post("/{job_id}/apply")
-async def apply_job(job_id: str, resume_id: str = Query(...), user_id: str = Depends(get_current_user)):
-    from services.db.lancedb_client import apply_for_job
+async def apply_job(job_id: str, background_tasks: BackgroundTasks, resume_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    from services.db.lancedb_client import apply_for_job, get_or_create_jobs_table, get_or_create_table
+    from services.email_service import send_employer_notification
     try:
         success = apply_for_job(user_id, job_id, resume_id)
         if success:
+            # Fetch job details to get employer_email
+            jobs_table = get_or_create_jobs_table()
+            job_results = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
+            if job_results and job_results[0].get("employer_email"):
+                job_ref = job_results[0]
+                employer_email = job_ref["employer_email"]
+                job_title = job_ref.get("title", "Unknown Job Title")
+
+                # Fetch resume text
+                resumes_table = get_or_create_table()
+                resume_results = resumes_table.search().where(f"filename = '{resume_id}' AND user_id = '{user_id}'").to_pandas()
+                
+                resume_text = ""
+                if not resume_results.empty:
+                    # Chunks are stored, concatenate them
+                    resume_text = "\n".join(resume_results['text'].tolist())
+
+                # Queue the email notification in the background
+                if employer_email:
+                    background_tasks.add_task(send_employer_notification, employer_email, job_title, user_id, resume_id, resume_text)
+
             return {"message": "Successfully applied for job"}
         else:
             return {"message": "Already applied for job"}
