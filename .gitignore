@@ -68,3 +68,8 @@ Thumbs.db
 # ---------- Logs ----------
 *.log
 logs/
+.env
+
+env
+backend/env
+backend/app/env
