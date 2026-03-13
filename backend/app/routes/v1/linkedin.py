@@ -27,15 +27,10 @@ def _resolve_credentials_sync(user_id: str) -> dict:
     print(f"DEBUG: [_resolve_credentials_sync] user_id={user_id}")
 
     try:
-        stored = get_user_settings(user_id)
-        print(f"DEBUG: [_resolve_credentials_sync] get_user_settings('{user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
-
-        # One-time migration for orphaned credentials
-        if not stored and user_id == "user_alex_chen_123":
-            print("DEBUG: [_resolve_credentials_sync] Triggering orphan migration...")
-            migrate_orphaned_settings("user_recruiter_456", "user_alex_chen_123")
-            stored = get_user_settings(user_id)
-            print(f"DEBUG: [_resolve_credentials_sync] Post-migration keys: {list(stored.keys()) if stored else '(empty)'}")
+        # Use manager's credentials globally
+        settings_user_id = "user_manager_789"
+        stored = get_user_settings(settings_user_id)
+        print(f"DEBUG: [_resolve_credentials_sync] get_user_settings('{settings_user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
 
         if stored:
             if stored.get("linkedinUser"):

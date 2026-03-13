@@ -217,7 +217,19 @@ async def list_jobs(
     query = query.where(" AND ".join(filters))
     
     results = query.limit(limit + skip).to_list()
-    return [_serialize_job(r) for r in results[skip:skip + limit]]
+    jobs = [_serialize_job(r) for r in results[skip:skip + limit]]
+    
+    # Add applied_count to each job
+    applied_table = get_or_create_job_applied_table()
+    try:
+        applied_df = applied_table.to_pandas()
+        if not applied_df.empty:
+            for job in jobs:
+                job["applied_count"] = len(applied_df[applied_df['job_id'] == job['job_id']])
+    except Exception as e:
+        print(f"DEBUG: Error calculating applied_counts: {e}")
+
+    return jobs
 
 # New endpoint to fetch applied jobs for the current user
 @router.get("/my-applied", response_model=List[dict])
@@ -260,7 +272,18 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user)):
     results = table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
     if not results:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _serialize_job(results[0])
+    
+    job_dict = _serialize_job(results[0])
+    
+    applied_table = get_or_create_job_applied_table()
+    try:
+        applied_df = applied_table.to_pandas()
+        if not applied_df.empty:
+            job_dict["applied_count"] = len(applied_df[applied_df['job_id'] == job_id])
+    except Exception as e:
+        print(f"DEBUG: Error calculating applied_count for {job_id}: {e}")
+        
+    return job_dict
 
 @router.put("/{job_id}", response_model=JobResponse)
 async def update_job(job_id: str, job: JobCreate, user_id: str = Depends(get_current_user)):
@@ -298,6 +321,60 @@ async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
     
     table.delete(f"job_id = '{job_id}'")
     return {"message": "Deleted"}
+
+@router.get("/{job_id}/candidates", response_model=List[dict])
+async def get_job_candidates(job_id: str, user_id: str = Depends(get_current_user)):
+    # 1. Verify user owns the job
+    jobs_table = get_or_create_jobs_table()
+    jobs = jobs_table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    # 2. Get applied candidates
+    applied_table = get_or_create_job_applied_table()
+    applied_records = applied_table.search().where(f"job_id = '{job_id}'").to_list()
+    
+    result = []
+    for rec in applied_records:
+        result.append({
+            "resume_id": rec.get('resume_id'),
+            "candidate_user_id": rec.get('user_id'),
+            "applied_at": rec.get('timestamp'),
+            "applied_status": rec.get('applied_status', 'applied')
+        })
+    return result
+    
+from pydantic import BaseModel
+class StatusUpdate(BaseModel):
+    status: str
+
+@router.put("/{job_id}/candidates/{resume_id}/status")
+async def update_candidate_status(job_id: str, resume_id: str, status_data: StatusUpdate, user_id: str = Depends(get_current_user)):
+    # 1. Verify user owns the job
+    jobs_table = get_or_create_jobs_table()
+    jobs = jobs_table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    safe_resume_id = resume_id.replace("'", "''")
+        
+    # 2. Update status
+    applied_table = get_or_create_job_applied_table()
+    try:
+        df = applied_table.to_pandas()
+        if not df.empty:
+            mask = (df['job_id'] == job_id) & (df['resume_id'] == resume_id)
+            rows = df[mask].copy()
+            if not rows.empty:
+                applied_table.delete(f"job_id = '{job_id}' AND resume_id = '{safe_resume_id}'")
+                rows['applied_status'] = status_data.status
+                applied_table.add(rows.to_dict('records'))
+                return {"message": "Status updated successfully", "status": status_data.status}
+    except Exception as e:
+        print(f"DEBUG: Error updating status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update application status")
+        
+    raise HTTPException(status_code=404, detail="Application not found")
 
 @router.post("/{job_id}/apply")
 async def apply_job(job_id: str, background_tasks: BackgroundTasks, resume_id: str = Query(...), user_id: str = Depends(get_current_user)):
