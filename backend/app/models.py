@@ -72,6 +72,7 @@ class JobResponse(JobCreate):
     job_id: str
     user_id: str
     posted_date: Optional[str] = None
+    applied_count: Optional[int] = 0
 
 
 class JobMatchResponse(BaseModel):

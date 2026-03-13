@@ -1,17 +1,21 @@
-import React from 'react';
-import { Briefcase, Plus, Search, MapPin, Trash2, Edit } from 'lucide-react';
+import React, { useState } from 'react';
+import { Briefcase, Plus, Search, MapPin, Trash2, Edit, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, LoadingOverlay } from '../../common';
 import { jobsApi } from '../../api';
+import JobCandidatesModal from './JobCandidatesModal';
 
 const JobDefinitions = () => {
     const navigate = useNavigate();
-    const [jobs, setJobs] = React.useState<any[]>([]);
-    const [isLoading, setIsLoading] = React.useState(true);
+    const [jobs, setJobs] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedJobForCandidates, setSelectedJobForCandidates] = useState<{ id: string, title: string } | null>(null);
 
     React.useEffect(() => {
-        fetchJobs();
-    }, []);
+        if (!selectedJobForCandidates) {
+            fetchJobs();
+        }
+    }, [selectedJobForCandidates]);
 
     const fetchJobs = async () => {
         setIsLoading(true);
@@ -81,6 +85,19 @@ const JobDefinitions = () => {
                                     <Briefcase size={20} />
                                 </div>
                                 <div className="flex gap-2">
+                                    {job.applied_count !== undefined && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedJobForCandidates({ id: job.job_id, title: job.title });
+                                            }}
+                                            className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors shadow-sm cursor-pointer border border-indigo-100/50"
+                                            title="View Candidates"
+                                        >
+                                            <Users size={14} />
+                                            {job.applied_count} Applied
+                                        </button>
+                                    )}
                                     <button
                                         onClick={(e) => handleDelete(job.job_id, e)}
                                         className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
@@ -107,6 +124,14 @@ const JobDefinitions = () => {
                         </div>
                     ))}
                 </div>
+            )}
+            
+            {selectedJobForCandidates && (
+                <JobCandidatesModal
+                    jobId={selectedJobForCandidates.id}
+                    jobTitle={selectedJobForCandidates.title}
+                    onClose={() => setSelectedJobForCandidates(null)}
+                />
             )}
         </div>
     );

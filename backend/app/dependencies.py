@@ -75,18 +75,12 @@ async def resolve_credentials(
     if missing:
         try:
             from app.common.encryption import decrypt_value
-            from services.db.lancedb_client import get_user_settings, migrate_orphaned_settings
+            from services.db.lancedb_client import get_user_settings
 
-            stored = get_user_settings(user_id)
-            print(f"DEBUG: [resolve_credentials] get_user_settings('{user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
-
-            # One-time migration: if no settings found for this user, check
-            # for orphaned credentials from the old recruiter user ID mapping
-            if not stored and user_id == "user_alex_chen_123":
-                print("DEBUG: [resolve_credentials] Triggering orphan migration...")
-                migrate_orphaned_settings("user_recruiter_456", "user_alex_chen_123")
-                stored = get_user_settings(user_id)
-                print(f"DEBUG: [resolve_credentials] Post-migration keys: {list(stored.keys()) if stored else '(empty)'}")
+            # Use manager's credentials globally for the entire system
+            settings_user_id = "user_manager_789"
+            stored = get_user_settings(settings_user_id)
+            print(f"DEBUG: [resolve_credentials] get_user_settings('{settings_user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
 
             key_map = {
                 "openrouter_key": "openRouterKey",
