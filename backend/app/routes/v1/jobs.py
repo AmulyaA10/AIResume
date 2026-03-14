@@ -163,6 +163,78 @@ async def parse_job_upload(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+@router.post("/parse-query-intent")
+async def parse_query_intent(
+    body: dict,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user),
+):
+    """Use an LLM to parse a natural-language job search query into structured intent.
+
+    Returns:
+        location        — canonical location string or null
+        locationAliases — substrings to match against job location_name fields
+        topN            — integer limit or null
+        sortBySalary    — true if user wants highest-paid jobs
+        cleanQuery      — query stripped of intent tokens, suitable for vector search
+    """
+    query = (body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="query is required")
+
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    llm = ChatOpenAI(
+        model=creds["llm_model"] or "gpt-4o-mini",
+        api_key=creds["openrouter_key"] or os.getenv("OPEN_ROUTER_KEY"),
+        base_url="https://openrouter.ai/api/v1",
+    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a job search query parser. Given a natural-language query, extract structured intent.\n\n"
+         "Return ONLY valid JSON with these fields (no markdown, no explanation):\n"
+         "{{\n"
+         '  "location": <canonical location string in lowercase, or null>,\n'
+         '  "locationAliases": <array of 4-8 lowercase substrings that uniquely identify this location in job posting strings. '
+         "IMPORTANT: avoid short ambiguous abbreviations (e.g. do NOT use 'ca' for California — it matches 'canada'; "
+         "do NOT use 'ny' alone — use ', ny' or 'new york'). Prefer full city/region names and metro area labels.>,\n"
+         '  "topN": <integer if user wants top N results, else null>,\n'
+         '  "sortBySalary": <true if user wants highest-paid / best-paying / top salary jobs, else false>,\n'
+         '  "cleanQuery": <the query with all intent tokens removed, keeping only the job-type signal. If nothing meaningful remains, use a sensible default like "software engineering jobs".>\n'
+         "}}\n\n"
+         "Examples:\n"
+         '  "top paid 5 jobs in california" → {{"location":"california","locationAliases":["san francisco","bay area","los angeles","silicon valley","west coast","sacramento"],"topN":5,"sortBySalary":true,"cleanQuery":"software engineering jobs"}}\n'
+         '  "best paying data scientist roles in NYC" → {{"location":"new york","locationAliases":["new york city","manhattan","brooklyn","new york"],"topN":null,"sortBySalary":true,"cleanQuery":"data scientist"}}\n'
+         '  "remote python developer" → {{"location":null,"locationAliases":[],"topN":null,"sortBySalary":false,"cleanQuery":"remote python developer"}}'
+        ),
+        ("human", "Query: {query}"),
+    ])
+    chain = prompt | llm | StrOutputParser()
+    raw = await chain.ainvoke({"query": query})
+    try:
+        result = json.loads(raw.strip())
+        # Ensure required fields with safe defaults
+        result.setdefault("location", None)
+        result.setdefault("locationAliases", [])
+        result.setdefault("topN", None)
+        result.setdefault("sortBySalary", False)
+        result.setdefault("cleanQuery", query)
+    except Exception:
+        result = {
+            "location": None,
+            "locationAliases": [],
+            "topN": None,
+            "sortBySalary": False,
+            "cleanQuery": query,
+        }
+
+    return result
+
+
 @router.post("", response_model=JobResponse)
 async def create_job(job: JobCreate, user_id: str = Depends(get_current_user)):
     table = get_or_create_jobs_table()

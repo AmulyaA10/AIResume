@@ -8,16 +8,22 @@ interface MatchStats {
     topSkills: string[]; scoreBreakdown: { range: string; count: number }[];
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-    USD: '$', GBP: '£', EUR: '€', CAD: 'CAD$', AUD: 'AUD$', SGD: 'SGD$',
+const formatSalary = (currency: string, min: number, max?: number): string => {
+    if (!min || min <= 0) return 'Negotiable';
+    const fmt = (n: number) => new Intl.NumberFormat('en', {
+        style: 'currency', currency: currency || 'USD',
+        maximumFractionDigits: 0, notation: 'compact',
+    }).format(n * 1000);
+    return max && max > 0 ? `${fmt(min)} – ${fmt(max)}` : `${fmt(min)}+`;
 };
 
-const formatSalary = (currency: string, min: number, max?: number): string => {
-    const sym = CURRENCY_SYMBOLS[currency] ?? '$';
-    if (!min || min <= 0) return 'Negotiable';
-    if (max && max > 0) return `${sym}${(min / 1000).toFixed(0)}k – ${sym}${(max / 1000).toFixed(0)}k`;
-    return `${sym}${(min / 1000).toFixed(0)}k+`;
-};
+interface QueryIntent {
+    location: string | null;   // e.g. "california", "london"
+    topN: number | null;       // e.g. 5 from "top 5 jobs"
+    sortBySalary: boolean;     // true if "top paid", "highest salary", etc.
+    cleanQuery: string;        // query with intent tokens stripped
+}
+
 
 const JobSearch = () => {
     const [query, setQuery] = useState('');
@@ -35,6 +41,8 @@ const JobSearch = () => {
     const [resumes, setResumes] = useState<string[]>([]);
     const [selectedResume, setSelectedResume] = useState<string>('');
     const [searchDone, setSearchDone] = useState(false);
+    const [activeIntent, setActiveIntent] = useState<QueryIntent | null>(null);
+    const locationAliasCache = React.useRef<Record<string, string[]>>({});
 
     // Stats derived at render time from results
     const matchStats: MatchStats | null = (searchDone && results.length > 0) ? (() => {
@@ -138,11 +146,57 @@ const JobSearch = () => {
         setLoading(true);
         setSearchDone(false);
         try {
-            const response = await matchApi.searchJobs(searchQuery);
-            setResults(response.data || []);
-        } catch (error) {
-            console.error("Search failed", error);
+            // Parse intent via AI (cached per query)
+            let intent: QueryIntent & { locationAliases?: string[] };
+            const cached = locationAliasCache.current[searchQuery];
+            if (cached) {
+                intent = cached as any;
+            } else {
+                const intentRes = await jobsApi.parseQueryIntent(searchQuery);
+                intent = intentRes.data;
+                locationAliasCache.current[searchQuery] = intent as any;
+            }
+
+            const response = await matchApi.searchJobs(intent.cleanQuery || searchQuery);
+            let data: any[] = response.data || [];
+
+            // Apply location filter using AI-resolved aliases
+            // Use word-boundary regex for short terms to avoid false matches (e.g. "ca" inside "canada")
+            if (intent.location) {
+                const loc = intent.location.toLowerCase();
+                const aliases: string[] = (intent as any).locationAliases ?? [];
+                const matchesTerm = (text: string, term: string) => {
+                    if (term.length <= 3) {
+                        return new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
+                    }
+                    return text.includes(term);
+                };
+                data = data.filter(r => {
+                    const ln = (r.job.location_name || '').toLowerCase();
+                    return matchesTerm(ln, loc) || aliases.some((a: string) => matchesTerm(ln, a));
+                });
+            }
+
+            // Apply salary sort
+            if (intent.sortBySalary) {
+                data = [...data].sort((a, b) =>
+                    (b.job.salary_max || b.job.salary_min || 0) - (a.job.salary_max || a.job.salary_min || 0)
+                );
+            }
+
+            const totalAfterFilters = data.length;
+
+            if (intent.topN && intent.topN > 0) {
+                data = data.slice(0, intent.topN);
+            }
+
+            setResults(data);
+            const hasIntent = !!(intent.location || intent.topN || intent.sortBySalary);
+            setActiveIntent(hasIntent ? { ...intent, _totalAfterFilters: totalAfterFilters } as any : null);
+        } catch (err) {
+            console.error("Search failed", err);
             setResults([]);
+            setActiveIntent(null);
         } finally {
             setLoading(false);
             setSearchDone(true);
@@ -415,6 +469,20 @@ const JobSearch = () => {
                     </h3>
                 </div>
 
+                {activeIntent && !loading && (
+                    <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                        {activeIntent.location && (
+                            <span className="flex items-center gap-1"><MapPin size={12} className="text-blue-500" /> {activeIntent.location}</span>
+                        )}
+                        {activeIntent.sortBySalary && (
+                            <span className="flex items-center gap-1 text-green-700">&#8593; Sorted by salary</span>
+                        )}
+                        {activeIntent.topN && (
+                            <span>Top {filteredResults.length} shown</span>
+                        )}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <AnimatePresence mode="popLayout">
                         {filteredResults.map((match, idx) => (
@@ -428,9 +496,15 @@ const JobSearch = () => {
                                 className="glass-card p-6 bg-white border-slate-200 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/5 transition-all group cursor-pointer relative overflow-hidden"
                             >
                                 <div className="absolute top-0 right-0">
-                                    <div className="bg-blue-600 text-white px-3 py-1 rounded-bl-xl font-black text-xs shadow-lg">
-                                        {Math.round(match.score * 100)}% Match
-                                    </div>
+                                    {activeIntent?.sortBySalary ? (
+                                        <div className="bg-green-600 text-white px-3 py-1 rounded-bl-xl font-black text-xs shadow-lg">
+                                            #{idx + 1} by salary
+                                        </div>
+                                    ) : !activeIntent ? (
+                                        <div className="bg-blue-600 text-white px-3 py-1 rounded-bl-xl font-black text-xs shadow-lg">
+                                            {Math.round(match.score * 100)}% Match
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="space-y-4">

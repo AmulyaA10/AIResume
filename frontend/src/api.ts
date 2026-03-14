@@ -74,8 +74,10 @@ export const jobsApi = {
     apply: (jobId: string, resumeId: string) => api.post(`/jobs/${jobId}/apply?resume_id=${resumeId}`),
     getAppliedJobs: () => api.get('/jobs/my-applied'),
     getCandidates: (jobId: string) => api.get(`/jobs/${jobId}/candidates`),
-    updateCandidateStatus: (jobId: string, resumeId: string, status: string) => 
+    updateCandidateStatus: (jobId: string, resumeId: string, status: string) =>
         api.put(`/jobs/${jobId}/candidates/${encodeURIComponent(resumeId)}/status`, { status }),
+    parseQueryIntent: (query: string) =>
+        api.post('/jobs/parse-query-intent', { query }),
 };
 
 export const resumesApi = {
