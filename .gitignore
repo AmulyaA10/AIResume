@@ -44,9 +44,11 @@ secrets.txt
 data/raw_resumes/*.pdf
 data/raw_resumes/*.docx
 data/lancedb/
-backend/data/raw_resumes/*.pdf
-backend/data/raw_resumes/*.docx
+backend/data/raw_resumes/
 backend/data/lancedb/
+
+# ---------- Claude Code ----------
+.claude/
 
 # ---------- IDEs ----------
 .vscode/

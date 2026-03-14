@@ -4,7 +4,7 @@ import json
 import time
 import os
 
-from app.dependencies import get_current_user, resolve_credentials
+from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.models import SearchRequest
 from services.db.lancedb_client import search_resumes_semantic
 from services.ai.common import safe_parse_json
@@ -17,17 +17,26 @@ async def search_resumes(
     request: SearchRequest,
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None),
-    user_id: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
 ):
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+
+    # Early check: no API key configured at all
+    if not creds["openrouter_key"] and not os.getenv("OPEN_ROUTER_KEY"):
+        return {"results": [], "error": "OpenRouter API key not configured. Please add it in Settings."}
 
     start_time = time.time()
     print(f"--- [Search Start] Query: '{request.query}' for user {user_id} ---")
 
-    is_recruiter = user_id == "user_recruiter_456"
+    is_recruiter = role in ("recruiter", "manager")
     # Perform semantic search to filter relevant resumes/chunks
     db_start = time.time()
-    df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"], is_recruiter=is_recruiter)
+    try:
+        df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"], is_recruiter=is_recruiter)
+    except Exception as e:
+        print(f"DEBUG: [Search] Embedding/DB search failed: {e}")
+        return {"results": [], "error": f"Search failed: {str(e)}"}
     db_end = time.time()
     print(f"DEBUG: LanceDB search took {db_end - db_start:.2f}s. Found {len(df)} results.")
 

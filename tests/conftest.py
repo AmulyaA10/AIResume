@@ -282,6 +282,12 @@ def recruiter_auth_headers():
     return {"Authorization": "Bearer mock-recruiter-token-123"}
 
 
+@pytest.fixture()
+def manager_auth_headers():
+    """Manager auth headers."""
+    return {"Authorization": "Bearer mock-manager-token"}
+
+
 # ---------------------------------------------------------------------------
 # Resume validation pre-check fixtures
 # ---------------------------------------------------------------------------

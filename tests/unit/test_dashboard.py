@@ -22,13 +22,22 @@ async def test_dashboard_stats_authenticated(app, auth_headers, mock_dashboard_s
 
 @pytest.mark.asyncio
 async def test_dashboard_stats_recruiter_user(app, recruiter_auth_headers, mock_dashboard_stats):
-    """Recruiter token should resolve to recruiter user_id."""
+    """Recruiter token should get global stats (is_recruiter=True)."""
     with patch("app.routes.v1.dashboard.get_dashboard_stats", return_value=mock_dashboard_stats) as mock_fn:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/dashboard/stats", headers=recruiter_auth_headers)
     assert resp.status_code == 200
-    # Verify the function was called with recruiter user_id
     mock_fn.assert_called_once_with("user_recruiter_456", is_recruiter=True)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_stats_manager_user(app, manager_auth_headers, mock_dashboard_stats):
+    """Manager token should also get global stats (is_recruiter=True)."""
+    with patch("app.routes.v1.dashboard.get_dashboard_stats", return_value=mock_dashboard_stats) as mock_fn:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/dashboard/stats", headers=manager_auth_headers)
+    assert resp.status_code == 200
+    mock_fn.assert_called_once_with("user_manager_789", is_recruiter=True)
 
 
 @pytest.mark.asyncio
