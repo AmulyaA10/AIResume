@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Target, Briefcase, MapPin, PoundSterling, Sparkles, ArrowRight, Star, X, Info, CheckCircle, FileText, Loader2 } from 'lucide-react';
+import { Search, Target, Briefcase, MapPin, Banknote, Sparkles, ArrowRight, Star, X, Info, CheckCircle, FileText, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { matchApi, jobsApi, resumesApi } from '../../api';
 
@@ -7,6 +7,17 @@ interface MatchStats {
     total: number; qualifying: number; skipped: number; avgScore: number;
     topSkills: string[]; scoreBreakdown: { range: string; count: number }[];
 }
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+    USD: '$', GBP: '£', EUR: '€', CAD: 'CAD$', AUD: 'AUD$', SGD: 'SGD$',
+};
+
+const formatSalary = (currency: string, min: number, max?: number): string => {
+    const sym = CURRENCY_SYMBOLS[currency] ?? '$';
+    if (!min || min <= 0) return 'Negotiable';
+    if (max && max > 0) return `${sym}${(min / 1000).toFixed(0)}k – ${sym}${(max / 1000).toFixed(0)}k`;
+    return `${sym}${(min / 1000).toFixed(0)}k+`;
+};
 
 const JobSearch = () => {
     const [query, setQuery] = useState('');
@@ -443,8 +454,8 @@ const JobSearch = () => {
                                             <MapPin size={14} className="text-slate-400" /> {match.job.location_name || 'Remote'}
                                         </div>
                                         <div className="flex items-center gap-1.5">
-                                            <PoundSterling size={14} className="text-slate-400" />
-                                            {match.job.salary_min > 0 ? `£${(match.job.salary_min / 1000).toFixed(0)}k+` : 'Negotiable'}
+                                            <Banknote size={14} className="text-slate-400" />
+                                            {formatSalary(match.job.salary_currency || 'USD', match.job.salary_min)}
                                         </div>
                                     </div>
 
@@ -562,8 +573,8 @@ const JobSearch = () => {
                                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Salary</p>
                                         <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                            <PoundSterling size={16} className="text-emerald-500" />
-                                            {selectedJob.job.salary_min > 0 ? `£${(selectedJob.job.salary_min / 1000).toFixed(0)}k – £${(selectedJob.job.salary_max / 1000).toFixed(0)}k` : 'Negotiable'}
+                                            <Banknote size={16} className="text-emerald-500" />
+                                            {formatSalary(selectedJob.job.salary_currency || 'USD', selectedJob.job.salary_min, selectedJob.job.salary_max)}
                                         </p>
                                     </div>
                                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 col-span-2 md:col-span-1">

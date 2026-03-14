@@ -25,7 +25,7 @@ ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 CORS_ORIGINS = ["*"]  # In production, replace with specific React URL
 
 # ---------- Paths ----------
-UPLOAD_DIR = "data/raw_resumes"
+UPLOAD_DIR = str(Path(__file__).resolve().parents[2] / "data" / "raw_resumes")
 
 # ---------- URLs ----------
 FRONTEND_URL = "http://localhost:5173"
