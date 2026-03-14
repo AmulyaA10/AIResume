@@ -137,7 +137,7 @@ BS Computer Science | State University | 2017
         patch("app.routes.v1.resumes.extract_text", return_value=raw_text),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.get("/api/v1/resumes/text/sample.docx", headers=auth_headers)
+            resp = await client.get("/api/v1/resumes/sample.docx/text", headers=auth_headers)
 
     assert resp.status_code == 200
     text = resp.json()["text"]

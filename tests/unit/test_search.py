@@ -57,3 +57,33 @@ async def test_search_missing_query(app, auth_headers):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/v1/search", json={}, headers=auth_headers)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_manager_gets_global_results(app, manager_auth_headers, mock_search_results):
+    """Manager token should search across all users (is_recruiter=True)."""
+    fake_llm_response = '{"results": [{"filename": "resume_a.pdf", "score": 85, "justification": "Good match", "missing_skills": [], "auto_screen": "SELECTED"}]}'
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = fake_llm_response
+    mock_llm = MagicMock()
+    mock_prompt = MagicMock()
+    mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+    with (
+        patch("app.routes.v1.search.search_resumes_semantic", return_value=mock_search_results) as mock_fn,
+        patch("langchain_openai.ChatOpenAI", return_value=mock_llm),
+        patch("langchain_core.prompts.PromptTemplate", return_value=mock_prompt),
+        patch("app.routes.v1.search.os.getenv", return_value="fake-test-key"),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/search",
+                json={"query": "Python developer"},
+                headers=manager_auth_headers,
+            )
+    assert resp.status_code == 200
+    # Verify search was called with is_recruiter=True for manager
+    call_kwargs = mock_fn.call_args
+    assert call_kwargs.kwargs.get("is_recruiter") is True or (
+        len(call_kwargs.args) >= 5 and call_kwargs.args[4] is True
+    )

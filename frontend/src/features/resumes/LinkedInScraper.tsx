@@ -38,6 +38,14 @@ const LinkedInScraper = () => {
 
     const hasScraperCreds = maskedCredentials?.has_linkedinUser && maskedCredentials?.has_linkedinPass;
 
+    // Proactively show paste fallback when credentials are confirmed missing,
+    // so users don't need to attempt (and fail) a scrape first.
+    useEffect(() => {
+        if (isLoaded && !hasScraperCreds && !resume && !showPasteFallback && !loading && !parseLoading && !securityChallenge) {
+            setShowPasteFallback(true);
+        }
+    }, [isLoaded, hasScraperCreds, resume, showPasteFallback, loading, parseLoading, securityChallenge]);
+
     const handleScrape = async (retry = false) => {
         if (!url.trim()) return;
 
@@ -289,7 +297,7 @@ const LinkedInScraper = () => {
                         </div>
                     )}
 
-                    {/* Paste fallback — shown when scraping fails */}
+                    {/* Paste fallback — shown when scraping fails or credentials are not configured */}
                     {showPasteFallback && !isResumeValid && (
                         <div className="w-full space-y-4">
                             <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
@@ -297,11 +305,21 @@ const LinkedInScraper = () => {
                                 <div className="space-y-2">
                                     <p className="text-sm font-bold text-amber-700">Auto-Scrape Unavailable</p>
                                     <p className="text-xs text-amber-600 leading-relaxed">
-                                        {error || 'The automated scraper could not retrieve profile data.'}
+                                        {error || (isLoaded && !hasScraperCreds
+                                            ? 'LinkedIn scraper credentials are not configured. Save your LinkedIn email and password in Settings to enable auto-scrape, or paste your profile text below to generate your resume instantly.'
+                                            : 'The automated scraper could not retrieve profile data.')}
                                     </p>
                                     <p className="text-xs text-amber-700 font-bold leading-relaxed">
                                         No worries — paste your LinkedIn profile text below instead. Go to your LinkedIn profile, select all (Ctrl+A / Cmd+A), copy (Ctrl+C / Cmd+C), and paste it here.
                                     </p>
+                                    {isLoaded && !hasScraperCreds && persona === 'manager' && (
+                                        <button
+                                            onClick={() => navigate('/settings')}
+                                            className="mt-1 inline-flex items-center gap-2 text-xs font-bold text-[#0077b5] hover:text-[#006396] transition-colors"
+                                        >
+                                            <Settings className="w-3.5 h-3.5" /> Configure credentials in Settings
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 

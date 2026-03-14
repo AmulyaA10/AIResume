@@ -28,12 +28,15 @@ async def get_current_user(
     elif "recruiter" in token:
         user_id = "user_recruiter_456"
     elif x_user_id and x_user_id.startswith("uid_"):
-        # Use the per-browser stable identity for jobseekers
+        # Use the per-browser stable identity for jobseekers (now maps to email if logged in)
         user_id = x_user_id
+    elif "google" in token or "linkedin" in token:
+        # Fallback for OAuth tokens if X-User-ID is missing (though frontend should send it)
+        user_id = "user_oauth_temp"
     else:
         user_id = "user_alex_chen_123"
 
-    print(f"DEBUG: [auth] Resolved User ID: {user_id}")
+    print(f"DEBUG: [auth] Final Resolved User ID: {user_id}")
     return user_id
 
 

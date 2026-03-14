@@ -687,13 +687,13 @@ const ResumeUpload = () => {
                     </div>
                 </div>
 
-                {/* Right — My Documents */}
+                {/* Right — My Documents / All Candidate Resumes */}
                 <div>
                     <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden h-full">
                         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
                             <h3 className="font-bold text-sm flex items-center gap-2 text-slate-700">
                                 <FileText className="w-4 h-4 text-primary-400" />
-                                My Documents
+                                {isRecruiterMode ? 'All Candidate Resumes' : 'My Documents'}
                             </h3>
                             <span className="text-[10px] font-black text-white bg-primary-500 px-2 py-0.5 rounded-full tracking-widest">
                                 {myResumes.length}
