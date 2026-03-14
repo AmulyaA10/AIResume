@@ -10,7 +10,9 @@
 #   make lint             Run Python linter (ruff)
 #   make build            Build the React frontend
 #   make dev              Start backend + frontend dev servers
-#   make synth-data       Generate synthetic test data
+#   make synth-data       Generate synthetic test data (files only, no DB)
+#   make demo             Populate DB with 100 resumes + 50 jobs for demo
+#   make demo-wipe        Wipe DB and reload fresh demo data
 #   make clean            Remove generated artifacts
 #   make help             Show this help
 # ============================================================================
@@ -37,7 +39,7 @@ CYAN := \033[0;36m
 NC := \033[0m  # No Color
 
 .PHONY: help install install-dev install-frontend test test-unit test-integration \
-        test-verbose lint build dev dev-backend dev-frontend synth-data clean
+        test-verbose lint build dev dev-backend dev-frontend synth-data demo demo-wipe clean
 
 # ── Help ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +117,20 @@ synth-data: ## Generate synthetic test data (resumes + JDs)
 	@echo "$(CYAN)Generating synthetic data...$(NC)"
 	$(PYTHON) "$(PROJECT_ROOT)/scripts/generate_synthetic_data.py"
 	@echo "$(GREEN)Synthetic data generated.$(NC)"
+
+# ── Demo Data ────────────────────────────────────────────────────────────────
+# Override counts:  make demo RESUMES=50 JDS=20
+RESUMES ?= 100
+JDS     ?= 50
+
+demo: ## Populate DB with synthetic data (default: 100 resumes, 50 jobs). Override: make demo RESUMES=50 JDS=20
+	@echo "$(CYAN)Loading demo data into DB...$(NC)"
+	@echo "$(YELLOW)Resumes: $(RESUMES)  |  Job Descriptions: $(JDS)$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --resumes $(RESUMES) --jds $(JDS)
+
+demo-wipe: ## Wipe DB and reload fresh demo data (full reset). Override: make demo-wipe RESUMES=50 JDS=20
+	@echo "$(YELLOW)Wiping existing data and reloading demo dataset...$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe --resumes $(RESUMES) --jds $(JDS)
 
 # ── Clean ───────────────────────────────────────────────────────────────────
 

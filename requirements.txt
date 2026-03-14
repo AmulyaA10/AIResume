@@ -3,6 +3,7 @@ langgraph
 pypdf
 lancedb
 python-docx
+reportlab
 python-dotenv
 langchain-openai
 langchain-core

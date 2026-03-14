@@ -43,9 +43,12 @@ secrets.txt
 # ---------- Data (runtime, not source) ----------
 data/raw_resumes/*.pdf
 data/raw_resumes/*.docx
+data/raw_resumes/demo_*.txt
 data/lancedb/
 backend/data/raw_resumes/
 backend/data/lancedb/
+data/synthetic/
+data/linkedin_cookies/
 
 # ---------- Claude Code ----------
 .claude/
