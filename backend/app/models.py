@@ -32,6 +32,10 @@ class LinkedInParseRequest(BaseModel):
     """Request body for POST /linkedin/parse — raw profile text pasted by user."""
     profile_text: str = Field(..., min_length=100)
 
+class LinkedInCheckRequest(BaseModel):
+    """Request body for POST /linkedin/check-profile — quick scrapability pre-check."""
+    profile_url: str
+
 
 class UserSettingsUpdate(BaseModel):
     """Request body for PUT /user/settings — only non-None fields are updated."""
@@ -72,6 +76,7 @@ class JobResponse(JobCreate):
     job_id: str
     user_id: str
     posted_date: Optional[str] = None
+    applied_count: Optional[int] = 0
 
 
 class JobMatchResponse(BaseModel):

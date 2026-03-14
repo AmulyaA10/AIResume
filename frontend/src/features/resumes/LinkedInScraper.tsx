@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck, AlertCircle, Settings, ClipboardPaste, ShieldAlert } from 'lucide-react';
+import { Linkedin, Loader2, Link as LinkIcon, Download, RefreshCw, FileCheck, AlertCircle, Settings, ClipboardPaste, ShieldAlert, CheckCircle2, XCircle, HelpCircle } from 'lucide-react';
 import api from '../../api';
 import { motion } from 'framer-motion';
 import { PageHeader } from '../../common';
@@ -19,6 +19,7 @@ const LinkedInScraper = () => {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [fieldValidation, setFieldValidation] = useState<any>(null);
     const [outputValidation, setOutputValidation] = useState<any>(null);
+    const [profileStatus, setProfileStatus] = useState<{ checking: boolean; scrapable: boolean | null; visibility: string | null; message: string | null }>({ checking: false, scrapable: null, visibility: null, message: null });
     const inputRef = React.useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
     const { maskedCredentials, loadMaskedCredentials, isLoaded, isLoading, loadError } = useCredentials();
@@ -45,6 +46,25 @@ const LinkedInScraper = () => {
             setShowPasteFallback(true);
         }
     }, [isLoaded, hasScraperCreds, resume, showPasteFallback, loading, parseLoading, securityChallenge]);
+
+    // Debounced profile URL check — fires 800ms after user stops typing
+    useEffect(() => {
+        const trimmed = url.trim();
+        if (!trimmed || !trimmed.includes('linkedin.com/in/')) {
+            setProfileStatus({ checking: false, scrapable: null, visibility: null, message: null });
+            return;
+        }
+        setProfileStatus({ checking: true, scrapable: null, visibility: null, message: null });
+        const timer = setTimeout(async () => {
+            try {
+                const resp = await api.post('/linkedin/check-profile', { profile_url: trimmed });
+                setProfileStatus({ checking: false, ...resp.data });
+            } catch {
+                setProfileStatus({ checking: false, scrapable: null, visibility: 'unknown', message: 'Could not check profile.' });
+            }
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [url]);
 
     const handleScrape = async (retry = false) => {
         if (!url.trim()) return;
@@ -208,6 +228,31 @@ const LinkedInScraper = () => {
         (resume.summary?.length > 100 || (resume.experience && resume.experience.length > 0));
 
     const isLinkedInConnected = localStorage.getItem('linkedin_connected');
+
+    const ProfileStatusBadge = () => {
+        if (!profileStatus.visibility && !profileStatus.checking) return null;
+        if (profileStatus.checking) return (
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-medium px-1 mt-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking profile…
+            </div>
+        );
+        const { scrapable, visibility, message } = profileStatus;
+        if (visibility === 'public' || scrapable === true) return (
+            <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium px-1 mt-1">
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> {message}
+            </div>
+        );
+        if (scrapable === false) return (
+            <div className="flex items-center gap-2 text-xs text-red-500 font-medium px-1 mt-1">
+                <XCircle className="w-3.5 h-3.5 flex-shrink-0" /> {message}
+            </div>
+        );
+        return (
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-medium px-1 mt-1">
+                <HelpCircle className="w-3.5 h-3.5 flex-shrink-0" /> {message}
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-8">
@@ -424,6 +469,7 @@ const LinkedInScraper = () => {
                                             className="w-full bg-white border border-blue-200 rounded-2xl py-5 pl-14 pr-4 focus:border-[#0077b5] outline-none text-lg transition-all shadow-sm focus:ring-4 focus:ring-[#0077b5]/5 text-slate-800 placeholder:text-slate-300"
                                         />
                                     </div>
+                                    <ProfileStatusBadge />
                                     <button
                                         onClick={() => handleScrape()}
                                         disabled={loading || parseLoading || !url.trim()}
@@ -467,6 +513,7 @@ const LinkedInScraper = () => {
                                             className="w-full bg-white border border-slate-200 rounded-2xl py-5 pl-14 pr-4 focus:border-[#0077b5] outline-none text-lg transition-all shadow-sm focus:ring-4 focus:ring-[#0077b5]/5 text-slate-800 placeholder:text-slate-300"
                                         />
                                     </div>
+                                    <ProfileStatusBadge />
 
                                     <button
                                         onClick={() => handleScrape()}

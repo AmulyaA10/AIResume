@@ -106,7 +106,23 @@ async def upload_resumes(
                     print(f"DEBUG: Validation failed for {safe_filename}: {e}")
                     validation = {"error": str(e)}
 
-            # --- Store in DB (regardless of validation result) ---
+            classification = (validation or {}).get("classification", "N/A")
+
+            # --- Reject documents that are clearly not a resume ---
+            if validation and not validation.get("error") and classification == "not_resume":
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                print(f"Rejected (not a resume): {safe_filename}")
+                results.append({
+                    "filename": safe_filename,
+                    "status": "rejected",
+                    "error": "This document does not appear to be a resume. Please upload a valid resume file.",
+                    "validation": validation,
+                })
+                safe_log_activity(user_id, "upload_rejected", safe_filename, 0, classification)
+                continue
+
+            # --- Store in DB ---
             if store_db_bool:
                 print(f"Storing in DB: {safe_filename}")
                 store_resume(safe_filename, text, user_id, api_key=creds["openrouter_key"])
@@ -132,7 +148,6 @@ async def upload_resumes(
             if validation and not validation.get("error"):
                 store_resume_validation(user_id, file.filename, validation)
 
-            classification = (validation or {}).get("classification", "N/A")
             results.append({
                 "filename": safe_filename,
                 "status": "indexed",

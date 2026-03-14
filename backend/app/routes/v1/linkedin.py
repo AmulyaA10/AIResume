@@ -3,12 +3,13 @@ from typing import Optional
 import json
 
 from app.dependencies import get_current_user, resolve_credentials
-from app.models import SearchRequest, LinkedInScrapeRequest, LinkedInParseRequest
+from app.models import SearchRequest, LinkedInScrapeRequest, LinkedInParseRequest, LinkedInCheckRequest
 from app.config import LINKEDIN_LOGIN, LINKEDIN_PASSWORD
 from app.common import build_llm_config, build_linkedin_creds, safe_log_activity
 from app.common import decrypt_value
 from app.common import validate_resume_fields, validate_resume_output
 from services.agent_controller import generate_resume_from_linkedin, parse_linkedin_profile_text
+from services.linkedin_scraper import check_profile_scrapable
 from services.db.lancedb_client import store_resume, get_user_settings, migrate_orphaned_settings
 
 router = APIRouter()
@@ -27,15 +28,10 @@ def _resolve_credentials_sync(user_id: str) -> dict:
     print(f"DEBUG: [_resolve_credentials_sync] user_id={user_id}")
 
     try:
-        stored = get_user_settings(user_id)
-        print(f"DEBUG: [_resolve_credentials_sync] get_user_settings('{user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
-
-        # One-time migration for orphaned credentials
-        if not stored and user_id == "user_alex_chen_123":
-            print("DEBUG: [_resolve_credentials_sync] Triggering orphan migration...")
-            migrate_orphaned_settings("user_recruiter_456", "user_alex_chen_123")
-            stored = get_user_settings(user_id)
-            print(f"DEBUG: [_resolve_credentials_sync] Post-migration keys: {list(stored.keys()) if stored else '(empty)'}")
+        # Use manager's credentials globally
+        settings_user_id = "user_manager_789"
+        stored = get_user_settings(settings_user_id)
+        print(f"DEBUG: [_resolve_credentials_sync] get_user_settings('{settings_user_id}') returned keys: {list(stored.keys()) if stored else '(empty)'}")
 
         if stored:
             if stored.get("linkedinUser"):
@@ -255,3 +251,17 @@ async def linkedin_parse(
         "field_validation": field_validation,
         "output_validation": output_validation.get("ai_validation"),
     }
+
+
+@router.post("/check-profile")
+async def linkedin_check_profile(
+    request: LinkedInCheckRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Quick pre-check: is a LinkedIn profile URL accessible and scrapable?
+
+    Returns within ~2s (no Selenium). Uses saved session cookies if available.
+    Response: { scrapable: bool|null, visibility: str, message: str }
+    """
+    result = check_profile_scrapable(request.profile_url)
+    return result

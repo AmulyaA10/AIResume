@@ -548,8 +548,12 @@ const ResumeUpload = () => {
             console.log("Sending request to /resumes/upload");
             const response = await api.post('/resumes/upload', formData);
             console.log("Upload response:", response.data);
-            setResults(response.data.processed);
-            setFiles(prev => prev.map(f => ({ ...f, status: 'indexed' })));
+            const processed: any[] = response.data.processed || [];
+            setResults(processed);
+            setFiles(prev => prev.map(f => {
+                const result = processed.find((r: any) => r.filename === f.name);
+                return { ...f, status: result?.status === 'rejected' ? 'rejected' : result?.status === 'error' ? 'error' : 'indexed', rejectReason: result?.error };
+            }));
             fetchMyResumes();
         } catch (err: any) {
             const msg = err.response?.data?.detail || err.message || 'Upload failed. Please try again.';
@@ -667,19 +671,24 @@ const ResumeUpload = () => {
                                             <span className="text-sm font-semibold text-slate-700 truncate pr-2">{file.name}</span>
                                             <span className={`text-[10px] font-black uppercase tracking-widest flex-shrink-0 ${
                                                 file.status === 'indexed' ? 'text-emerald-500' :
+                                                file.status === 'rejected' ? 'text-amber-500' :
                                                 file.status === 'error' ? 'text-red-500' : 'text-primary-500'
                                             }`}>{file.status}</span>
                                         </div>
                                         <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
-                                                animate={{ width: file.status === 'indexed' ? '100%' : uploading ? '65%' : '0%' }}
+                                                animate={{ width: file.status === 'indexed' ? '100%' : (file.status === 'rejected' || file.status === 'error') ? '100%' : uploading ? '65%' : '0%' }}
                                                 transition={{ duration: 0.6, ease: 'easeOut' }}
-                                                className={`h-full rounded-full ${file.status === 'indexed' ? 'bg-emerald-400' : 'bg-primary-400'}`}
+                                                className={`h-full rounded-full ${file.status === 'indexed' ? 'bg-emerald-400' : file.status === 'rejected' ? 'bg-amber-400' : 'bg-red-400'}`}
                                             />
                                         </div>
+                                        {file.status === 'rejected' && file.rejectReason && (
+                                            <p className="text-[10px] text-amber-600 mt-1 font-medium">{file.rejectReason}</p>
+                                        )}
                                     </div>
                                     {file.status === 'indexed' && <CheckCircle2 className="text-emerald-400 w-5 h-5 flex-shrink-0" />}
+                                    {file.status === 'rejected' && <AlertCircle className="text-amber-400 w-5 h-5 flex-shrink-0" />}
                                     {file.status === 'error' && <AlertCircle className="text-red-400 w-5 h-5 flex-shrink-0" />}
                                 </div>
                             ))}
