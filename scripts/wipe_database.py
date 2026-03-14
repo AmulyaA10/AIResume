@@ -30,6 +30,8 @@ ALL_TABLES = RESUME_TABLES + [
     "user_settings.lance",
 ]
 
+ALL_TABLES_NO_SETTINGS = RESUME_TABLES + ["jobs.lance"]
+
 
 def wipe_tables(tables: list[str], dry_run: bool = False) -> None:
     for table in tables:
@@ -64,12 +66,20 @@ def confirm(prompt: str) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Wipe AIResume database tables and/or uploads.")
     parser.add_argument("--all", action="store_true", help="Wipe all tables (including jobs and user settings)")
+    parser.add_argument("--keep-settings", action="store_true", help="When used with --all, preserve user_settings.lance")
     parser.add_argument("--uploads", action="store_true", help="Also delete uploaded files in data/uploads/")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
 
-    tables = ALL_TABLES if args.all else RESUME_TABLES
-    scope = "ALL tables" if args.all else "resume tables (resumes, resume_meta, activity, job_resume_applied)"
+    if args.all and args.keep_settings:
+        tables = ALL_TABLES_NO_SETTINGS
+        scope = "ALL tables (preserving user_settings)"
+    elif args.all:
+        tables = ALL_TABLES
+        scope = "ALL tables"
+    else:
+        tables = RESUME_TABLES
+        scope = "resume tables (resumes, resume_meta, activity, job_resume_applied)"
 
     print(f"\nScope: {scope}")
     if args.uploads:
