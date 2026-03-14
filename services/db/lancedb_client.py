@@ -72,6 +72,7 @@ job_schema = pa.schema([
     pa.field("skills_required", pa.list_(pa.string())),
     pa.field("salary_min", pa.float64()),
     pa.field("salary_max", pa.float64()),
+    pa.field("salary_currency", pa.string()),
     pa.field("benefits", pa.list_(pa.string())),
     pa.field("application_url", pa.string()),
     pa.field("metadata", pa.string()),

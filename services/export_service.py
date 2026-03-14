@@ -84,13 +84,17 @@ def generate_docx(resume_json: dict) -> io.BytesIO:
         doc.add_heading('Certifications', level=1)
         for cert in certs:
             p = doc.add_paragraph()
-            run = p.add_run(cert.get('name', 'N/A'))
-            run.bold = True
-            issuer = cert.get('issuer', '')
-            date = cert.get('date', '')
-            detail_parts = [x for x in [issuer, date] if x]
-            if detail_parts:
-                doc.add_paragraph(" | ".join(detail_parts))
+            if isinstance(cert, str):
+                run = p.add_run(cert)
+                run.bold = True
+            else:
+                run = p.add_run(cert.get('name', 'N/A'))
+                run.bold = True
+                issuer = cert.get('issuer', '')
+                date = cert.get('date', '')
+                detail_parts = [x for x in [issuer, date] if x]
+                if detail_parts:
+                    doc.add_paragraph(" | ".join(detail_parts))
 
     # Projects
     projects = resume_json.get("projects", [])
@@ -107,6 +111,14 @@ def generate_docx(resume_json: dict) -> io.BytesIO:
                 doc.add_paragraph(f"Technologies: {', '.join(tech)}")
             for outcome in proj.get('outcomes', []):
                 doc.add_paragraph(outcome, style='List Bullet')
+
+    # Publications
+    publications = resume_json.get("publications", [])
+    if publications:
+        doc.add_heading('Publications & Talks', level=1)
+        for pub in publications:
+            doc.add_paragraph(pub if isinstance(pub, str) else pub.get('title', str(pub)),
+                              style='List Bullet')
 
     # Save to buffer
     file_stream = io.BytesIO()

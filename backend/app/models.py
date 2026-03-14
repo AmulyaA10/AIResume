@@ -67,6 +67,7 @@ class JobCreate(BaseModel):
     skills_required: List[str] = []
     salary_min: float = 0.0
     salary_max: float = 0.0
+    salary_currency: str = "USD"
     benefits: List[str] = []
     application_url: str = ""
     metadata: str = "{}"

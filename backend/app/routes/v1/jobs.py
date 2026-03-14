@@ -7,7 +7,7 @@ from typing import List, Optional
 import json
 from pathlib import Path
 
-from app.dependencies import get_current_user, resolve_credentials
+from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.models import JobCreate, JobResponse
 from app.config import UPLOAD_DIR
 from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table
@@ -21,6 +21,10 @@ def _serialize_job(row: dict) -> dict:
     out = dict(row)
     out.pop("vector", None)
     
+    # Default salary_currency for rows created before this field existed
+    if not out.get("salary_currency"):
+        out["salary_currency"] = "USD"
+
     # Ensure lists are lists
     for field in ["skills_required", "benefits"]:
         val = out.get(field, [])
@@ -203,18 +207,21 @@ async def list_jobs(
     limit: int = 20,
     job_level: Optional[str] = None,
     job_category: Optional[str] = None,
-    user_id: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
 ):
     table = get_or_create_jobs_table()
     query = table.search()
-    
-    filters = [f"user_id = '{user_id}'"]
+
+    is_recruiter = role in ("recruiter", "manager")
+    filters = [] if is_recruiter else [f"user_id = '{user_id}'"]
     if job_level:
         filters.append(f"job_level = '{job_level}'")
     if job_category:
         filters.append(f"job_category = '{job_category}'")
-    
-    query = query.where(" AND ".join(filters))
+
+    if filters:
+        query = query.where(" AND ".join(filters))
     
     results = query.limit(limit + skip).to_list()
     jobs = [_serialize_job(r) for r in results[skip:skip + limit]]
@@ -267,9 +274,11 @@ async def get_applied_jobs(user_id: str = Depends(get_current_user)):
     return result
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, user_id: str = Depends(get_current_user)):
+async def get_job(job_id: str, user_id: str = Depends(get_current_user), role: str = Depends(get_user_role)):
     table = get_or_create_jobs_table()
-    results = table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+    is_recruiter = role in ("recruiter", "manager")
+    where = f"job_id = '{job_id}'" if is_recruiter else f"job_id = '{job_id}' AND user_id = '{user_id}'"
+    results = table.search().where(where).limit(1).to_list()
     if not results:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -323,10 +332,12 @@ async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
     return {"message": "Deleted"}
 
 @router.get("/{job_id}/candidates", response_model=List[dict])
-async def get_job_candidates(job_id: str, user_id: str = Depends(get_current_user)):
-    # 1. Verify user owns the job
+async def get_job_candidates(job_id: str, user_id: str = Depends(get_current_user), role: str = Depends(get_user_role)):
+    # 1. Verify user owns the job (recruiters/managers can access any job)
     jobs_table = get_or_create_jobs_table()
-    jobs = jobs_table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+    is_recruiter = role in ("recruiter", "manager")
+    where = f"job_id = '{job_id}'" if is_recruiter else f"job_id = '{job_id}' AND user_id = '{user_id}'"
+    jobs = jobs_table.search().where(where).limit(1).to_list()
     if not jobs:
         raise HTTPException(status_code=404, detail="Job not found")
         
