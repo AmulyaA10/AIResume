@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import threading
@@ -68,6 +69,158 @@ def cleanup_session(session_id: str):
             print(f"--- [Scraper] Cleaned up session {session_id} ---")
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Cookie persistence — avoids a fresh login (and LinkedIn security emails)
+# on every scrape by reusing a saved session.
+# ---------------------------------------------------------------------------
+_COOKIE_DIR = Path(__file__).resolve().parents[1] / "data" / "linkedin_cookies"
+
+
+def _cookie_path(email: str) -> Path:
+    """Return path to the cookie file for the given LinkedIn email."""
+    safe_name = email.replace("@", "_at_").replace(".", "_")
+    return _COOKIE_DIR / f"{safe_name}.json"
+
+
+def _save_cookies(driver, email: str) -> None:
+    """Persist the driver's LinkedIn cookies to disk."""
+    try:
+        _COOKIE_DIR.mkdir(parents=True, exist_ok=True)
+        cookies = driver.get_cookies()
+        with open(_cookie_path(email), "w") as f:
+            json.dump(cookies, f)
+        print(f"--- [Scraper] Saved {len(cookies)} cookies for {email} ---")
+    except Exception as e:
+        print(f"--- [Scraper] Warning: Could not save cookies: {e} ---")
+
+
+def _load_cookies(driver, email: str) -> bool:
+    """Load saved cookies into the driver.  Returns True if cookies were found."""
+    path = _cookie_path(email)
+    if not path.exists():
+        return False
+    try:
+        with open(path) as f:
+            cookies = json.load(f)
+        for cookie in cookies:
+            # Remove keys that Selenium doesn't accept
+            cookie.pop("sameSite", None)
+            try:
+                driver.add_cookie(cookie)
+            except Exception:
+                pass
+        print(f"--- [Scraper] Loaded {len(cookies)} saved cookies for {email} ---")
+        return True
+    except Exception as e:
+        print(f"--- [Scraper] Warning: Could not load cookies: {e} ---")
+        return False
+
+
+def check_profile_scrapable(profile_url: str, email: str = None) -> dict:
+    """Quick HTTP pre-check to determine if a LinkedIn profile URL is scrapable.
+
+    Uses saved session cookies (if available) for a more accurate check.
+    Returns a dict with keys: scrapable (bool|None), visibility, message.
+    """
+    import re
+    import requests as _requests
+
+    # 1. Validate URL format
+    if not re.match(r'https?://(www\.)?linkedin\.com/in/[^/\s]+', profile_url.strip()):
+        return {
+            "scrapable": False,
+            "visibility": "invalid_url",
+            "message": "Invalid LinkedIn profile URL. Expected format: linkedin.com/in/username",
+        }
+
+    # 2. Load saved cookies if available
+    _email = email or os.getenv("LinkedinLogin")
+    cookies_dict = {}
+    if _email:
+        try:
+            cookie_file = _cookie_path(_email)
+            if cookie_file.exists():
+                with open(cookie_file) as f:
+                    for c in json.load(f):
+                        cookies_dict[c["name"]] = c["value"]
+        except Exception:
+            pass
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    try:
+        resp = _requests.get(
+            profile_url.strip(), headers=headers, cookies=cookies_dict,
+            allow_redirects=True, timeout=8
+        )
+        final_url = resp.url
+
+        if resp.status_code == 404:
+            return {
+                "scrapable": False,
+                "visibility": "not_found",
+                "message": "Profile not found. The URL may be incorrect or the account may have been deleted.",
+            }
+
+        if any(kw in final_url for kw in ["authwall", "/login", "signup", "uas/login"]):
+            return {
+                "scrapable": False,
+                "visibility": "login_required",
+                "message": "LinkedIn requires a login to view this profile. Configure scraper credentials in Settings.",
+            }
+
+        html_lower = resp.text.lower()
+
+        if "this linkedin profile is not available" in html_lower or "page not found" in html_lower:
+            return {
+                "scrapable": False,
+                "visibility": "not_found",
+                "message": "Profile not found or has been removed.",
+            }
+
+        if resp.status_code == 200 and "/in/" in final_url:
+            # Logged-in check: real profile pages have richer meta tags
+            if cookies_dict and ('profile' in html_lower or 'og:title' in html_lower):
+                return {
+                    "scrapable": True,
+                    "visibility": "public",
+                    "message": "Profile is accessible and ready to scrape.",
+                }
+            # Without cookies we can still confirm the profile exists
+            if 'og:title' in html_lower or 'linkedin' in html_lower:
+                return {
+                    "scrapable": True,
+                    "visibility": "public",
+                    "message": "Profile URL is valid. Scraping requires valid credentials.",
+                }
+
+        return {
+            "scrapable": None,
+            "visibility": "unknown",
+            "message": "Could not determine profile visibility. Proceed with scrape to find out.",
+        }
+
+    except _requests.Timeout:
+        return {
+            "scrapable": None,
+            "visibility": "unknown",
+            "message": "Connection timed out while checking. Try scraping directly.",
+        }
+    except Exception as e:
+        return {
+            "scrapable": None,
+            "visibility": "unknown",
+            "message": f"Could not check profile: {str(e)}",
+        }
 
 
 def _check_budget(start_time: float) -> bool:
@@ -353,7 +506,23 @@ def _extract_section_text(driver) -> str:
         except Exception:
             pass
 
-    return "\n\n".join(parts)
+    if parts:
+        return "\n\n".join(parts)
+
+    # Anchor-ID approach yielded nothing — LinkedIn likely changed its DOM.
+    # Fall back to dumping all visible text from <main>.
+    try:
+        main_text = driver.execute_script("""
+            const main = document.querySelector('main');
+            return main ? main.innerText : '';
+        """)
+        if main_text and len(main_text.strip()) > 50:
+            print("--- [Scraper] Section IDs not found; using full main.innerText fallback ---")
+            return main_text.strip()
+    except Exception:
+        pass
+
+    return ""
 
 
 def _poll_login(driver, login_wait: int, early_return_on_challenge: bool = False):
@@ -466,6 +635,23 @@ def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
     # Give dynamic content a moment to render
     time.sleep(3)
 
+    # Check if LinkedIn redirected us away from the profile (authwall / login)
+    current_url = driver.current_url
+    print(f"--- [Scraper] Profile page URL: {current_url} ---")
+    if any(kw in current_url for kw in ["authwall", "login", "checkpoint", "challenge"]):
+        # Invalidate stale cookies so the next attempt does a fresh login
+        _email = os.getenv("LinkedinLogin")
+        if _email:
+            try:
+                _cookie_path(_email).unlink(missing_ok=True)
+                print(f"--- [Scraper] Deleted stale cookies for {_email} ---")
+            except Exception:
+                pass
+        raise ValueError(
+            f"LinkedIn redirected to an authentication page ({current_url}). "
+            "The saved session has expired — cookies cleared. Please retry to log in fresh."
+        )
+
     # Dismiss any per-page modals/overlays on the profile page
     _dismiss_modals(driver)
 
@@ -512,25 +698,51 @@ def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
 
     # Validate we got meaningful content (200+ chars AND profile section evidence)
     if not combined or len(combined.strip()) < 200:
-        body_text = driver.find_element(By.TAG_NAME, "body").text[:500]
-        if "page not found" in body_text.lower() or "this page doesn" in body_text.lower():
+        # Try broader fallback before giving up
+        try:
+            combined = driver.execute_script("return document.documentElement.innerText;")
+        except Exception:
+            pass
+
+    if not combined or len(combined.strip()) < 200:
+        current_url = driver.current_url
+        try:
+            body_snippet = driver.find_element(By.TAG_NAME, "body").text[:500]
+        except Exception:
+            body_snippet = ""
+        print(f"--- [Scraper] Extraction failed. URL: {current_url} | Body snippet: {body_snippet[:200]!r} ---")
+        if "page not found" in body_snippet.lower() or "this page doesn" in body_snippet.lower():
             raise ValueError(f"LinkedIn profile not found at {profile_url}. The URL may be incorrect.")
+        if any(kw in current_url for kw in ["authwall", "login", "checkpoint", "challenge"]):
+            _email = os.getenv("LinkedinLogin")
+            if _email:
+                try:
+                    _cookie_path(_email).unlink(missing_ok=True)
+                    print(f"--- [Scraper] Deleted stale cookies for {_email} ---")
+                except Exception:
+                    pass
+            raise ValueError(
+                f"LinkedIn session expired mid-scrape ({current_url}). "
+                "Cookies cleared — please retry to log in fresh."
+            )
         raise ValueError(
             f"Scraped only {len(combined.strip()) if combined else 0} characters from profile. "
             "LinkedIn may have blocked the request (CAPTCHA/anti-bot) or the profile is private. "
             "Try logging into LinkedIn manually in a regular browser first, then retry."
         )
 
-    # Additional check: does the content contain any profile section evidence?
-    combined_lower = combined.lower()
-    if not any(kw in combined_lower for kw in [
-        "experience", "education", "skills", "===section:",
-        "present", "full-time", "part-time",
-    ]):
+    # Sanity check: if we're still on a login/authwall page, the content is useless
+    current_url_final = driver.current_url
+    if any(kw in current_url_final for kw in ["authwall", "login", "checkpoint", "challenge"]):
+        _email = os.getenv("LinkedinLogin")
+        if _email:
+            try:
+                _cookie_path(_email).unlink(missing_ok=True)
+            except Exception:
+                pass
         raise ValueError(
-            "Scraped content does not appear to contain LinkedIn profile sections "
-            "(no experience, education, or skills found). LinkedIn may have shown a "
-            "login wall or CAPTCHA instead of the actual profile."
+            f"LinkedIn showed an authentication page instead of the profile ({current_url_final}). "
+            "Cookies cleared — please retry."
         )
 
     elapsed = time.time() - start_time
@@ -615,7 +827,20 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
     # Initialize driver with retry for transient chromedriver crashes
     _MAX_DRIVER_RETRIES = 2
     driver = None
-    driver_mgr_path = ChromeDriverManager().install()
+
+    # Resolve the exact Chrome version and request a matching ChromeDriver.
+    # webdriver_manager defaults to a slightly older patch which can cause crashes.
+    import subprocess as _sp
+    _chrome_version = None
+    try:
+        _result = _sp.run(
+            ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"],
+            capture_output=True, text=True, timeout=5
+        )
+        _chrome_version = _result.stdout.strip().split()[-1]  # e.g. "145.0.7632.160"
+    except Exception:
+        pass
+    driver_mgr_path = ChromeDriverManager(driver_version=_chrome_version).install() if _chrome_version else ChromeDriverManager().install()
 
     for _attempt in range(1, _MAX_DRIVER_RETRIES + 1):
         try:
@@ -640,76 +865,97 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
     session_cached = False
 
     try:
-        # Step 1: Login
-        print("--- [Scraper] Navigating to LinkedIn login... ---")
+        # Step 1: Try reusing saved cookies to skip login entirely
+        already_logged_in = False
         try:
-            driver.get("https://www.linkedin.com/login")
-        except Exception as nav_err:
-            # Chromedriver can crash during navigation — retry once with a fresh driver
-            print(f"--- [Scraper] Navigation crashed: {nav_err}. Retrying with fresh driver... ---")
+            driver.get("https://www.linkedin.com")
+            time.sleep(1)
+            if _load_cookies(driver, email):
+                driver.refresh()
+                time.sleep(3)
+                current_url = driver.current_url
+                if not any(kw in current_url for kw in ["login", "checkpoint", "challenge", "authwall"]):
+                    print("--- [Scraper] Reused saved session — skipping login ---")
+                    already_logged_in = True
+        except Exception as cookie_err:
+            print(f"--- [Scraper] Cookie restore failed, falling back to fresh login: {cookie_err} ---")
+
+        if not already_logged_in:
+            # Fresh login
+            print("--- [Scraper] Navigating to LinkedIn login... ---")
             try:
-                driver.quit()
-            except Exception:
-                pass
-            driver = _init_driver(driver_mgr_path, chrome_options)
-            driver.get("https://www.linkedin.com/login")
+                driver.get("https://www.linkedin.com/login")
+            except Exception as nav_err:
+                # Chromedriver can crash during navigation — retry once with a fresh driver
+                print(f"--- [Scraper] Navigation crashed: {nav_err}. Retrying with fresh driver... ---")
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                driver = _init_driver(driver_mgr_path, chrome_options)
+                driver.get("https://www.linkedin.com/login")
 
-        wait = WebDriverWait(driver, 10)
+            wait = WebDriverWait(driver, 10)
 
-        username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
-        password_field = driver.find_element(By.ID, "password")
+            username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
+            password_field = driver.find_element(By.ID, "password")
 
-        username_field.send_keys(email)
-        time.sleep(0.5)  # human-like pause between fields
-        password_field.send_keys(password)
-        time.sleep(0.3)  # brief pause before submit
-        driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+            username_field.send_keys(email)
+            time.sleep(0.5)  # human-like pause between fields
+            password_field.send_keys(password)
+            time.sleep(0.3)  # brief pause before submit
+            driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
 
-        # Poll for login completion.
-        # On first attempt, return immediately when a challenge is detected
-        # (no point polling 30s — user hasn't been notified yet).
-        _login_wait = login_wait if login_wait is not None else 30
-        login_success, challenge_detected = _poll_login(
-            driver, _login_wait, early_return_on_challenge=True
-        )
-
-        if not login_success and challenge_detected and session_id:
-            # Cache the driver so retry can resume polling this challenge page
-            with _sessions_lock:
-                # Clean up any existing session for this user first
-                old = _active_sessions.pop(session_id, None)
-                if old:
-                    try:
-                        old["driver"].quit()
-                    except Exception:
-                        pass
-                _active_sessions[session_id] = {
-                    "driver": driver,
-                    "profile_url": profile_url,
-                    "created": time.time(),
-                }
-            session_cached = True
-            print(f"--- [Scraper] Cached session {session_id} for retry (challenge page held open) ---")
-            raise SecurityChallengeError(
-                "LinkedIn security verification is required. "
-                "Complete the pending check (phone notification, email, or CAPTCHA), "
-                "then click 'Resume Scrape'.",
-                session_id=session_id,
+            # Poll for login completion.
+            # On first attempt, return immediately when a challenge is detected
+            # (no point polling 30s — user hasn't been notified yet).
+            _login_wait = login_wait if login_wait is not None else 30
+            login_success, challenge_detected = _poll_login(
+                driver, _login_wait, early_return_on_challenge=True
             )
 
-        if not login_success and challenge_detected:
-            # No session_id → can't cache, fall back to generic error
-            raise ValueError(
-                "LinkedIn security verification is required. "
-                "Try opening linkedin.com in your regular browser to complete any "
-                "pending security check, then retry the scrape."
-            )
+            if login_success:
+                # Save cookies so the next scrape can skip login
+                _save_cookies(driver, email)
 
-        if not login_success:
-            current_url = driver.current_url
-            print(f"--- [Scraper] Warning: Still on login-like page after {_login_wait}s: {current_url} ---")
+        if not already_logged_in:
+            if not login_success and challenge_detected and session_id:
+                # Cache the driver so retry can resume polling this challenge page
+                with _sessions_lock:
+                    # Clean up any existing session for this user first
+                    old = _active_sessions.pop(session_id, None)
+                    if old:
+                        try:
+                            old["driver"].quit()
+                        except Exception:
+                            pass
+                    _active_sessions[session_id] = {
+                        "driver": driver,
+                        "profile_url": profile_url,
+                        "created": time.time(),
+                    }
+                session_cached = True
+                print(f"--- [Scraper] Cached session {session_id} for retry (challenge page held open) ---")
+                raise SecurityChallengeError(
+                    "LinkedIn security verification is required. "
+                    "Complete the pending check (phone notification, email, or CAPTCHA), "
+                    "then click 'Resume Scrape'.",
+                    session_id=session_id,
+                )
 
-        # Login succeeded — scrape profile
+            if not login_success and challenge_detected:
+                # No session_id → can't cache, fall back to generic error
+                raise ValueError(
+                    "LinkedIn security verification is required. "
+                    "Try opening linkedin.com in your regular browser to complete any "
+                    "pending security check, then retry the scrape."
+                )
+
+            if not login_success:
+                current_url = driver.current_url
+                print(f"--- [Scraper] Warning: Still on login-like page after {_login_wait}s: {current_url} ---")
+
+        # Logged in (either via cookies or fresh login) — scrape profile
         return _scrape_profile_content(driver, profile_url, start_time)
 
     finally:
@@ -793,8 +1039,11 @@ def resume_linkedin_session(session_id: str, profile_url: str, login_wait: int =
                     "Please try scraping again from the beginning."
                 )
 
-        # Login succeeded! Scrape the profile.
+        # Login succeeded! Save cookies so the next scrape can skip login.
         print(f"--- [Scraper] Session {session_id}: challenge approved, proceeding to scrape ---")
+        _email = os.getenv("LinkedinLogin")
+        if _email:
+            _save_cookies(driver, _email)
         return _scrape_profile_content(driver, profile_url, start_time)
 
     finally:
