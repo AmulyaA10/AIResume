@@ -136,9 +136,8 @@ async def linkedin_scrape(
               f"linkedin_pass={'SET' if creds.get('linkedin_pass') else 'MISSING'}")
         raise HTTPException(
             status_code=422,
-            detail="LinkedIn credentials could not be resolved. "
-                   "Please save your LinkedIn email and password in Settings, "
-                   "or check the server logs for credential resolution errors."
+            detail="LinkedIn scraper credentials are not configured. "
+                   "Please save your LinkedIn email and password in Settings to enable auto-scrape."
         )
 
     # First attempt: 30s login wait (give user time to approve on phone)
