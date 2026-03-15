@@ -64,6 +64,7 @@ class JobCreate(BaseModel):
     employment_type: str = "FULL_TIME"
     job_category: str = "IT"
     job_level: str = "MID"
+    positions: int = 1
     skills_required: List[str] = []
     salary_min: float = 0.0
     salary_max: float = 0.0
@@ -78,6 +79,9 @@ class JobResponse(JobCreate):
     user_id: str
     posted_date: Optional[str] = None
     applied_count: Optional[int] = 0
+    shortlisted_count: Optional[int] = 0
+    selected_count: Optional[int] = 0
+    rejected_count: Optional[int] = 0
 
 
 class JobMatchResponse(BaseModel):

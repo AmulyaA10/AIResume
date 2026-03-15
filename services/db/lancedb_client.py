@@ -69,6 +69,7 @@ job_schema = pa.schema([
     pa.field("employment_type", pa.string()),
     pa.field("job_category", pa.string()),
     pa.field("job_level", pa.string()),
+    pa.field("positions", pa.int64()),
     pa.field("skills_required", pa.list_(pa.string())),
     pa.field("salary_min", pa.float64()),
     pa.field("salary_max", pa.float64()),
@@ -145,17 +146,33 @@ job_resume_applied_schema = pa.schema([
     pa.field("job_id", pa.string()),
     pa.field("resume_id", pa.string()),
     pa.field("applied_status", pa.string()),
-    pa.field("timestamp", pa.string())
+    pa.field("timestamp", pa.string()),
+    pa.field("notified", pa.bool_()),
+    pa.field("notified_at", pa.string()),
 ])
 
 def get_or_create_job_applied_table():
     if "job_resume_applied" in db.table_names():
         table = db.open_table("job_resume_applied")
-        # Check if schema is up to date
-        if "applied_status" not in table.schema.names:
-            print("DEBUG: [db] job_resume_applied schema mismatch (missing applied_status), dropping and recreating...")
+        schema_names = table.schema.names
+        # Hard reset if core field is missing
+        if "applied_status" not in schema_names:
+            print("DEBUG: [db] job_resume_applied missing applied_status — dropping and recreating...")
             db.drop_table("job_resume_applied")
             return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
+        # Migrate: add notified/notified_at columns if missing (preserves existing rows)
+        if "notified" not in schema_names:
+            print("DEBUG: [db] job_resume_applied missing notified columns — migrating...")
+            try:
+                df = table.to_pandas()
+                df["notified"] = False
+                df["notified_at"] = ""
+                db.drop_table("job_resume_applied")
+                return db.create_table("job_resume_applied", data=df, mode="create")
+            except Exception as e:
+                print(f"DEBUG: [db] Migration failed: {e} — recreating empty table")
+                db.drop_table("job_resume_applied")
+                return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
         return table
     return db.create_table("job_resume_applied", schema=job_resume_applied_schema, mode="create")
 
@@ -180,7 +197,9 @@ def apply_for_job(user_id: str, job_id: str, resume_id: str):
         "job_id": job_id,
         "resume_id": resume_id,
         "applied_status": "applied",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "notified": False,
+        "notified_at": "",
     }])
     print(f"DEBUG: Applied job {job_id} using resume {resume_id} for user {user_id}")
     return True

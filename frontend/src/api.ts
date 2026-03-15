@@ -73,11 +73,16 @@ export const jobsApi = {
     },
     apply: (jobId: string, resumeId: string) => api.post(`/jobs/${jobId}/apply?resume_id=${resumeId}`),
     getAppliedJobs: () => api.get('/jobs/my-applied'),
-    getCandidates: (jobId: string) => api.get(`/jobs/${jobId}/candidates`),
+    getCandidates: (jobId: string, status?: string) => api.get(`/jobs/${jobId}/candidates${status ? `?status=${status}` : ''}`),
     updateCandidateStatus: (jobId: string, resumeId: string, status: string) =>
         api.put(`/jobs/${jobId}/candidates/${encodeURIComponent(resumeId)}/status`, { status }),
     parseQueryIntent: (query: string) =>
         api.post('/jobs/parse-query-intent', { query }),
+    shortlistCandidate: (jobId: string, resumeId: string, candidateUserId: string) =>
+        api.post(`/jobs/${jobId}/shortlist`, { resume_id: resumeId, candidate_user_id: candidateUserId }),
+    markNotified: (jobId: string, resumeId: string) =>
+        api.put(`/jobs/${jobId}/candidates/${encodeURIComponent(resumeId)}/notify`),
+    getLocations: () => api.get('/jobs/locations'),
 };
 
 export const resumesApi = {
@@ -97,5 +102,6 @@ export const matchApi = {
     matchResumeSkills: (resumeId: string, limit: number = 100) => api.get(`/match/resume/${resumeId}/skills-match`, { params: { limit } }),
     extractSkills: (resumeId: string) => api.get(`/match/resume/${resumeId}/extract-skills`),
     searchJobs: (query: string, limit: number = 50, filters: any = {}) => api.get('/match/search/jobs', { params: { q: query, limit, ...filters } }),
+    matchCandidatesForJob: (jobId: string, limit: number = 50) => api.get(`/match/job/${jobId}/candidates`, { params: { limit } }),
 };
 export default api;

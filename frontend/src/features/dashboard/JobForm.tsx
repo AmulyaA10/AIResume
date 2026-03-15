@@ -9,7 +9,7 @@ const DEFAULTS = {
     title: '', description: '', employer_name: '', employer_email: '',
     location_name: '', location_lat: 0, location_lng: 0,
     employment_type: 'FULL_TIME', job_category: 'IT', job_level: 'MID',
-    skills_required: '', salary_min: 0, salary_max: 0,
+    positions: 1, skills_required: '', salary_min: 0, salary_max: 0,
     benefits: '', application_url: '',
 };
 
@@ -473,6 +473,18 @@ const JobForm = () => {
                                 <option value="MID">Mid</option>
                                 <option value="SENIOR">Senior</option>
                             </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Number of Positions</label>
+                            <input
+                                type="number"
+                                name="positions"
+                                min={1}
+                                value={formData.positions}
+                                onChange={handleChange}
+                                className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            />
                         </div>
                     </div>
 
