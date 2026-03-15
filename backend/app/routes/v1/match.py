@@ -84,6 +84,51 @@ async def match_jobs_for_resume(
 
     return matches
 
+@router.get("/job/{job_id}/candidates")
+async def match_candidates_for_job(
+    job_id: str,
+    limit: int = 50,
+    user_id: str = Depends(get_current_user),
+):
+    """Find resumes that best match a job using vector similarity (recruiter/manager view)."""
+    jobs_table = get_or_create_jobs_table()
+    job_rows = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
+    if not job_rows:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job_vec = job_rows[0].get("vector")
+    if job_vec is None:
+        raise HTTPException(status_code=422, detail="Job has no embedding vector")
+
+    vec_norm = sum(float(v) ** 2 for v in job_vec) ** 0.5
+    resumes_table = get_or_create_table()
+
+    if vec_norm < 0.001:
+        results = resumes_table.search().limit(limit).to_list()
+        return [{"score": 0.5, "resume_id": r["filename"], "user_id": r.get("user_id", ""), "snippet": (r.get("text") or "")[:200]} for r in results]
+
+    results = resumes_table.search(job_vec).metric("cosine").limit(limit).to_list()
+
+    matches = []
+    seen_filenames = set()
+    for r in results:
+        filename = r.get("filename", "")
+        if filename in seen_filenames:
+            continue
+        seen_filenames.add(filename)
+        dist = r.get("_distance", 1.0)
+        score = max(0.0, 1.0 - float(dist))
+        matches.append({
+            "score": score,
+            "resume_id": filename,
+            "user_id": r.get("user_id", ""),
+            "snippet": (r.get("text") or "")[:200],
+        })
+
+    matches.sort(key=lambda x: x["score"], reverse=True)
+    return matches
+
+
 @router.get("/search/jobs", response_model=List[JobMatchResponse])
 async def search_jobs(
     q: str,

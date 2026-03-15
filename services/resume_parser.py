@@ -138,11 +138,33 @@ def extract_text(file_path):
         reader = PdfReader(file_path)
         return "\n".join(p.extract_text() for p in reader.pages)
 
-    if file_path.endswith(".docx"):
-        doc = docx.Document(file_path)
-        return "\n".join(p.text for p in doc.paragraphs)
+    if file_path.endswith((".docx", ".doc")):
+        # Try python-docx first (works for valid .docx / zip-based files)
+        try:
+            doc = docx.Document(file_path)
+            text = "\n".join(p.text for p in doc.paragraphs)
+            if text.strip():
+                return text
+        except Exception:
+            pass
+        # Fallback: mammoth handles legacy .doc and malformed .docx
+        try:
+            import mammoth
+            with open(file_path, "rb") as f:
+                result = mammoth.extract_raw_text(f)
+            if result.value.strip():
+                return result.value
+        except Exception:
+            pass
+        # Last resort: read as plain text (file may just be text with .docx extension)
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except Exception:
+            pass
+        return ""
 
-    if file_path.endswith(".txt"):
+    if file_path.endswith(".txt") or file_path.endswith(".rtf"):
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
 
