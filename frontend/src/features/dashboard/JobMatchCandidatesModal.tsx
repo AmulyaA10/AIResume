@@ -201,8 +201,8 @@ const JobMatchCandidatesModal: React.FC<Props> = ({ jobId, jobTitle, jobSkills, 
                                                     return (
                                                         <>
                                                             {/* Contact info + shortlist action */}
-                                                            <div className="flex items-start justify-between gap-4">
-                                                                <div className="space-y-1">
+                                                            <div className="flex items-center justify-between gap-4">
+                                                                <div className="space-y-1 flex-1 min-w-0">
                                                                     <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Contact Info</h4>
                                                                     {contact.name && <p className="text-sm font-semibold text-slate-800">{contact.name}</p>}
                                                                     {contact.email && (
@@ -222,7 +222,7 @@ const JobMatchCandidatesModal: React.FC<Props> = ({ jobId, jobTitle, jobSkills, 
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleShortlist(c); }}
                                                                     disabled={isShortlisted || isShortlisting}
-                                                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shrink-0 ${
+                                                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-colors shrink-0 whitespace-nowrap ${
                                                                         isShortlisted
                                                                             ? 'bg-green-50 text-green-700 border-green-200 cursor-default'
                                                                             : 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700 disabled:opacity-60'
