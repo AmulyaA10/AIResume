@@ -53,9 +53,9 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
         text_len = len(profile_text) if profile_text else 0
         print(f"--- [Fetch] Raw scraped text length: {text_len} chars ---")
         if profile_text:
-            print(f"--- [Fetch] First 500 chars: ---")
+            print("--- [Fetch] First 500 chars: ---")
             print(profile_text[:500])
-            print(f"--- [Fetch] Last 500 chars: ---")
+            print("--- [Fetch] Last 500 chars: ---")
             print(profile_text[-500:] if text_len > 500 else "(same as above)")
 
         if not profile_text or len(profile_text.strip()) < 50:

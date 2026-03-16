@@ -1698,13 +1698,13 @@ def main():
                 slug = f"{cat}{suffix}_{i+1:03d}"
 
                 txt_path = os.path.join(out_dir, "resumes", cat, f"{slug}.txt")
-                with open(txt_path, "w") as f:
+                with open(txt_path, "w", encoding="utf-8") as f:
                     f.write(data["text"])
 
                 json_path = None
                 if data.get("json"):
                     json_path = os.path.join(out_dir, "resumes", cat, f"{slug}.json")
-                    with open(json_path, "w") as f:
+                    with open(json_path, "w", encoding="utf-8") as f:
                         json.dump(data["json"], f, indent=2)
 
                 manifest["resumes"].append({
@@ -1736,11 +1736,11 @@ def main():
         slug = f"jd_{i+1:03d}"
 
         txt_path = os.path.join(out_dir, "job_descriptions", f"{slug}.txt")
-        with open(txt_path, "w") as f:
+        with open(txt_path, "w", encoding="utf-8") as f:
             f.write(data["text"])
 
         json_path = os.path.join(out_dir, "job_descriptions", f"{slug}.json")
-        with open(json_path, "w") as f:
+        with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data["json"], f, indent=2)
 
         manifest["job_descriptions"].append({
@@ -1754,7 +1754,7 @@ def main():
     print(f"  Job Descriptions: {args.jds}")
 
     manifest_path = os.path.join(out_dir, "manifest.json")
-    with open(manifest_path, "w") as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     print(f"  Manifest: {manifest_path}")

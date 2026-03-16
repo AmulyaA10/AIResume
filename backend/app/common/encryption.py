@@ -33,7 +33,7 @@ def _ensure_key() -> str:
     if not key:
         key = Fernet.generate_key().decode()
         os.environ["ENCRYPTION_KEY"] = key
-        print(f"INFO: [encryption] Auto-generated ENCRYPTION_KEY (first run).")
+        print("INFO: [encryption] Auto-generated ENCRYPTION_KEY (first run).")
 
         # Persist to backend/.env so it survives restarts
         env_path = Path(__file__).resolve().parents[2] / ".env"

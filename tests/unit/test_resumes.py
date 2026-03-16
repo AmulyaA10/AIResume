@@ -1,9 +1,8 @@
 """Unit tests for the resumes endpoints (upload / download)."""
 
-import os
 import io
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 
 

@@ -19,7 +19,7 @@ import sys
 import os
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _backend_root = os.path.join(_project_root, "backend")

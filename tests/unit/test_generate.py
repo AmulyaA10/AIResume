@@ -1,10 +1,9 @@
 """Unit tests for the resume generation endpoints."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi import HTTPException
 from httpx import AsyncClient, ASGITransport
-import io
 
 
 @pytest.mark.asyncio

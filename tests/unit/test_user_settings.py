@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 from cryptography.fernet import Fernet
 
