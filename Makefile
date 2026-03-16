@@ -11,7 +11,7 @@
 #   make build            Build the React frontend
 #   make dev              Start backend + frontend dev servers
 #   make synth-data       Generate synthetic test data (files only, no DB)
-#   make demo             Populate DB with 100 resumes + 50 jobs for demo
+#   make demo             Populate DB with 300 resumes + 100 jobs for demo (100 India)
 #   make demo-wipe        Wipe DB and reload fresh demo data
 #   make clean            Remove generated artifacts
 #   make help             Show this help
@@ -119,18 +119,19 @@ synth-data: ## Generate synthetic test data (resumes + JDs)
 	@echo "$(GREEN)Synthetic data generated.$(NC)"
 
 # ── Demo Data ────────────────────────────────────────────────────────────────
-# Override counts:  make demo RESUMES=50 JDS=20
-RESUMES ?= 100
-JDS     ?= 50
+# Override counts:  make demo RESUMES=300 JDS=100 INDIA=100
+RESUMES ?= 300
+JDS     ?= 100
+INDIA   ?= 100
 
-demo: ## Populate DB with synthetic data (default: 100 resumes, 50 jobs). Override: make demo RESUMES=50 JDS=20
+demo: ## Populate DB with synthetic data (default: 300 resumes, 100 jobs, 100 from India). Override: make demo RESUMES=50 JDS=20 INDIA=0
 	@echo "$(CYAN)Loading demo data into DB...$(NC)"
-	@echo "$(YELLOW)Resumes: $(RESUMES)  |  Job Descriptions: $(JDS)$(NC)"
-	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --resumes $(RESUMES) --jds $(JDS)
+	@echo "$(YELLOW)Resumes: $(RESUMES)  |  Job Descriptions: $(JDS)  |  India: $(INDIA)$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --resumes $(RESUMES) --jds $(JDS) --india $(INDIA)
 
-demo-wipe: ## Wipe DB and reload fresh demo data (full reset). Override: make demo-wipe RESUMES=50 JDS=20
+demo-wipe: ## Wipe DB and reload fresh demo data (full reset). Override: make demo-wipe RESUMES=300 JDS=100 INDIA=100
 	@echo "$(YELLOW)Wiping existing data and reloading demo dataset...$(NC)"
-	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe --resumes $(RESUMES) --jds $(JDS)
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe --resumes $(RESUMES) --jds $(JDS) --india $(INDIA)
 
 # ── Clean ───────────────────────────────────────────────────────────────────
 

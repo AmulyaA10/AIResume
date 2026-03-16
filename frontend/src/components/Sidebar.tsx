@@ -35,7 +35,7 @@ const Sidebar = () => {
             { path: '/linkedin', label: 'Sync LinkedIn', icon: Linkedin },
         ],
         recruiter: [
-            { path: '/upload', label: 'Resume Database', icon: Upload },
+            { path: '/resumes', label: 'Resume Database', icon: Upload },
             { path: '/search', label: 'Candidate Search', icon: Search },
             { path: '/scoring', label: 'Quality Scoring', icon: BarChart3 },
             { path: '/screen', label: 'Auto Screening', icon: ShieldCheck },
@@ -44,7 +44,7 @@ const Sidebar = () => {
             { path: '/jd', label: 'Job Definitions', icon: Briefcase },
         ],
         manager: [
-            { path: '/upload', label: 'Resume Database', icon: Upload },
+            { path: '/resumes', label: 'Resume Database', icon: Upload },
             { path: '/scoring', label: 'Active Rankings', icon: BarChart3 },
             { path: '/skill-gap', label: 'Skill Analysis', icon: Cpu },
             { path: '/screen', label: 'Auto Screening', icon: ShieldCheck },
