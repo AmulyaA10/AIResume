@@ -6,9 +6,7 @@ from app.dependencies import get_current_user, resolve_credentials
 from app.common import (
     build_llm_config,
     precheck_resume_validation,
-    validate_resume_fields,
     validate_resume_output,
-    resume_json_to_text,
 )
 
 router = APIRouter()

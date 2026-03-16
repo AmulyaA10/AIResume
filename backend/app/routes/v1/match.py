@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import List, Optional
 import json
 import os
 
-from app.models import JobResponse, JobMatchResponse, JobSkillMatchResponse
+from app.models import JobMatchResponse, JobSkillMatchResponse
 from app.dependencies import get_current_user, resolve_credentials
 from services.db.lancedb_client import get_or_create_jobs_table, get_or_create_table, get_embeddings_model
 
@@ -399,8 +399,8 @@ async def match_jobs_skills_stream(
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
             yield evt("  RESUME LOADING", "section")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
-            yield evt(f"MODULE   › services/db/lancedb_client.py", "module")
-            yield evt(f"FUNCTION › get_or_create_table()", "module")
+            yield evt("MODULE   › services/db/lancedb_client.py", "module")
+            yield evt("FUNCTION › get_or_create_table()", "module")
             yield evt(f"ACTION   › Querying resumes table for '{resume_id}'", "action")
 
             resumes_table = get_or_create_table()
@@ -441,7 +441,7 @@ async def match_jobs_skills_stream(
             yield evt(f"Chunks     : {len(res_results)}", "info")
             yield evt(f"Characters : {len(full_text):,}", "info")
             yield evt(f"Words      : {word_count:,}", "info")
-            yield evt(f"Preview ↓", "info")
+            yield evt("Preview ↓", "info")
 
             words = full_text.split()[:80]
             line, lines_out = [], []
@@ -460,19 +460,19 @@ async def match_jobs_skills_stream(
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
             yield evt("  SKILL EXTRACTION", "section")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
-            yield evt(f"MODULE   › app/routes/v1/match.py", "module")
-            yield evt(f"FUNCTION › _extract_skills_ai()", "module")
+            yield evt("MODULE   › app/routes/v1/match.py", "module")
+            yield evt("FUNCTION › _extract_skills_ai()", "module")
 
             api_key = creds.get("openrouter_key") or os.getenv("OPEN_ROUTER_KEY")
             skills: List[str] = []
 
             if api_key:
                 model = creds.get("llm_model") or "gpt-4o-mini"
-                yield evt(f"ACTION   › Invoking LLM for skill extraction", "action")
-                yield evt(f"Provider : OpenRouter  (https://openrouter.ai/api/v1)", "log")
+                yield evt("ACTION   › Invoking LLM for skill extraction", "action")
+                yield evt("Provider : OpenRouter  (https://openrouter.ai/api/v1)", "log")
                 yield evt(f"Model    : {model}", "log")
                 yield evt(f"Input    : {min(len(full_text), 8000):,} characters sent to LLM", "log")
-                yield evt(f"PROCESS  › Building LangChain PromptTemplate...", "process")
+                yield evt("PROCESS  › Building LangChain PromptTemplate...", "process")
                 try:
                     from langchain_openai import ChatOpenAI
                     from langchain_core.prompts import PromptTemplate
@@ -491,15 +491,15 @@ RESUME TEXT:
 
 JSON array:"""
                     )
-                    yield evt(f"PROCESS  › Initialising ChatOpenAI client...", "process")
+                    yield evt("PROCESS  › Initialising ChatOpenAI client...", "process")
                     llm = ChatOpenAI(model=model, api_key=api_key, base_url="https://openrouter.ai/api/v1")
                     chain = prompt_tpl | llm | StrOutputParser()
 
-                    yield evt(f"PROCESS  › Sending request to LLM — awaiting response...", "process")
+                    yield evt("PROCESS  › Sending request to LLM — awaiting response...", "process")
                     loop = asyncio.get_event_loop()
                     raw = await loop.run_in_executor(None, lambda: chain.invoke({"text": full_text[:8000]}))
 
-                    yield evt(f"PROCESS  › Parsing JSON response from LLM...", "process")
+                    yield evt("PROCESS  › Parsing JSON response from LLM...", "process")
                     cleaned = clean_json_output(raw)
                     parsed = json.loads(cleaned)
                     if isinstance(parsed, list):
@@ -507,14 +507,14 @@ JSON array:"""
                     yield evt(f"RESULT   › LLM returned {len(skills)} skills ✓", "success")
                 except Exception as e:
                     yield evt(f"WARNING  › LLM extraction failed: {e}", "warning")
-                    yield evt(f"FALLBACK › Switching to keyword-based extraction", "warning")
-                    yield evt(f"FUNCTION › _extract_skills_keywords()", "module")
+                    yield evt("FALLBACK › Switching to keyword-based extraction", "warning")
+                    yield evt("FUNCTION › _extract_skills_keywords()", "module")
                     skills = _extract_skills_keywords(full_text)
                     yield evt(f"RESULT   › Keyword scan found {len(skills)} skills ✓", "success")
             else:
-                yield evt(f"WARNING  › No API key configured", "warning")
-                yield evt(f"FALLBACK › Using keyword-based extraction", "warning")
-                yield evt(f"FUNCTION › _extract_skills_keywords()", "module")
+                yield evt("WARNING  › No API key configured", "warning")
+                yield evt("FALLBACK › Using keyword-based extraction", "warning")
+                yield evt("FUNCTION › _extract_skills_keywords()", "module")
                 skills = _extract_skills_keywords(full_text)
                 yield evt(f"RESULT   › Keyword scan found {len(skills)} skills ✓", "success")
 
@@ -531,9 +531,9 @@ JSON array:"""
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
             yield evt("  VECTOR EMBEDDING", "section")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
-            yield evt(f"MODULE   › services/db/lancedb_client.py", "module")
-            yield evt(f"FUNCTION › get_embeddings_model()", "module")
-            yield evt(f"Model    › openai/text-embedding-3-small  (1536 dims)", "log")
+            yield evt("MODULE   › services/db/lancedb_client.py", "module")
+            yield evt("FUNCTION › get_embeddings_model()", "module")
+            yield evt("Model    › openai/text-embedding-3-small  (1536 dims)", "log")
 
             jobs_table = get_or_create_jobs_table()
             skills_vec = None
@@ -556,7 +556,7 @@ JSON array:"""
                     lns.append(" ".join(ln))
                 for l in lns:
                     yield evt(f"  │  {l}", "vectorise")
-                yield evt(f"  └──────────────────────────────────────────────────", "section")
+                yield evt("  └──────────────────────────────────────────────────", "section")
                 yield evt("", "spacer")
                 yield evt(f"  Words    : {len(words_q)}", "info")
                 yield evt(f"  Tokens   : ~{int(len(skills_query) / 4)}  (est. @ 4 chars/token)", "info")
@@ -569,7 +569,7 @@ JSON array:"""
                     yield evt(f"    [{i:2d}]  \"{skill}\"  (~{token_est} token{'s' if token_est != 1 else ''})", "vectorise_token")
 
                 yield evt("", "spacer")
-                yield evt(f"PROCESS  › Calling embed_query() — generating 1536-dim vector...", "process")
+                yield evt("PROCESS  › Calling embed_query() — generating 1536-dim vector...", "process")
                 try:
                     embeddings = get_embeddings_model(api_key=creds.get("openrouter_key"))
                     loop = asyncio.get_event_loop()
@@ -580,15 +580,15 @@ JSON array:"""
                     yield evt(f"  Vector  : [{', '.join(sample)}, ...]", "vectorise")
                 except Exception as e:
                     yield evt(f"WARNING  › Embedding failed: {e}", "warning")
-                    yield evt(f"FALLBACK › Will use unranked all-jobs listing", "warning")
+                    yield evt("FALLBACK › Will use unranked all-jobs listing", "warning")
 
             # ── STEP 5: Cosine search ───────────────────────────────────────
             yield evt("", "spacer")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
             yield evt("  JOB SEARCH  (LanceDB cosine similarity)", "section")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
-            yield evt(f"MODULE   › services/db/lancedb_client.py", "module")
-            yield evt(f"FUNCTION › get_or_create_jobs_table()", "module")
+            yield evt("MODULE   › services/db/lancedb_client.py", "module")
+            yield evt("FUNCTION › get_or_create_jobs_table()", "module")
 
             if skills_vec is not None:
                 yield evt(f"ACTION   › jobs_table.search(skills_vec).metric('cosine').limit({limit})", "action")
@@ -604,7 +604,7 @@ JSON array:"""
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
             yield evt("  SCORING  JOBS", "section")
             yield evt("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "section")
-            yield evt(f"ACTION   › Computing cosine score + skill overlap for each job", "action")
+            yield evt("ACTION   › Computing cosine score + skill overlap for each job", "action")
             threshold_pct = round(min_score * 100)
             yield evt(f"Threshold › {threshold_pct}%  (min match score from slider)", "info")
             yield evt("", "spacer")
@@ -638,7 +638,7 @@ JSON array:"""
                 if matched:
                     yield evt(f"           Skills   : {', '.join(matched)}", "skill_detail")
                 else:
-                    yield evt(f"           Skills   : (no direct skill overlap)", "job_detail")
+                    yield evt("           Skills   : (no direct skill overlap)", "job_detail")
 
                 matches.append({"score": score, "job": _serialize_job(r), "matched_skills": matched})
 

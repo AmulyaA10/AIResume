@@ -1,6 +1,5 @@
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
-import json
 
 from services.ai.common import get_llm, safe_parse_json, extract_skills_from_text
 

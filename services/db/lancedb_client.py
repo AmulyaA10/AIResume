@@ -240,7 +240,6 @@ def get_dashboard_stats(user_id: str, is_recruiter: bool = False):
     activity_table = get_or_create_activity_table()
     applied_table = get_or_create_job_applied_table()
     
-    import pandas as pd
     resumes_df = resumes_table.to_pandas()
     
     total_resumes = 0
@@ -434,7 +433,6 @@ def get_or_create_resume_meta_table():
     # Migrate: add any columns that exist in schema but not in the table
     missing = _RESUME_META_NEW_COLS - set(table.schema.names)
     if missing:
-        import pandas as pd
         df = table.to_pandas()
         for col in missing:
             df[col] = None
@@ -551,7 +549,6 @@ def rename_resume(old_filename: str, new_filename: str, user_id: str):
     # 1. Update resumes table — keep existing vectors, just swap filename
     table = get_or_create_table()
     try:
-        import pandas as pd
         df = table.to_pandas()
         if not df.empty:
             mask = (df['filename'] == old_filename) & (df['user_id'] == user_id)
