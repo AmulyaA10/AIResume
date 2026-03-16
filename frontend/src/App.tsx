@@ -6,7 +6,7 @@ import { useAuth } from './context/AuthContext';
 // Feature-based imports
 import { Login, AuthCallback } from './features/auth';
 import { MyApplications } from './features/dashboard';
-import { Dashboard, JobDefinitions, JobForm } from './features/dashboard';
+import { Dashboard, JobDefinitions, JobForm, ResumeDatabase } from './features/dashboard';
 import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
 import { QualityScoring, SkillGap, AutoScreening } from './features/analysis';
 import AISearch from './features/analysis/AISearch';
@@ -71,6 +71,12 @@ function App() {
             <Route path="/screen" element={
                 <ProtectedRoute>
                     <AutoScreening />
+                </ProtectedRoute>
+            } />
+
+            <Route path="/resumes" element={
+                <ProtectedRoute>
+                    <ResumeDatabase />
                 </ProtectedRoute>
             } />
 

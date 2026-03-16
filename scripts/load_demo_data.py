@@ -38,8 +38,9 @@ load_dotenv(PROJECT_ROOT / "backend" / ".env")
 DEMO_USER_ID = "user_manager_789"   # Manager owns all demo data
 SYNTHETIC_DIR = PROJECT_ROOT / "data" / "synthetic"
 RAW_RESUMES_DIR = PROJECT_ROOT / "data" / "raw_resumes"
-N_RESUMES = 100
-N_JDS = 50
+N_RESUMES = 300
+N_JDS = 100
+N_INDIA = 100
 
 # Index all tiered + quality resumes for demo (skip weak/invalid/not_resume)
 DEMO_RESUME_CATEGORIES = ["junior", "mid", "senior", "architect", "strong", "good"]
@@ -57,6 +58,18 @@ GEO_LOOKUP = {
     "Singapore":     (1.3521, 103.8198),
     "Amsterdam":     (52.3676, 4.9041),
     "Paris":         (48.8566, 2.3522),
+    # India
+    "Bangalore":     (12.9716, 77.5946),
+    "Bengaluru":     (12.9716, 77.5946),
+    "Hyderabad":     (17.3850, 78.4867),
+    "Mumbai":        (19.0760, 72.8777),
+    "Chennai":       (13.0827, 80.2707),
+    "Delhi":         (28.6139, 77.2090),
+    "Gurugram":      (28.4595, 77.0266),
+    "Noida":         (28.5355, 77.3910),
+    "Pune":          (18.5204, 73.8567),
+    "Kolkata":       (22.5726, 88.3639),
+    "Kochi":         (9.9312, 76.2673),
     "Remote":        (0.0, 0.0),
 }
 
@@ -125,15 +138,15 @@ def _parse_salary(salary_str: str):
 # Step 1 — Generate synthetic data
 # ---------------------------------------------------------------------------
 
-def generate_data(n_resumes: int, n_jds: int):
+def generate_data(n_resumes: int, n_jds: int, n_india: int = 0):
     print("\n[1/3] Generating synthetic data...")
     import subprocess
-    result = subprocess.run(
-        [sys.executable, str(PROJECT_ROOT / "scripts" / "generate_synthetic_data.py"),
-         "--resumes", str(n_resumes), "--jds", str(n_jds),
-         "--output", str(SYNTHETIC_DIR)],
-        capture_output=True, text=True
-    )
+    cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "generate_synthetic_data.py"),
+           "--resumes", str(n_resumes), "--jds", str(n_jds),
+           "--output", str(SYNTHETIC_DIR)]
+    if n_india > 0:
+        cmd += ["--india", str(n_india)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"ERROR: {result.stderr}")
         sys.exit(1)
@@ -495,18 +508,21 @@ def wipe_existing():
 # ---------------------------------------------------------------------------
 
 def main():
+    global N_RESUMES, N_JDS, N_INDIA
     parser = argparse.ArgumentParser(description="Load demo data into Resume Intelligence DB")
     parser.add_argument("--resumes", type=int, default=N_RESUMES, help=f"Number of resumes (default: {N_RESUMES})")
     parser.add_argument("--jds", type=int, default=N_JDS, help=f"Number of job descriptions (default: {N_JDS})")
+    parser.add_argument("--india", type=int, default=N_INDIA,
+                        help=f"Number of India-locale resumes (default: {N_INDIA})")
     parser.add_argument("--skip-generate", action="store_true",
                         help="Skip synthetic data generation (reuse existing data/synthetic/)")
     parser.add_argument("--wipe", action="store_true",
                         help="Wipe existing DB and uploads before loading")
     args = parser.parse_args()
 
-    global N_RESUMES, N_JDS
     N_RESUMES = args.resumes
     N_JDS = args.jds
+    N_INDIA = args.india
 
     print("=" * 60)
     print("  Resume Intelligence — Demo Data Loader")
@@ -516,7 +532,7 @@ def main():
         wipe_existing()
 
     if not args.skip_generate:
-        generate_data(N_RESUMES, N_JDS)
+        generate_data(N_RESUMES, N_JDS, N_INDIA)
     else:
         print("\n[1/3] Skipping generation (--skip-generate).")
         if not (SYNTHETIC_DIR / "manifest.json").exists():

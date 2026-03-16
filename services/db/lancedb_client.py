@@ -393,22 +393,60 @@ def migrate_orphaned_settings(old_user_id: str, new_user_id: str):
     except Exception as e:
         print(f"MIGRATION: Failed to migrate settings from {old_user_id} to {new_user_id}: {e}")
 
-# ---------- RESUME METADATA (validation scores) ----------
+# ---------- RESUME METADATA (validation scores + extracted candidate metadata) ----------
 resume_meta_schema = pa.schema([
     pa.field("id", pa.string()),
     pa.field("user_id", pa.string()),
     pa.field("filename", pa.string()),
     pa.field("validation_json", pa.string()),
     pa.field("uploaded_at", pa.string()),
+    # Candidate metadata extracted by LLM at upload time
+    pa.field("candidate_name", pa.string()),
+    pa.field("role", pa.string()),
+    pa.field("industry", pa.string()),
+    pa.field("exp_level", pa.string()),
+    pa.field("current_company", pa.string()),
+    pa.field("location", pa.string()),
+    pa.field("phone", pa.string()),
+    pa.field("email", pa.string()),
+    pa.field("linkedin_url", pa.string()),
+    pa.field("github_url", pa.string()),
+    pa.field("skills_json", pa.string()),         # JSON array of {name, level}
+    pa.field("summary", pa.string()),             # 1-2 sentence professional headline
+    pa.field("years_experience", pa.string()),    # total years as string e.g. "11"
+    pa.field("education", pa.string()),           # highest degree + institution
+    pa.field("certifications_json", pa.string()), # JSON array of cert names
 ])
 
-def get_or_create_resume_meta_table():
-    if "resume_meta" in db.table_names():
-        return db.open_table("resume_meta")
-    return db.create_table("resume_meta", schema=resume_meta_schema, mode="create")
+_RESUME_META_COLS = ["candidate_name", "role", "industry", "exp_level",
+                     "current_company", "location", "phone", "email",
+                     "linkedin_url", "github_url", "skills_json",
+                     "summary", "years_experience", "education", "certifications_json"]
 
-def store_resume_validation(user_id: str, filename: str, validation: dict):
-    """Upsert validation results for a resume."""
+_RESUME_META_NEW_COLS = {"email", "linkedin_url", "github_url",
+                         "summary", "years_experience", "education", "certifications_json"}
+
+
+def get_or_create_resume_meta_table():
+    if "resume_meta" not in db.table_names():
+        return db.create_table("resume_meta", schema=resume_meta_schema, mode="create")
+    table = db.open_table("resume_meta")
+    # Migrate: add any columns that exist in schema but not in the table
+    missing = _RESUME_META_NEW_COLS - set(table.schema.names)
+    if missing:
+        import pandas as pd
+        df = table.to_pandas()
+        for col in missing:
+            df[col] = None
+        db.drop_table("resume_meta")
+        db.create_table("resume_meta", data=df, schema=resume_meta_schema, mode="create")
+        table = db.open_table("resume_meta")
+    return table
+
+
+def store_resume_validation(user_id: str, filename: str, validation: dict,
+                            metadata: dict = None):
+    """Upsert validation results + optional candidate metadata for a resume."""
     import json
     from datetime import datetime
     table = get_or_create_resume_meta_table()
@@ -416,12 +454,29 @@ def store_resume_validation(user_id: str, filename: str, validation: dict):
         table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
     except Exception:
         pass
+    meta = metadata or {}
+    skills = meta.get("skills") or []
     table.add([{
         "id": str(uuid4()),
         "user_id": user_id,
         "filename": filename,
         "validation_json": json.dumps(validation or {}),
         "uploaded_at": datetime.now().isoformat(),
+        "candidate_name": meta.get("candidate_name") or None,
+        "role": meta.get("role") or None,
+        "industry": meta.get("industry") or None,
+        "exp_level": meta.get("exp_level") or None,
+        "current_company": meta.get("current_company") or None,
+        "location": meta.get("location") or None,
+        "phone": meta.get("phone") or None,
+        "email": meta.get("email") or None,
+        "linkedin_url": meta.get("linkedin_url") or None,
+        "github_url":          meta.get("github_url") or None,
+        "skills_json":         json.dumps(skills) if skills else None,
+        "summary":             meta.get("summary") or None,
+        "years_experience":    str(meta.get("years_experience") or "").strip() or None,
+        "education":           meta.get("education") or None,
+        "certifications_json": json.dumps(meta.get("certifications") or []),
     }])
 
 def get_resume_validations(user_id: str) -> dict:
@@ -468,7 +523,7 @@ def list_user_resumes(user_id: str) -> list:
     """Return a list of unique filenames uploaded by the given user."""
     table = get_or_create_table()
     try:
-        df = table.to_pandas()
+        df = table.to_pandas()[["filename", "user_id"]]
         if df.empty:
             return []
         user_df = df[df['user_id'] == user_id]
@@ -546,7 +601,6 @@ def list_all_resumes_with_users():
     """Return all distinct resumes across all users with their uploader's user_id."""
     table = get_or_create_table()
     try:
-        import pandas as pd
         df = table.to_pandas()[["filename", "user_id"]]
         seen = set()
         results = []
@@ -559,6 +613,37 @@ def list_all_resumes_with_users():
     except Exception as e:
         print(f"DEBUG: list_all_resumes_with_users error: {e}")
         return []
+
+
+def get_resume_text_map(filenames: list) -> dict:
+    """Return {filename: text} for the given list of filenames (used for location filtering)."""
+    if not filenames:
+        return {}
+    table = get_or_create_table()
+    try:
+        result = {}
+        unique_files = []
+        seen = set()
+        for fn in filenames:
+            if fn and fn not in seen:
+                seen.add(fn)
+                unique_files.append(fn)
+
+        # Query only requested filenames in manageable chunks to avoid scanning all rows.
+        CHUNK = 50
+        for i in range(0, len(unique_files), CHUNK):
+            batch = unique_files[i:i + CHUNK]
+            safe_names = [str(n).replace("'", "''") for n in batch]
+            where = " OR ".join([f"filename = '{n}'" for n in safe_names])
+            rows = table.search().where(where).limit(20000).to_list()
+            for row in rows:
+                fn = row.get("filename")
+                if fn in seen and fn not in result:
+                    result[fn] = row.get("text") or ""
+        return result
+    except Exception as e:
+        print(f"DEBUG: get_resume_text_map error: {e}")
+        return {}
 
 
 # ---------- SEARCH ----------
