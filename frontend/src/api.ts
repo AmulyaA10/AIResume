@@ -87,9 +87,19 @@ export const jobsApi = {
 
 export const resumesApi = {
     list: () => api.get('/resumes'),
+    database: (params: { skip?: number; limit?: number; search?: string; classification?: string; date_range?: number; location?: string; industry?: string; role?: string; exp_level?: string; applied?: string }) =>
+        api.get('/resumes/database', { params }),
+    appliedJobs: (filename: string) => api.get(`/resumes/${encodeURIComponent(filename)}/applied-jobs`),
     getText: (filename: string) => api.get(`/resumes/${encodeURIComponent(filename)}/text`),
     updateText: (filename: string, text: string) => api.put(`/resumes/${encodeURIComponent(filename)}/text`, { text }),
     rename: (filename: string, newFilename: string) => api.put(`/resumes/${encodeURIComponent(filename)}/rename`, { new_filename: newFilename }),
+    delete: (filename: string) => api.delete(`/resumes/${encodeURIComponent(filename)}`),
+    download: (filename: string) => api.get(`/resumes/download/${encodeURIComponent(filename)}`, { responseType: 'blob' }),
+    previewUrl: (filename: string): string =>
+        `${api.defaults.baseURL}/resumes/download/${encodeURIComponent(filename)}?inline=true`,
+    preview: (filename: string) => api.get(`/resumes/preview/${encodeURIComponent(filename)}`, { responseType: 'blob' }),
+    getLocations: () => api.get('/resumes/locations'),
+    getFilterOptions: () => api.get('/resumes/filter-options'),
 };
 
 export interface ResumeWithUser {

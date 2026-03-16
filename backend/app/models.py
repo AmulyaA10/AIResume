@@ -64,7 +64,7 @@ class JobCreate(BaseModel):
     employment_type: str = "FULL_TIME"
     job_category: str = "IT"
     job_level: str = "MID"
-    positions: int = 1
+    positions: Optional[int] = 1
     skills_required: List[str] = []
     salary_min: float = 0.0
     salary_max: float = 0.0
