@@ -41,7 +41,9 @@ def _serialize_job(row: dict) -> dict:
 
     # Parse skills_tiers JSON string → dict
     raw_tiers = out.get("skills_tiers")
-    if raw_tiers and str(raw_tiers).strip() not in ("", "nan", "None"):
+    if isinstance(raw_tiers, dict):
+        out["skills_tiers"] = raw_tiers
+    elif isinstance(raw_tiers, str) and raw_tiers.strip() not in ("", "nan", "None"):
         try:
             out["skills_tiers"] = json.loads(raw_tiers)
         except (TypeError, ValueError):

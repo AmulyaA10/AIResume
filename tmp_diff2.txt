@@ -1,0 +1,212 @@
+﻿diff --git a/backend/app/routes/v1/jobs.py b/backend/app/routes/v1/jobs.py
+index 537520c..3488e03 100644
+--- a/backend/app/routes/v1/jobs.py
++++ b/backend/app/routes/v1/jobs.py
+@@ -332,12 +332,15 @@ async def parse_query_intent(
+          "do NOT use 'ny' alone ΓÇö use ', ny' or 'new york'). Prefer full city/region names and metro area labels.>,\n"
+          '  "topN": <integer if user wants top N results, else null>,\n'
+          '  "sortBySalary": <true if user wants highest-paid / best-paying / top salary jobs, else false>,\n'
+-         '  "cleanQuery": <the query with all intent tokens removed, keeping only the job-type signal. If nothing meaningful remains, use a sensible default like "software engineering jobs".>\n'
++         '  "cleanQuery": <the query with location/limit/salary tokens removed. IMPORTANT: keep all technical skills, programming languages, '
++         'and frameworks exactly as typed (e.g. "python", "react", "fastapi"). DO NOT append generic words like "jobs" or "software engineering" '
++         'unless the query is completely empty. If nothing meaningful remains, use "software engineer".>\n'
+          "}}\n\n"
+          "Examples:\n"
+-         '  "top paid 5 jobs in california" ΓåÆ {{"location":"california","locationAliases":["san francisco","bay area","los angeles","silicon valley","west coast","sacramento"],"topN":5,"sortBySalary":true,"cleanQuery":"software engineering jobs"}}\n'
+-         '  "best paying data scientist roles in NYC" ΓåÆ {{"location":"new york","locationAliases":["new york city","manhattan","brooklyn","new york"],"topN":null,"sortBySalary":true,"cleanQuery":"data scientist"}}\n'
+-         '  "remote python developer" ΓåÆ {{"location":null,"locationAliases":[],"topN":null,"sortBySalary":false,"cleanQuery":"remote python developer"}}'
++         '  "top paid 5 jobs in california" ΓåÆ {{"location":"california","locationAliases":["san francisco","bay area","los angeles","silicon valley"],"topN":5,"sortBySalary":true,"cleanQuery":"software engineer"}}\n'
++         '  "best paying data scientist roles in NYC" ΓåÆ {{"location":"new york","locationAliases":["new york city","manhattan","brooklyn"],"topN":null,"sortBySalary":true,"cleanQuery":"data scientist"}}\n'
++         '  "Python" ΓåÆ {{"location":null,"locationAliases":[],"topN":null,"sortBySalary":false,"cleanQuery":"python"}}\n'
++         '  "remote react developer" ΓåÆ {{"location":null,"locationAliases":[],"topN":null,"sortBySalary":false,"cleanQuery":"react developer"}}'
+         ),
+         ("human", "Query: {query}"),
+     ])
+diff --git a/backend/app/routes/v1/match.py b/backend/app/routes/v1/match.py
+index 98446d2..9de2596 100644
+--- a/backend/app/routes/v1/match.py
++++ b/backend/app/routes/v1/match.py
+@@ -4,7 +4,7 @@ import json
+ import os
+ 
+ from app.models import JobMatchResponse, JobSkillMatchResponse
+-from app.dependencies import get_current_user, resolve_credentials
++from app.dependencies import get_current_user, get_user_role, resolve_credentials
+ from services.db.lancedb_client import get_or_create_jobs_table, get_or_create_table, get_embeddings_model
+ 
+ router = APIRouter(tags=["v1 ΓÇö Matching"])
+@@ -28,18 +28,27 @@ def _serialize_job(row: dict) -> dict:
+ async def match_jobs_for_resume(
+     resume_id: str,
+     limit: int = 50,
+-    user_id: str = Depends(get_current_user)
++    user_id: str = Depends(get_current_user),
++    role: str = Depends(get_user_role)
+ ):
+     """Find jobs that match a specific resume using vector similarity."""
+     resumes_table = get_or_create_table()
+-    # Find the specific resume chunk
++    is_recruiter = role in ("recruiter", "manager")
++
++    # 1. Broad lookup by ID or filename
+     res_results = resumes_table.search().where(f"id = '{resume_id}'").limit(1).to_list()
+     if not res_results:
+-        # Try to find by filename for this user
++        # Try to find by filename
+         safe_filename = resume_id.replace("'", "''")
+-        res_results = resumes_table.search().where(f"filename = '{safe_filename}' AND user_id = '{user_id}'").limit(1).to_list()
+-    if not res_results:
+-        # Try to find by user_id if ID not found directly (simple fallback)
++        # If not recruiter, restrict to their own resumes
++        if not is_recruiter:
++            res_results = resumes_table.search().where(f"filename = '{safe_filename}' AND user_id = '{user_id}'").limit(1).to_list()
++        else:
++            # Recruiter can match any resume
++            res_results = resumes_table.search().where(f"filename = '{safe_filename}'").limit(1).to_list()
++
++    # 2. Fallback to user's first resume if no specific match and not recruiter
++    if not res_results and not is_recruiter:
+         res_results = resumes_table.search().where(f"user_id = '{user_id}'").limit(1).to_list()
+ 
+     if not res_results:
+@@ -137,14 +146,17 @@ async def search_jobs(
+     job_category: Optional[str] = None,
+     user_id: str = Depends(get_current_user)
+ ):
+-    """Semantic search for jobs using natural language query, with text fallback."""
++    """Hybrid search for jobs: semantic vector search + robust keyword boosting."""
+     jobs_table = get_or_create_jobs_table()
++    q_clean = q.strip()
++    if not q_clean:
++        return []
+ 
+-    # --- Try semantic (vector) search first ---
++    # 1. Semantic Search
++    semantic_matches = []
+     try:
+         embeddings = get_embeddings_model()
+-        query_vec = embeddings.embed_query(q)
+-
++        query_vec = embeddings.embed_query(q_clean)
+         search = jobs_table.search(query_vec).metric("cosine")
+ 
+         filters = []
+@@ -155,40 +167,80 @@ async def search_jobs(
+         if filters:
+             search = search.where(" AND ".join(filters))
+ 
+-        results = search.limit(limit).to_list()
+-
+-        matches = []
++        results = search.limit(limit * 2).to_list() # Fetch more for re-ranking
+         for r in results:
+             dist = r.get("_distance", 1.0)
+             score = max(0.0, 1.0 - float(dist))
+-            matches.append({"score": score, "job": _serialize_job(r)})
++            semantic_matches.append({"score": score, "job": _serialize_job(r)})
++    except Exception as e:
++        print(f"DEBUG: [match] Semantic search failed: {e}")
+ 
+-        # Only return semantic results if scores are meaningful (not all zero vectors)
+-        if matches and max(m["score"] for m in matches) > 0.05:
+-            return matches
++    # 2. Robust Keyword Search
++    # Split query into terms for more flexible matching
++    terms = [t.lower() for t in q_clean.split() if len(t) > 2] # ignore very short words
++    if not terms:
++        terms = [q_clean.lower()]
+ 
+-        print("DEBUG: [match] Semantic search returned zero scores, falling back to text search")
+-    except Exception as e:
+-        print(f"DEBUG: [match] Semantic search failed: {e}, falling back to text search")
++    all_jobs_results = jobs_table.search().limit(1000).to_list()
++    keyword_matches = []
++    
++    for r in all_jobs_results:
++        # Check filters first
++        if job_level and r.get("job_level") != job_level:
++            continue
++        if job_category and r.get("job_category") != job_category:
++            continue
+ 
+-    # --- Text-based keyword fallback ---
+-    all_results = jobs_table.search().limit(1000).to_list()
+-    q_lower = q.lower()
+-    matches = []
+-    for r in all_results:
+         title = (r.get("title") or "").lower()
+         desc = (r.get("description") or "").lower()
+         employer = (r.get("employer_name") or "").lower()
+         skills = [s.lower() for s in (r.get("skills_required") or [])]
+-
+-        if q_lower in title or q_lower in employer:
+-            matches.append({"score": 1.0, "job": _serialize_job(r)})
+-        elif any(q_lower in s for s in skills):
+-            matches.append({"score": 0.85, "job": _serialize_job(r)})
+-        elif q_lower in desc:
+-            matches.append({"score": 0.7, "job": _serialize_job(r)})
+-
+-    return matches[:limit]
++        
++        # Scoring based on term presence
++        kw_score = 0.0
++        matches_found = 0
++        for term in terms:
++            term_score = 0.0
++            if term in title or term in employer:
++                term_score = 0.95
++            elif any(term in s for s in skills):
++                term_score = 0.85
++            elif term in desc:
++                term_score = 0.70
++            
++            if term_score > 0:
++                kw_score = max(kw_score, term_score)
++                matches_found += 1
++        
++        # Boost if multiple terms match
++        if matches_found > 1:
++            kw_score = min(1.0, kw_score + (0.05 * (matches_found - 1)))
++
++        if kw_score > 0:
++            keyword_matches.append({"score": kw_score, "job": _serialize_job(r)})
++
++    # 3. Combine and Deduplicate
++    # Use job_id as key
++    combined = {}
++    
++    # Keyword matches usually represent high-intent specific terms (e.g. "Python")
++    for m in keyword_matches:
++        jid = m["job"]["job_id"]
++        combined[jid] = m
++
++    # Semantic matches cover broader context
++    for m in semantic_matches:
++        jid = m["job"]["job_id"]
++        if jid in combined:
++            # If both match, take the higher score or a blend
++            # For now, let's take the max to ensure "Python" search hits 1.0
++            combined[jid]["score"] = max(combined[jid]["score"], m["score"])
++        else:
++            combined[jid] = m
++
++    # 4. Filter and Sort
++    final_results = sorted(combined.values(), key=lambda x: x["score"], reverse=True)
++    return final_results[:limit]
+ 
+ 
+ # ---------- Skill extraction only ----------
+diff --git a/frontend/src/features/dashboard/ResumeDatabase.tsx b/frontend/src/features/dashboard/ResumeDatabase.tsx
+index 439c3db..669ce06 100644
+--- a/frontend/src/features/dashboard/ResumeDatabase.tsx
++++ b/frontend/src/features/dashboard/ResumeDatabase.tsx
+@@ -166,8 +166,7 @@ const ResumeJobMatchModal: React.FC<{ resume: ResumeRecord; onClose: () => void
+     };
+ 
+     useEffect(() => {
+-        const query = [resume.role, ...(resume.skills?.slice(0, 3).map(s => typeof s === 'string' ? s : s.name) ?? [])].filter(Boolean).join(' ');
+-        matchApi.searchJobs(query, 20)
++        matchApi.matchResume(resume.filename, 20)
+             .then(res => setJobs(res.data ?? []))
+             .catch(() => setError('Failed to load matching jobs.'))
+             .finally(() => setLoading(false));
