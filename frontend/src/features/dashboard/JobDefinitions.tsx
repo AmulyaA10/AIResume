@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Briefcase, Plus, MapPin, Trash2, Users, Sparkles, Star, UserCheck, UserX, Pencil, Search, X, Loader2 } from 'lucide-react';
+import { Briefcase, Plus, MapPin, Trash2, Users, Sparkles, Star, UserCheck, Pencil, Search, X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../common';
 import { jobsApi } from '../../api';
@@ -189,11 +189,14 @@ const JobDefinitions = () => {
                     >
                         <option value="">All Locations</option>
                         {hasLocationGroups
-                            ? Object.entries(locationGroups).map(([region, locs]) => (
+                            ? [
+                                ...Object.entries(locationGroups).filter(([r]) => r.toLowerCase() !== 'remote'),
+                                ...Object.entries(locationGroups).filter(([r]) => r.toLowerCase() === 'remote'),
+                              ].map(([region, locs]) => (
                                 <optgroup key={region} label={region}>
                                     {(locs as string[]).map(loc => <option key={loc} value={loc}>{loc}</option>)}
                                 </optgroup>
-                            ))
+                              ))
                             : null
                         }
                     </select>
@@ -272,129 +275,113 @@ const JobDefinitions = () => {
                     <button onClick={clearAllFilters} className="mt-3 text-blue-600 text-sm font-bold hover:underline">Clear filters</button>
                 </div>
             ) : (
-                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity ${isLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 transition-opacity ${isLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                     {jobs.map((job) => (
                         <div
                             key={job.job_id}
                             onClick={() => setSelectedJobForDetail(job)}
-                            className="glass-card p-6 hover:shadow-md transition-shadow cursor-pointer group relative"
+                            className="glass-card p-4 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer group relative flex flex-col"
+                            style={{ minHeight: '220px' }}
                         >
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    {job.selected_count > 0 && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedJobForSelected({ id: job.job_id, title: job.title, skills: job.skills_required || [] });
-                                            }}
-                                            className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold flex items-center gap-1 hover:bg-green-100 transition-colors border border-green-200"
-                                        >
-                                            <UserCheck size={12} /> {job.selected_count} Selected
-                                        </button>
-                                    )}
-                                    {job.rejected_count > 0 && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedJobForRejected({ id: job.job_id, title: job.title, skills: job.skills_required || [] });
-                                            }}
-                                            className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-bold flex items-center gap-1 hover:bg-red-100 transition-colors border border-red-200"
-                                        >
-                                            <UserX size={12} /> {job.rejected_count} Rejected
-                                        </button>
-                                    )}
+                            {/* Title + salary + hover actions */}
+                            <div className="flex items-start gap-2 shrink-0">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-baseline gap-2 min-w-0">
+                                        <p className="font-bold text-slate-900 text-sm leading-snug truncate">{job.title}</p>
+                                        {(job.salary_min > 0 || job.salary_max > 0) && (
+                                            <span className="shrink-0 text-[11px] font-semibold text-green-700 whitespace-nowrap">
+                                                {job.salary_currency || 'USD'} {job.salary_min > 0 ? `${(job.salary_min / 1000).toFixed(0)}K` : ''}
+                                                {job.salary_min > 0 && job.salary_max > 0 ? '–' : ''}
+                                                {job.salary_max > 0 ? `${(job.salary_max / 1000).toFixed(0)}K` : ''}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); navigate(`/jd/edit/${job.job_id}`); }}
-                                        className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"
-                                        title="Edit job"
-                                    >
-                                        <Pencil size={16} />
-                                    </button>
-                                    <button
-                                        onClick={(e) => handleDelete(job.job_id, e)}
-                                        className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                <div
+                                    className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    <button onClick={(e) => { e.stopPropagation(); navigate(`/jd/edit/${job.job_id}`); }} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors" title="Edit"><Pencil size={13} /></button>
+                                    <button onClick={(e) => handleDelete(job.job_id, e)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors" title="Delete"><Trash2 size={13} /></button>
                                 </div>
                             </div>
-                            <h3 className="text-lg font-bold text-slate-900 mb-2 truncate">{job.title}</h3>
-                            <p className="text-sm text-slate-500 mb-4 line-clamp-2">{job.description}</p>
 
-                            <div className="space-y-2 mb-4">
-                                <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
-                                    <MapPin size={12} /> {job.location_name || 'Remote'}
-                                </div>
-                                <div className="flex items-center gap-4 text-xs font-medium text-slate-400">
-                                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                                        {job.job_level}
-                                    </span>
-                                    <span>•</span>
-                                    <span>{new Date(job.posted_date).toLocaleDateString()}</span>
-                                </div>
-
-                                {/* Recruitment progress */}
-                                {(() => {
-                                    const positions = job.positions || 1;
-                                    const selected = job.selected_count || 0;
-                                    const isCompleted = selected >= positions;
-                                    const pct = Math.min(Math.round((selected / positions) * 100), 100);
+                            {/* Location — second line, colored */}
+                            {/* Location · level · employment type — second line in purple */}
+                            <div className="flex items-center gap-1.5 mt-0.5 shrink-0 flex-wrap">
+                                <span className="flex items-center gap-1 text-[11px] font-semibold text-purple-600">
+                                    <MapPin size={10} className="shrink-0 text-purple-400" />
+                                    {(job.location_name || 'Remote').replace(/\s*\(.*?\)\s*/g, '').trim()}
+                                </span>
+                                {job.job_level && (() => {
+                                    const expMap: Record<string, string> = {
+                                        entry: '0–2 yrs', junior: '0–2 yrs', mid: '2–5 yrs',
+                                        senior: '5–8 yrs', lead: '8–12 yrs', principal: '10+ yrs',
+                                        staff: '8–12 yrs', director: '12+ yrs', vp: '15+ yrs',
+                                        'c-suite': '15+ yrs', executive: '15+ yrs',
+                                    };
+                                    const exp = expMap[job.job_level.toLowerCase()];
                                     return (
-                                        <div className="pt-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-xs font-medium text-slate-500">
-                                                    {selected}/{positions} position{positions !== 1 ? 's' : ''} filled
-                                                </span>
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isCompleted ? 'bg-green-100 text-green-700 border-green-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                                                    {isCompleted ? 'Completed' : 'In Progress'}
-                                                </span>
-                                            </div>
-                                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full transition-all ${isCompleted ? 'bg-green-500' : 'bg-blue-500'}`}
-                                                    style={{ width: `${pct}%` }}
-                                                />
-                                            </div>
-                                        </div>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wide">
+                                            {job.job_level}{exp ? ` · ${exp}` : ''}
+                                        </span>
                                     );
                                 })()}
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="flex gap-2 pt-3 border-t border-slate-100">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedJobForMatches({ id: job.job_id, title: job.title, skills: job.skills_required || [] });
-                                    }}
-                                    className="flex-1 px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-purple-100 transition-colors border border-purple-100/50"
-                                >
-                                    <Sparkles size={13} /> Find Matches
-                                </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedJobForShortlisted({ id: job.job_id, title: job.title, skills: job.skills_required || [] });
-                                    }}
-                                    className="flex-1 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-amber-100 transition-colors border border-amber-100/50"
-                                >
-                                    <Star size={13} />{job.shortlisted_count > 0 ? `${job.shortlisted_count} Shortlisted` : 'Shortlisted'}
-                                </button>
-                                {job.applied_count !== undefined && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedJobForCandidates({ id: job.job_id, title: job.title, skills: job.skills_required || [] });
-                                        }}
-                                        className="flex-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-100 transition-colors border border-indigo-100/50"
-                                    >
-                                        <Users size={13} /> {job.applied_count} Applied
-                                    </button>
+                                {job.employment_type && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
+                                        {job.employment_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                                    </span>
                                 )}
                             </div>
-                        </div>
+
+                            {/* Key requirements (skills) */}
+                            <div className="flex flex-wrap gap-1 mt-2 flex-1 content-start">
+                                {job.skills_required?.length > 0
+                                    ? job.skills_required.slice(0, 8).map((s: string) => (
+                                        <span key={s} className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">{s}</span>
+                                    ))
+                                    : <span className="text-[11px] text-slate-300 italic">No requirements listed</span>
+                                }
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex items-center gap-2 shrink-0 mt-2 pt-2 border-t border-slate-100 mt-auto flex-wrap">
+                                {job.shortlisted_count > 0 && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedJobForShortlisted({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
+                                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 transition-colors"
+                                    >
+                                        <Star size={9} />{job.shortlisted_count} Shortlisted
+                                    </button>
+                                )}
+                                {job.applied_count > 0 && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedJobForCandidates({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
+                                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 transition-colors"
+                                    >
+                                        <Users size={9} />{job.applied_count} Applied
+                                    </button>
+                                )}
+                                {job.selected_count > 0 && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedJobForSelected({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
+                                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
+                                    >
+                                        <UserCheck size={9} />{job.selected_count} Selected
+                                    </button>
+                                )}
+                                {job.posted_date && (
+                                    <span className="text-[10px] text-slate-400 whitespace-nowrap ml-auto">
+                                        Posted {new Date(job.posted_date).toLocaleDateString()}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setSelectedJobForMatches({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
+                                    className={`${job.posted_date ? '' : 'ml-auto '}inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 transition-colors`}
+                                >
+                                    <Sparkles size={9} /> Find Matches
+                                </button>
+                            </div>
                     ))}
                 </div>
             )}
