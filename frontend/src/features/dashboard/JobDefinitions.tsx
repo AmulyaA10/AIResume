@@ -382,6 +382,7 @@ const JobDefinitions = () => {
                                     <Sparkles size={9} /> Find Matches
                                 </button>
                             </div>
+                        </div>
                     ))}
                 </div>
             )}

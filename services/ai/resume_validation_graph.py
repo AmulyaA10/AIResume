@@ -1,8 +1,7 @@
 # services/ai/resume_validation_graph.py
-from typing import TypedDict, Optional, List
+from typing import TypedDict, Optional
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
-import json
 
 from services.ai.common import get_llm, safe_parse_json
 

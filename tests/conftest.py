@@ -2,9 +2,8 @@
 
 import os
 import sys
-import io
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 
 # Ensure project root is on sys.path so backend & services imports work
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import RedirectResponse
-import json
 import urllib.parse
 
 from app.models import LoginRequest
@@ -12,7 +11,7 @@ from app.config import (
     FRONTEND_URL,
     BACKEND_URL,
 )
-from services.db.lancedb_client import get_or_create_table, store_resume, log_activity
+from services.db.lancedb_client import get_or_create_table
 
 router = APIRouter()
 

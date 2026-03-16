@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 from dotenv import load_dotenv
 
 # Add root to sys.path
@@ -8,7 +7,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-from services.agent_controller import run_resume_pipeline
 
 def test_dynamic_config():
     print("--- Testing Dynamic LLM Config ---")

@@ -8,8 +8,7 @@ import shutil
 
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.config import UPLOAD_DIR
-from app.common import build_llm_config, safe_log_activity, decrypt_value
-from app.common import precheck_resume_validation
+from app.common import build_llm_config, safe_log_activity
 from services.resume_parser import extract_text, to_ats_text
 from services.db.lancedb_client import (
     store_resume, list_user_resumes, delete_user_resume,
@@ -332,7 +331,7 @@ def _parse_location_from_query(query: str) -> tuple[list[str], str]:
             # Build match keywords: individual tokens (words ≥ 3 chars), lowercased
             matched_loc_keywords = [
                 t.lower() for t in re.split(r'[\s,]+', loc_phrase_extracted)
-                if len(t) >= 3 and not t.upper() in {
+                if len(t) >= 3 and t.upper() not in {
                     "THE", "AND", "FOR", "WITH", "FROM", "NEAR",
                 }
             ]
@@ -437,7 +436,6 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
 
     try:
         from services.ai.common.llm_factory import get_llm
-        import json as _json
         prompt = (
             "Normalize the following location to a clean canonical city-level format.\n"
             "Rules:\n"
@@ -688,7 +686,7 @@ async def get_resume_database(
     from datetime import datetime, timedelta
     from services.db.lancedb_client import (
         list_all_resumes_with_users, get_or_create_resume_meta_table,
-        search_resumes_semantic, get_resume_text_map,
+        search_resumes_semantic,
     )
     is_recruiter = current_role in ("recruiter", "manager")
 
@@ -981,7 +979,6 @@ async def get_resume_applied_jobs(
     role: str = Depends(get_user_role),
 ):
     """Return the jobs a specific resume has been applied to."""
-    import json as _json
     from services.db.lancedb_client import get_or_create_job_applied_table, get_or_create_jobs_table
 
     is_recruiter = role in ("recruiter", "manager")

@@ -410,7 +410,7 @@ def insert_jobs():
         use_embeddings = False
 
     manifest_path = SYNTHETIC_DIR / "manifest.json"
-    with open(manifest_path) as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     success = 0
@@ -421,7 +421,7 @@ def insert_jobs():
         try:
             jd_txt = (SYNTHETIC_DIR / entry["file"]).read_text(encoding="utf-8")
             jd_json_path = SYNTHETIC_DIR / entry["json_file"]
-            with open(jd_json_path) as f:
+            with open(jd_json_path, encoding="utf-8") as f:
                 jd_meta = json.load(f)
 
             title = jd_meta.get("title", entry.get("title", "Software Engineer"))

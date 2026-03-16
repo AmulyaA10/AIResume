@@ -8,8 +8,7 @@ so the tests run without network access or API keys.
 import io
 import os
 import pytest
-import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 
 

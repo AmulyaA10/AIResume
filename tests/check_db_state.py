@@ -1,6 +1,5 @@
 import lancedb
 from pathlib import Path
-import pandas as pd
 
 DB_PATH = Path("data/lancedb")
 

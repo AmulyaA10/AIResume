@@ -7,7 +7,7 @@ from app.dependencies import get_current_user, resolve_credentials
 from app.models import GenerateRequest
 from app.common import (
     build_llm_config, precheck_resume_validation,
-    validate_resume_fields, validate_resume_output, resume_json_to_text,
+    validate_resume_fields, validate_resume_output,
 )
 from services.agent_controller import run_resume_pipeline
 from services.export_service import generate_docx

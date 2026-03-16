@@ -3,7 +3,6 @@ from langgraph.graph import StateGraph, END
 
 from langchain_core.prompts import PromptTemplate
 
-import json
 
 from services.ai.common import get_llm, safe_parse_json
 
