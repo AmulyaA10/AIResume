@@ -3,10 +3,12 @@
 import os
 from typing import Optional
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[3] / "backend" / ".env")
 
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"

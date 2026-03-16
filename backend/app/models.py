@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class LoginRequest(BaseModel):
@@ -66,6 +66,7 @@ class JobCreate(BaseModel):
     job_level: str = "MID"
     positions: Optional[int] = 1
     skills_required: List[str] = []
+    skills_tiers: Optional[Dict[str, List[str]]] = None
     salary_min: float = 0.0
     salary_max: float = 0.0
     salary_currency: str = "USD"

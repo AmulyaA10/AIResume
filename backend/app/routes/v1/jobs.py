@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header, BackgroundTasks
+import re
 import uuid
 import os
 import shutil
@@ -11,6 +12,7 @@ from app.dependencies import get_current_user, get_user_role, resolve_credential
 from app.models import JobCreate, JobResponse
 from app.config import UPLOAD_DIR
 from app.routes.v1.resumes import _normalize_location
+from app.common.skill_utils import canonicalize_skill
 from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table
 from services.resume_parser import extract_text
 from services.ai.common import clean_json_output
@@ -36,7 +38,17 @@ def _serialize_job(row: dict) -> dict:
             out[field] = []
         elif hasattr(val, "tolist"):
             out[field] = val.tolist()
-    
+
+    # Parse skills_tiers JSON string → dict
+    raw_tiers = out.get("skills_tiers")
+    if raw_tiers and str(raw_tiers).strip() not in ("", "nan", "None"):
+        try:
+            out["skills_tiers"] = json.loads(raw_tiers)
+        except (TypeError, ValueError):
+            out["skills_tiers"] = None
+    else:
+        out["skills_tiers"] = None
+
     return out
 
 _ALLOWED_JOB_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -68,7 +80,15 @@ _EMPLOYMENT_TYPE_MAP: dict = {
 
 
 def _normalize_job_fields(job_dict: dict) -> dict:
-    """Normalize job fields: location, job_level, employment_type, skills."""
+    """Normalize job fields: title, location, job_level, employment_type, skills."""
+    # Title — strip parenthetical specializations and em-dash suffixes
+    if job_dict.get("title"):
+        title = job_dict["title"].strip()
+        title = re.sub(r'\s*\(.*?\)\s*$', '', title).strip()   # "Engineer (Python/Go)" → "Engineer"
+        title = re.sub(r'\s*—.*$', '', title).strip()           # "Engineer — Remote" → "Engineer"
+        title = re.sub(r'\s*-\s*(Remote|Hybrid|Onsite)\s*$', '', title, flags=re.IGNORECASE).strip()
+        job_dict["title"] = title
+
     # Location
     if job_dict.get("location_name"):
         job_dict["location_name"] = _normalize_location(job_dict["location_name"]) or job_dict["location_name"]
@@ -89,16 +109,41 @@ def _normalize_job_fields(job_dict: dict) -> dict:
         else:
             job_dict["employment_type"] = job_dict["employment_type"].strip().upper().replace(" ", "_")
 
-    # Skills — strip whitespace and deduplicate preserving order
+    # Skills — canonicalize casing, deduplicate preserving order
     if job_dict.get("skills_required"):
         seen: set = set()
         cleaned = []
         for s in job_dict["skills_required"]:
-            s = s.strip()
-            if s and s.lower() not in seen:
-                seen.add(s.lower())
-                cleaned.append(s)
+            canonical = canonicalize_skill(s)
+            if canonical and canonical.lower() not in seen:
+                seen.add(canonical.lower())
+                cleaned.append(canonical)
         job_dict["skills_required"] = cleaned
+
+    # skills_tiers — normalize each tier, deduplicate globally across tiers
+    _VALID_TIERS = ("must_have", "strong", "experience", "knowledge", "familiarity", "nice_to_have")
+    raw_tiers = job_dict.get("skills_tiers")
+    if isinstance(raw_tiers, str):
+        try:
+            raw_tiers = json.loads(raw_tiers)
+        except (TypeError, ValueError):
+            raw_tiers = None
+    if isinstance(raw_tiers, dict):
+        global_seen: set = set()
+        normalized_tiers: dict = {}
+        for tier_key in _VALID_TIERS:
+            tier_skills = raw_tiers.get(tier_key) or []
+            tier_cleaned = []
+            for s in tier_skills:
+                canonical = canonicalize_skill(s)
+                if canonical and canonical.lower() not in global_seen:
+                    global_seen.add(canonical.lower())
+                    tier_cleaned.append(canonical)
+            if tier_cleaned:
+                normalized_tiers[tier_key] = tier_cleaned
+        job_dict["skills_tiers"] = json.dumps(normalized_tiers) if normalized_tiers else None
+    else:
+        job_dict["skills_tiers"] = None
 
     return job_dict
 
@@ -168,9 +213,26 @@ async def parse_job_upload(
               "employer_name": "Name of company/employer",
               "location_name": "City, Country or Remote",
               "description": "Full job description (preserve formatting)",
-              "skills_required": ["skill1", "skill2"],
+              "skills_tiers": {{
+                "must_have": ["skills explicitly required or mandatory"],
+                "strong": ["skills listed as strongly preferred or a strong background in"],
+                "experience": ["skills listed as experience with or X years of experience in"],
+                "knowledge": ["skills listed as knowledge of or understanding of"],
+                "familiarity": ["skills listed as familiarity with or exposure to"],
+                "nice_to_have": ["skills listed as nice to have, a plus, or bonus"]
+              }},
+              "skills_required": ["union of all tiers — all skills mentioned"],
               "job_level": "JUNIOR", "MID", or "SENIOR"
-            }}"""
+            }}
+
+            Classify each skill into the tier that best matches the JD wording:
+            - must_have: required, must have, essential, proficiency in
+            - strong: strongly preferred, strong background, deep experience
+            - experience: experience with, X+ years of experience in, hands-on experience
+            - knowledge: knowledge of, understanding of, solid grasp of
+            - familiarity: familiarity with, exposure to, working knowledge of
+            - nice_to_have: nice to have, a plus, bonus, preferred but not required
+            Omit a tier key entirely if no skills fall into it."""
         )
 
         llm = ChatOpenAI(
@@ -184,6 +246,12 @@ async def parse_job_upload(
 
         clean_res = clean_json_output(raw_res)
         structured = json.loads(clean_res)
+
+        # Fallback: if LLM didn't return tiers, put all skills in must_have
+        if not structured.get("skills_tiers"):
+            skills = structured.get("skills_required", [])
+            if skills:
+                structured["skills_tiers"] = {"must_have": skills}
 
         # 5. Content validation — ensure required job fields were extracted
         missing = []
@@ -205,7 +273,7 @@ async def parse_job_upload(
                 )
             )
 
-        return structured
+        return _normalize_job_fields(structured)
 
     except HTTPException:
         raise

@@ -8,7 +8,9 @@ import shutil
 
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.config import UPLOAD_DIR
-from app.common import build_llm_config, safe_log_activity
+from app.common import build_llm_config, safe_log_activity, decrypt_value
+from app.common import precheck_resume_validation
+from app.common.skill_utils import canonicalize_skill
 from services.resume_parser import extract_text, to_ats_text
 from services.db.lancedb_client import (
     store_resume, list_user_resumes, delete_user_resume,
@@ -535,16 +537,30 @@ def _clean_metadata(meta: dict, llm_config: dict = None) -> dict:
     _VALID_LEVELS = {"Expert", "Advanced", "Intermediate", "Beginner"}
     skills_raw = meta.get("skills") or []
     cleaned_skills = []
+    seen_skills: set = set()
     if isinstance(skills_raw, list):
-        for s in skills_raw[:8]:
+        for s in skills_raw:
+            if len(cleaned_skills) == 8:
+                break
             if isinstance(s, dict):
-                name = str(s.get("name") or "").strip()
+                raw_name = str(s.get("name") or "").strip()
                 level = str(s.get("level") or "").strip()
                 level = next((v for v in _VALID_LEVELS if v.lower() == level.lower()), None)
-                if name:
-                    cleaned_skills.append({"name": name, "level": level})
-            elif isinstance(s, str) and s.strip():
-                cleaned_skills.append({"name": s.strip(), "level": None})
+            elif isinstance(s, str):
+                raw_name = s.strip()
+                level = None
+            else:
+                continue
+            if not raw_name:
+                continue
+            # Drop phrase-like entries (> 3 words or > 30 chars) — these are competencies, not skills
+            if len(raw_name.split()) > 3 or len(raw_name) > 30:
+                continue
+            name = canonicalize_skill(raw_name)
+            if name.lower() in seen_skills:
+                continue
+            seen_skills.add(name.lower())
+            cleaned_skills.append({"name": name, "level": level})
     cleaned["skills"] = cleaned_skills
 
     summary = str(meta.get("summary") or "").strip()

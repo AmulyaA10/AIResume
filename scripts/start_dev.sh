@@ -91,6 +91,7 @@ source .venv/bin/activate
 echo "   - Installing/updating Python dependencies..."
 pip install --upgrade pip -q 2>/dev/null
 pip install -r requirements.txt -q 2>/dev/null
+pip install -r requirements-dev.txt -q 2>/dev/null
 echo "   - Backend dependencies ready."
 
 # ---------- Frontend Setup ----------
