@@ -33,8 +33,28 @@ except ImportError:
     sys.exit(1)
 
 fake = Faker()
+fake_in = Faker('en_IN')   # Indian locale for names
 Faker.seed(42)
 random.seed(42)
+
+# ---------------------------------------------------------------------------
+# India mode — set True while generating India-region resumes
+# ---------------------------------------------------------------------------
+_INDIA_MODE = False
+
+
+def _gen_name() -> str:
+    return fake_in.name() if _INDIA_MODE else fake.name()
+
+
+def _gen_phone() -> str:
+    """Generate phone in correct locale format."""
+    if _INDIA_MODE:
+        # Indian mobile: +91 followed by 10-digit number starting with 6-9
+        prefix = random.choice(['6', '7', '8', '9'])
+        rest = random.randint(100000000, 999999999)
+        return f"+91 {prefix}{rest:09d}"
+    return fake.phone_number()
 
 # ---------------------------------------------------------------------------
 # Core Tech Pools
@@ -313,8 +333,30 @@ LOCATION_WEIGHTS = {
     "remote": 0.18, "other_us": 0.10,
 }
 
+# India locations — Bangalore-heavy as requested
+INDIA_LOCATIONS = {
+    "bangalore": ["Bangalore, India"],
+    "hyderabad": ["Hyderabad, India"],
+    "mumbai":    ["Mumbai, India", "Pune, India", "Thane, India"],
+    "chennai":   ["Chennai, India"],
+    "delhi":     ["New Delhi, India", "Gurugram, India", "Noida, India"],
+    "other_in":  ["Kolkata, India", "Ahmedabad, India", "Kochi, India", "Jaipur, India"],
+    "remote_in": ["Remote"],
+}
+
+INDIA_LOCATION_WEIGHTS = {
+    "bangalore": 0.50, "hyderabad": 0.15, "mumbai": 0.12,
+    "chennai": 0.08, "delhi": 0.08, "other_in": 0.04, "remote_in": 0.03,
+}
+
 
 def _random_location():
+    if _INDIA_MODE:
+        region = random.choices(
+            list(INDIA_LOCATION_WEIGHTS.keys()),
+            weights=list(INDIA_LOCATION_WEIGHTS.values())
+        )[0]
+        return random.choice(INDIA_LOCATIONS[region]), "india"
     region = random.choices(
         list(LOCATION_WEIGHTS.keys()),
         weights=list(LOCATION_WEIGHTS.values())
@@ -481,9 +523,9 @@ def _random_education(level="good"):
 
 def generate_strong_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
     linkedin = f"linkedin.com/in/{name.lower().replace(' ', '-')}"
     github = f"github.com/{fake.user_name()}"
@@ -559,9 +601,9 @@ EXPERIENCE
 
 def generate_good_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
 
     skills = _random_skills_for_industry(industry, n=(5, 10))
@@ -618,7 +660,7 @@ EXPERIENCE
 
 def generate_weak_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
     location, _ = _random_location()
 
@@ -1119,9 +1161,9 @@ def _leveled_bullet(level: str, quantified: bool = True, industry: str = "softwa
 
 def generate_junior_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
     github = f"github.com/{fake.user_name()}"
 
@@ -1173,9 +1215,9 @@ EXPERIENCE
 
 def generate_mid_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
     linkedin = f"linkedin.com/in/{name.lower().replace(' ', '-')}"
 
@@ -1241,9 +1283,9 @@ EXPERIENCE
 
 def generate_senior_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
     linkedin = f"linkedin.com/in/{name.lower().replace(' ', '-')}"
     github = f"github.com/{fake.user_name()}"
@@ -1328,9 +1370,9 @@ EXPERIENCE
 
 def generate_architect_resume():
     industry = random.choice(INDUSTRIES)
-    name = fake.name()
+    name = _gen_name()
     email = fake.email()
-    phone = fake.phone_number()
+    phone = _gen_phone()
     location, region = _random_location()
     linkedin = f"linkedin.com/in/{name.lower().replace(' ', '-')}"
     github = f"github.com/{fake.user_name()}"
@@ -1454,8 +1496,12 @@ def main():
     parser = argparse.ArgumentParser(description="Generate synthetic test data for Resume Intelligence")
     parser.add_argument("--resumes", type=int, default=20, help="Number of resumes (default: 20)")
     parser.add_argument("--jds", type=int, default=5, help="Number of job descriptions (default: 5)")
+    parser.add_argument("--india", type=int, default=0,
+                        help="Number of India-locale resumes to include (subset of --resumes)")
     parser.add_argument("--output", type=str, default="data/synthetic", help="Output directory")
     args = parser.parse_args()
+
+    global _INDIA_MODE
 
     out_dir = os.path.abspath(args.output)
     manifest = {"generated_at": datetime.now().isoformat(), "resumes": [], "job_descriptions": []}
@@ -1464,49 +1510,72 @@ def main():
         os.makedirs(os.path.join(out_dir, "resumes", cat), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "job_descriptions"), exist_ok=True)
 
+    # --- Compute how many resumes to generate in each tier ---
+    # India resumes are distributed proportionally across the same tiers
+    india_n = min(args.india, args.resumes)
+    regular_n = args.resumes - india_n
+
+    def _build_counts(total_n: int) -> dict:
+        counts: dict = {}
+        for cat, weight in DISTRIBUTION.items():
+            counts[cat] = max(1, round(total_n * weight))
+        diff = total_n - sum(counts.values())
+        if diff > 0:
+            counts["good"] += diff
+        elif diff < 0:
+            for cat in ["not_resume", "invalid", "weak"]:
+                take = min(-diff, counts[cat] - 1)
+                counts[cat] -= take
+                diff += take
+                if diff >= 0:
+                    break
+        return counts
+
+    regular_counts = _build_counts(regular_n)
+    india_counts   = _build_counts(india_n) if india_n > 0 else {}
+
     # --- Generate resumes ---
-    counts = {}
-    for cat, weight in DISTRIBUTION.items():
-        counts[cat] = max(1, round(args.resumes * weight))
-
-    diff = args.resumes - sum(counts.values())
-    if diff > 0:
-        counts["good"] += diff
-    elif diff < 0:
-        for cat in ["not_resume", "invalid", "weak"]:
-            take = min(-diff, counts[cat] - 1)
-            counts[cat] -= take
-            diff += take
-            if diff >= 0:
-                break
-
     total = 0
-    for cat, n in counts.items():
-        gen_fn = GENERATORS[cat]
-        for i in range(n):
-            total += 1
-            data = gen_fn()
-            slug = f"{cat}_{i+1:03d}"
 
-            txt_path = os.path.join(out_dir, "resumes", cat, f"{slug}.txt")
-            with open(txt_path, "w") as f:
-                f.write(data["text"])
+    def _gen_batch(counts: dict, suffix: str = ""):
+        nonlocal total
+        for cat, n in counts.items():
+            gen_fn = GENERATORS[cat]
+            for i in range(n):
+                total += 1
+                data = gen_fn()
+                slug = f"{cat}{suffix}_{i+1:03d}"
 
-            json_path = None
-            if data.get("json"):
-                json_path = os.path.join(out_dir, "resumes", cat, f"{slug}.json")
-                with open(json_path, "w") as f:
-                    json.dump(data["json"], f, indent=2)
+                txt_path = os.path.join(out_dir, "resumes", cat, f"{slug}.txt")
+                with open(txt_path, "w") as f:
+                    f.write(data["text"])
 
-            manifest["resumes"].append({
-                "file": os.path.relpath(txt_path, out_dir),
-                "json_file": os.path.relpath(json_path, out_dir) if json_path else None,
-                "classification": data["classification"],
-                "expected_score_range": data["expected_score_range"],
-                "category": cat,
-            })
+                json_path = None
+                if data.get("json"):
+                    json_path = os.path.join(out_dir, "resumes", cat, f"{slug}.json")
+                    with open(json_path, "w") as f:
+                        json.dump(data["json"], f, indent=2)
 
-    print(f"  Resumes: {total} ({', '.join(f'{cat}={n}' for cat, n in counts.items())})")
+                manifest["resumes"].append({
+                    "file": os.path.relpath(txt_path, out_dir),
+                    "json_file": os.path.relpath(json_path, out_dir) if json_path else None,
+                    "classification": data["classification"],
+                    "expected_score_range": data["expected_score_range"],
+                    "category": cat,
+                })
+
+    # Regular (global) resumes
+    _INDIA_MODE = False
+    _gen_batch(regular_counts)
+
+    # India resumes
+    if india_counts:
+        _INDIA_MODE = True
+        _gen_batch(india_counts, suffix="_in")
+        _INDIA_MODE = False
+        print(f"  India resumes: {india_n} (Bangalore-heavy)")
+
+    print(f"  Resumes: {total} ({', '.join(f'{cat}={n}' for cat, n in regular_counts.items())})")
 
     # --- Generate JDs ---
     for i in range(args.jds):
