@@ -140,6 +140,17 @@ def _normalize_location(raw: str) -> Optional[str]:
     # Remote: any mention of "remote" collapses to just "Remote"
     if re.search(r'\bremote\b', loc, re.IGNORECASE):
         return "Remote"
+    # Strip work-mode prefixes: "Hybrid — ", "On-site — ", "On-site or Hybrid — ", etc.
+    loc = re.sub(
+        r'^(?:hybrid|on-?site|on-?site\s+or\s+hybrid|in-?office)\s*[-—–]\s*',
+        '', loc, flags=re.IGNORECASE
+    ).strip()
+    # Strip parenthetical suffixes: "(hybrid)", "(Manhattan)", "(on-site or hybrid)", "(2 days in office)", etc.
+    loc = re.sub(r'\s*\([^)]+\)', '', loc, flags=re.IGNORECASE).strip()
+    # Strip trailing punctuation / dashes left over
+    loc = loc.rstrip(' ,;-—').strip()
+    if not loc or loc.lower() in _NOISE_LOCATIONS:
+        return None
     # Metro / Greater area → canonical city
     for pattern, canonical in _METRO_ALIASES:
         if pattern.search(loc):

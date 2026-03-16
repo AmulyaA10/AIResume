@@ -10,6 +10,7 @@ from pathlib import Path
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.models import JobCreate, JobResponse
 from app.config import UPLOAD_DIR
+from app.routes.v1.resumes import _normalize_location
 from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table
 from services.resume_parser import extract_text
 from services.ai.common import clean_json_output
@@ -44,6 +45,62 @@ _PLACEHOLDER_VALUES = {"", "unknown", "n/a", "none", "null", "not specified", "n
 
 def _is_placeholder(value: str) -> bool:
     return not value or value.strip().lower() in _PLACEHOLDER_VALUES
+
+
+_JOB_LEVEL_MAP: dict = {
+    "entry": "ENTRY", "entry level": "ENTRY", "entry-level": "ENTRY", "junior": "JUNIOR", "jr": "JUNIOR",
+    "mid": "MID", "mid level": "MID", "mid-level": "MID", "intermediate": "MID",
+    "senior": "SENIOR", "sr": "SENIOR", "sr.": "SENIOR",
+    "lead": "LEAD", "tech lead": "LEAD",
+    "principal": "PRINCIPAL", "staff": "STAFF",
+    "director": "DIRECTOR", "vp": "VP", "vice president": "VP",
+    "executive": "EXECUTIVE", "c-suite": "EXECUTIVE", "c suite": "EXECUTIVE",
+}
+
+_EMPLOYMENT_TYPE_MAP: dict = {
+    "full time": "FULL_TIME", "full-time": "FULL_TIME", "fulltime": "FULL_TIME", "permanent": "FULL_TIME",
+    "part time": "PART_TIME", "part-time": "PART_TIME", "parttime": "PART_TIME",
+    "contract": "CONTRACT", "contractor": "CONTRACT", "freelance": "CONTRACT",
+    "hybrid": "HYBRID",
+    "remote": "REMOTE",
+    "internship": "INTERNSHIP", "intern": "INTERNSHIP",
+}
+
+
+def _normalize_job_fields(job_dict: dict) -> dict:
+    """Normalize job fields: location, job_level, employment_type, skills."""
+    # Location
+    if job_dict.get("location_name"):
+        job_dict["location_name"] = _normalize_location(job_dict["location_name"]) or job_dict["location_name"]
+
+    # Job level
+    if job_dict.get("job_level"):
+        normalized = _JOB_LEVEL_MAP.get(job_dict["job_level"].strip().lower())
+        if normalized:
+            job_dict["job_level"] = normalized
+        else:
+            job_dict["job_level"] = job_dict["job_level"].strip().upper()
+
+    # Employment type
+    if job_dict.get("employment_type"):
+        normalized = _EMPLOYMENT_TYPE_MAP.get(job_dict["employment_type"].strip().lower())
+        if normalized:
+            job_dict["employment_type"] = normalized
+        else:
+            job_dict["employment_type"] = job_dict["employment_type"].strip().upper().replace(" ", "_")
+
+    # Skills — strip whitespace and deduplicate preserving order
+    if job_dict.get("skills_required"):
+        seen: set = set()
+        cleaned = []
+        for s in job_dict["skills_required"]:
+            s = s.strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower())
+                cleaned.append(s)
+        job_dict["skills_required"] = cleaned
+
+    return job_dict
 
 
 @router.post("/parse-upload")
@@ -307,6 +364,7 @@ async def create_job(job: JobCreate, user_id: str = Depends(get_current_user)):
     job_dict["job_id"] = job_id
     job_dict["user_id"] = user_id
     job_dict["posted_date"] = datetime.now().isoformat()
+    job_dict = _normalize_job_fields(job_dict)
     
     # Generate embedding for the job
     try:
@@ -431,7 +489,7 @@ async def list_jobs(
 
     # --- Post-count filters (need applied_count / selected_count) ---
     if has_applicants:
-        jobs = [j for j in jobs if j.get("applied_count", 0) > 0]
+        jobs = [j for j in jobs if (j.get("applied_count", 0) + j.get("shortlisted_count", 0)) > 0]
 
     if status:
         def _filled(j): return (j.get("selected_count") or 0) >= (j.get("positions") or 1)
@@ -537,6 +595,7 @@ async def update_job(job_id: str, job: JobCreate, user_id: str = Depends(get_cur
     updated["job_id"] = job_id
     updated["user_id"] = user_id
     updated["posted_date"] = existing[0]["posted_date"]
+    updated = _normalize_job_fields(updated)
     
     # Re-generate embedding
     try:
