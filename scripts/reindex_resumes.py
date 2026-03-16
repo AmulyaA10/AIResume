@@ -1,11 +1,13 @@
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Add root to sys.path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
 
-load_dotenv()
+load_dotenv(PROJECT_ROOT / "backend" / ".env")
 
 from services.db.lancedb_client import store_resume, db, get_or_create_table
 from services.resume_parser import extract_text

@@ -7,6 +7,16 @@ import JobCandidatesModal from './JobCandidatesModal';
 import JobMatchCandidatesModal from './JobMatchCandidatesModal';
 import JobDetailModal from './JobDetailModal';
 
+const TIER_ORDER = ['must_have', 'strong', 'experience', 'knowledge', 'familiarity', 'nice_to_have'] as const;
+const TIER_STYLES: Record<string, { label: string; chip: string }> = {
+    must_have:    { label: 'M', chip: 'bg-indigo-100 text-indigo-800 border border-indigo-300' },
+    strong:       { label: 'S', chip: 'bg-blue-100 text-blue-800 border border-blue-300' },
+    experience:   { label: 'E', chip: 'bg-emerald-100 text-emerald-800 border border-emerald-300' },
+    knowledge:    { label: 'K', chip: 'bg-violet-100 text-violet-800 border border-violet-300' },
+    familiarity:  { label: 'F', chip: 'bg-amber-100 text-amber-800 border border-amber-300' },
+    nice_to_have: { label: 'N', chip: 'bg-slate-100 text-slate-500 border border-slate-300' },
+};
+
 const JobDefinitions = () => {
     const navigate = useNavigate();
     const [jobs, setJobs] = useState<any[]>([]);
@@ -24,7 +34,6 @@ const JobDefinitions = () => {
     const [filterLocation, setFilterLocation] = useState('');
     const [filterDateRange, setFilterDateRange] = useState('');
     const [locationGroups, setLocationGroups] = useState<Record<string, string[]>>({});
-    const [locationsFetched, setLocationsFetched] = useState(false);
 
     const [searchIntent, setSearchIntent] = useState<{ location: string | null; topN: number | null; sortBySalary: boolean } | null>(null);
 
@@ -91,6 +100,10 @@ const JobDefinitions = () => {
 
     // Fetch on mount and whenever filters change; debounce only free-text search
     useEffect(() => {
+        fetchLocations();
+    }, []);
+
+    useEffect(() => {
         const t = setTimeout(() => fetchJobs(filterRef.current), searchQuery ? 400 : 0);
         return () => clearTimeout(t);
     }, [searchQuery, filterLevel, filterStatus, filterLocation, filterDateRange, filterHasApplicants]);
@@ -116,14 +129,11 @@ const JobDefinitions = () => {
     };
 
     const fetchLocations = async () => {
-        if (locationsFetched) return;
         try {
             const r = await jobsApi.getLocations();
             setLocationGroups(r.data.groups || {});
         } catch {
             setLocationGroups({});
-        } finally {
-            setLocationsFetched(true);
         }
     };
 
@@ -184,7 +194,7 @@ const JobDefinitions = () => {
                     <select
                         value={filterLocation}
                         onChange={e => setFilterLocation(e.target.value)}
-                        onFocus={fetchLocations}
+
                         className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-slate-600"
                     >
                         <option value="">All Locations</option>
@@ -275,6 +285,16 @@ const JobDefinitions = () => {
                     <button onClick={clearAllFilters} className="mt-3 text-blue-600 text-sm font-bold hover:underline">Clear filters</button>
                 </div>
             ) : (
+                <>
+                {/* Tier legend */}
+                <div className="flex flex-wrap items-center gap-2 mb-4 text-[10px] font-semibold">
+                    <span className="text-slate-400 shrink-0">Skill tier:</span>
+                    {TIER_ORDER.map(tier => (
+                        <span key={tier} className={`px-2 py-0.5 rounded ${TIER_STYLES[tier].chip}`}>
+                            {TIER_STYLES[tier].label} = {tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </span>
+                    ))}
+                </div>
                 <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 transition-opacity ${isLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                     {jobs.map((job) => (
                         <div
@@ -289,13 +309,20 @@ const JobDefinitions = () => {
                                     <div className="flex items-baseline gap-2 min-w-0">
                                         <p className="font-bold text-slate-900 text-sm leading-snug truncate">{job.title}</p>
                                         {(job.salary_min > 0 || job.salary_max > 0) && (
-                                            <span className="shrink-0 text-[11px] font-semibold text-green-700 whitespace-nowrap">
+                                            <span className="shrink-0 text-[11px] font-semibold text-red-600 whitespace-nowrap">
                                                 {job.salary_currency || 'USD'} {job.salary_min > 0 ? `${(job.salary_min / 1000).toFixed(0)}K` : ''}
                                                 {job.salary_min > 0 && job.salary_max > 0 ? '–' : ''}
                                                 {job.salary_max > 0 ? `${(job.salary_max / 1000).toFixed(0)}K` : ''}
                                             </span>
                                         )}
                                     </div>
+                                    {job.employer_name && (
+                                        <p className="mt-0.5">
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                                                <Briefcase size={9} className="shrink-0" />{job.employer_name}
+                                            </span>
+                                        </p>
+                                    )}
                                 </div>
                                 <div
                                     className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
@@ -336,11 +363,20 @@ const JobDefinitions = () => {
 
                             {/* Key requirements (skills) */}
                             <div className="flex flex-wrap gap-1 mt-2 flex-1 content-start">
-                                {job.skills_required?.length > 0
-                                    ? job.skills_required.slice(0, 8).map((s: string) => (
-                                        <span key={s} className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">{s}</span>
-                                    ))
-                                    : <span className="text-[11px] text-slate-300 italic">No requirements listed</span>
+                                {job.skills_tiers && TIER_ORDER.some(t => job.skills_tiers[t]?.length > 0)
+                                    ? TIER_ORDER.filter(tier => job.skills_tiers[tier]?.length > 0).flatMap(tier => {
+                                        const { label, chip } = TIER_STYLES[tier];
+                                        return job.skills_tiers[tier].map((s: string) => (
+                                            <span key={`${tier}-${s}`} className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-2 py-0.5 rounded ${chip}`}>
+                                                {s}<span className="font-bold opacity-60">({label})</span>
+                                            </span>
+                                        ));
+                                    })
+                                    : job.skills_required?.length > 0
+                                        ? job.skills_required.map((s: string) => (
+                                            <span key={s} className="bg-slate-100 text-slate-600 text-[10px] font-medium px-2 py-0.5 rounded tracking-wide">{s}</span>
+                                        ))
+                                        : <span className="text-[11px] text-slate-300 italic">No requirements listed</span>
                                 }
                             </div>
 
@@ -382,10 +418,12 @@ const JobDefinitions = () => {
                                     <Sparkles size={9} /> Find Matches
                                 </button>
                             </div>
+                        </div>
                     ))}
                 </div>
+                </>
             )}
-            
+
             {selectedJobForCandidates && (
                 <JobCandidatesModal
                     jobId={selectedJobForCandidates.id}

@@ -77,6 +77,7 @@ job_schema = pa.schema([
     pa.field("benefits", pa.list_(pa.string())),
     pa.field("application_url", pa.string()),
     pa.field("metadata", pa.string()),
+    pa.field("skills_tiers", pa.string()),       # nullable JSON: {must_have,strong,familiarity,nice_to_have}
     pa.field("posted_date", pa.string()),
     pa.field("vector", pa.list_(pa.float32(), 1536))
 ])
@@ -93,7 +94,13 @@ def get_or_create_table():
 
 def get_or_create_jobs_table():
     if "jobs" in db.table_names():
-        return db.open_table("jobs")
+        table = db.open_table("jobs")
+        # Migrate: add any columns present in job_schema but missing from the live table
+        existing = {f.name for f in table.schema}
+        new_fields = [f for f in job_schema if f.name not in existing]
+        if new_fields:
+            table.add_columns(pa.schema(new_fields))
+        return table
 
     return db.create_table(
         name="jobs",
@@ -121,12 +128,21 @@ def store_resume(filename: str, text: str, user_id: str, api_key: str = None):
     chunks = chunk_text(text)
     print(f"DEBUG: Created {len(chunks)} chunks for {filename}")
     
+    _embedding_failed = False
     data = []
     for i, chunk in enumerate(chunks):
         # Only print every 10th chunk to reduce noise
         if i % 10 == 0:
             print(f"DEBUG: Generating embedding for chunk {i+1}/{len(chunks)}...")
-        vector = embeddings.embed_query(chunk)
+        if _embedding_failed:
+            vector = [0.0] * 1536
+        else:
+            try:
+                vector = embeddings.embed_query(chunk)
+            except Exception as embed_err:
+                print(f"DEBUG: Embedding failed ({embed_err}); storing with zero vectors.")
+                _embedding_failed = True
+                vector = [0.0] * 1536
         data.append({
             "id": str(uuid4()),
             "user_id": user_id,

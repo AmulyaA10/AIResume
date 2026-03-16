@@ -11,8 +11,10 @@
 #   make build            Build the React frontend
 #   make dev              Start backend + frontend dev servers
 #   make synth-data       Generate synthetic test data (files only, no DB)
-#   make demo             Populate DB with 300 resumes + 100 jobs for demo (100 India)
-#   make demo-wipe        Wipe DB and reload fresh demo data
+#   make demo             Populate DB with 300 resumes + 100 jobs for demo. LOCALES="uk=18,eu=10"
+#   make demo-reset       Wipe all demo data then reload with specified counts
+#   make demo-wipe        Wipe all demo data (resumes + JDs, preserves non-demo)
+#   make demo-wipe-all    Full DB wipe (all users) + reload fresh demo data
 #   make clean            Remove generated artifacts
 #   make help             Show this help
 # ============================================================================
@@ -39,7 +41,7 @@ CYAN := \033[0;36m
 NC := \033[0m  # No Color
 
 .PHONY: help install install-dev install-frontend test test-unit test-integration \
-        test-verbose lint build dev dev-backend dev-frontend synth-data demo demo-wipe clean
+        test-verbose lint build dev dev-backend dev-frontend synth-data demo demo-reset demo-wipe demo-wipe-all clean
 
 # ── Help ────────────────────────────────────────────────────────────────────
 
@@ -119,19 +121,31 @@ synth-data: ## Generate synthetic test data (resumes + JDs)
 	@echo "$(GREEN)Synthetic data generated.$(NC)"
 
 # ── Demo Data ────────────────────────────────────────────────────────────────
-# Override counts:  make demo RESUMES=300 JDS=100 INDIA=100
+# Override counts:  make demo RESUMES=300 JDS=100 LOCALES="india=100,uk=18,eu=10"
 RESUMES ?= 300
 JDS     ?= 100
-INDIA   ?= 100
+LOCALES ?=
 
-demo: ## Populate DB with synthetic data (default: 300 resumes, 100 jobs, 100 from India). Override: make demo RESUMES=50 JDS=20 INDIA=0
+# Convert LOCALES="india=100,uk=18" → --locale india=100 --locale uk=18
+comma := ,
+_LOCALE_FLAGS = $(if $(LOCALES),$(foreach pair,$(subst $(comma), ,$(LOCALES)),--locale $(pair)),)
+
+demo: ## Populate DB with synthetic data. Override: make demo RESUMES=50 JDS=20 LOCALES="uk=18,eu=10"
 	@echo "$(CYAN)Loading demo data into DB...$(NC)"
-	@echo "$(YELLOW)Resumes: $(RESUMES)  |  Job Descriptions: $(JDS)  |  India: $(INDIA)$(NC)"
-	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --resumes $(RESUMES) --jds $(JDS) --india $(INDIA)
+	@echo "$(YELLOW)Resumes: $(RESUMES)  |  JDs: $(JDS)  |  Locales: $(LOCALES)$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --resumes $(RESUMES) --jds $(JDS) $(_LOCALE_FLAGS)
 
-demo-wipe: ## Wipe DB and reload fresh demo data (full reset). Override: make demo-wipe RESUMES=300 JDS=100 INDIA=100
-	@echo "$(YELLOW)Wiping existing data and reloading demo dataset...$(NC)"
-	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe --resumes $(RESUMES) --jds $(JDS) --india $(INDIA)
+demo-reset: ## Wipe all demo data then reload with specified counts. Override: make demo-reset RESUMES=50 JDS=20 LOCALES="uk=18"
+	@echo "$(YELLOW)Resetting demo data (RESUMES=$(RESUMES), JDS=$(JDS), LOCALES=$(LOCALES))...$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --reset --resumes $(RESUMES) --jds $(JDS) $(_LOCALE_FLAGS)
+
+demo-wipe: ## Wipe all demo resumes + JDs from DB (preserves non-demo data)
+	@echo "$(YELLOW)Wiping all demo data (resumes + JDs)...$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe-demo
+
+demo-wipe-all: ## Full DB wipe (all users, all tables) + reload fresh demo data
+	@echo "$(YELLOW)Wiping entire DB and reloading demo dataset...$(NC)"
+	$(PYTHON) "$(PROJECT_ROOT)/scripts/load_demo_data.py" --wipe --resumes $(RESUMES) --jds $(JDS) $(_LOCALE_FLAGS)
 
 # ── Clean ───────────────────────────────────────────────────────────────────
 

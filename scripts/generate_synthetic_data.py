@@ -33,27 +33,162 @@ except ImportError:
     sys.exit(1)
 
 fake = Faker()
-fake_in = Faker('en_IN')   # Indian locale for names
 Faker.seed(42)
 random.seed(42)
 
 # ---------------------------------------------------------------------------
-# India mode — set True while generating India-region resumes
+# Locale configs — add a new entry here to support a new region
 # ---------------------------------------------------------------------------
-_INDIA_MODE = False
+LOCALE_CONFIGS = {
+    "india": {
+        "faker_locale": "en_IN",
+        "phone": lambda: f"+91 {random.choice(['6','7','8','9'])}{random.randint(100000000,999999999):09d}",
+        "locations": {
+            "bangalore": ["Bangalore, India"],
+            "hyderabad": ["Hyderabad, India"],
+            "mumbai":    ["Mumbai, India", "Pune, India", "Thane, India"],
+            "chennai":   ["Chennai, India"],
+            "delhi":     ["New Delhi, India", "Gurugram, India", "Noida, India"],
+            "other":     ["Kolkata, India", "Ahmedabad, India", "Kochi, India", "Jaipur, India"],
+            "remote":    ["Remote"],
+        },
+        "weights": {"bangalore": 0.50, "hyderabad": 0.15, "mumbai": 0.12,
+                    "chennai": 0.08, "delhi": 0.08, "other": 0.04, "remote": 0.03},
+        "label": "Bangalore-heavy",
+    },
+    "uk": {
+        "faker_locale": "en_GB",
+        "phone": lambda: f"+44 07{random.randint(700,999)} {random.randint(100000,999999)}",
+        "locations": {
+            "london":     ["London, UK"],
+            "manchester": ["Manchester, UK"],
+            "edinburgh":  ["Edinburgh, Scotland"],
+            "birmingham": ["Birmingham, UK"],
+            "bristol":    ["Bristol, UK"],
+            "cambridge":  ["Cambridge, UK"],
+            "leeds":      ["Leeds, UK"],
+            "glasgow":    ["Glasgow, Scotland"],
+            "remote":     ["Remote (UK)"],
+        },
+        "weights": {"london": 0.50, "manchester": 0.12, "edinburgh": 0.08,
+                    "birmingham": 0.08, "bristol": 0.07, "cambridge": 0.05,
+                    "leeds": 0.05, "glasgow": 0.03, "remote": 0.02},
+        "label": "London-heavy",
+    },
+    "us": {
+        "faker_locale": "en_US",
+        "phone": None,
+        "locations": {
+            "sf":      ["San Francisco, CA", "San Jose, CA", "Oakland, CA"],
+            "ny":      ["New York, NY", "Brooklyn, NY"],
+            "seattle": ["Seattle, WA", "Bellevue, WA"],
+            "austin":  ["Austin, TX"],
+            "boston":  ["Boston, MA"],
+            "chicago": ["Chicago, IL"],
+            "la":      ["Los Angeles, CA"],
+            "denver":  ["Denver, CO"],
+            "atlanta": ["Atlanta, GA"],
+            "remote":  ["Remote (US)"],
+        },
+        "weights": {"sf": 0.22, "ny": 0.18, "seattle": 0.14, "austin": 0.10,
+                    "boston": 0.09, "chicago": 0.08, "la": 0.07, "denver": 0.06,
+                    "atlanta": 0.04, "remote": 0.02},
+        "label": "SF/NY-heavy",
+    },
+    "eu": {
+        "faker_locale": "en_US",
+        "phone": lambda: f"+{random.randint(30,49)} {random.randint(10,99)} {random.randint(1000000,9999999)}",
+        "locations": {
+            "berlin":    ["Berlin, Germany"],
+            "paris":     ["Paris, France"],
+            "amsterdam": ["Amsterdam, Netherlands"],
+            "stockholm": ["Stockholm, Sweden"],
+            "madrid":    ["Madrid, Spain"],
+            "dublin":    ["Dublin, Ireland"],
+            "zurich":    ["Zurich, Switzerland"],
+            "munich":    ["Munich, Germany"],
+            "remote":    ["Remote (EU)"],
+        },
+        "weights": {"berlin": 0.22, "paris": 0.18, "amsterdam": 0.14, "stockholm": 0.10,
+                    "madrid": 0.09, "dublin": 0.09, "zurich": 0.08, "munich": 0.07, "remote": 0.03},
+        "label": "Berlin/Paris-heavy",
+    },
+    "canada": {
+        "faker_locale": "en_CA",
+        "phone": None,
+        "locations": {
+            "toronto":   ["Toronto, ON", "Mississauga, ON"],
+            "vancouver": ["Vancouver, BC", "Burnaby, BC"],
+            "montreal":  ["Montreal, QC"],
+            "calgary":   ["Calgary, AB"],
+            "ottawa":    ["Ottawa, ON"],
+            "remote":    ["Remote (Canada)"],
+        },
+        "weights": {"toronto": 0.40, "vancouver": 0.25, "montreal": 0.15,
+                    "calgary": 0.10, "ottawa": 0.05, "remote": 0.05},
+        "label": "Toronto-heavy",
+    },
+    "australia": {
+        "faker_locale": "en_AU",
+        "phone": lambda: f"+61 0{random.randint(4,5)}{random.randint(10000000,99999999)}",
+        "locations": {
+            "sydney":    ["Sydney, NSW"],
+            "melbourne": ["Melbourne, VIC"],
+            "brisbane":  ["Brisbane, QLD"],
+            "perth":     ["Perth, WA"],
+            "remote":    ["Remote (Australia)"],
+        },
+        "weights": {"sydney": 0.40, "melbourne": 0.30, "brisbane": 0.15,
+                    "perth": 0.10, "remote": 0.05},
+        "label": "Sydney-heavy",
+    },
+    "singapore": {
+        "faker_locale": "en_US",
+        "phone": lambda: f"+65 {random.randint(81000000,99999999)}",
+        "locations": {
+            "central":  ["Singapore (Central)"],
+            "east":     ["Singapore (East)"],
+            "west":     ["Singapore (West)"],
+            "remote":   ["Remote (Singapore)"],
+        },
+        "weights": {"central": 0.50, "east": 0.20, "west": 0.20, "remote": 0.10},
+        "label": "Singapore",
+    },
+}
+
+# Aliases: make demo UK=5 → 'uk', IN=5 → 'india', etc.
+LOCALE_ALIASES = {
+    "in": "india", "gb": "uk", "au": "australia", "sg": "singapore",
+    "ca": "canada", "us": "us", "eu": "eu",
+}
+
+# Lazy-initialised Faker instances per locale
+_faker_cache: dict = {}
+
+def _get_faker(locale_key: str) -> Faker:
+    cfg = LOCALE_CONFIGS.get(locale_key, {})
+    fl  = cfg.get("faker_locale", "en_US")
+    if fl not in _faker_cache:
+        _faker_cache[fl] = Faker(fl)
+    return _faker_cache[fl]
+
+
+# Current locale being generated (None = global default)
+_CURRENT_LOCALE: str | None = None
 
 
 def _gen_name() -> str:
-    return fake_in.name() if _INDIA_MODE else fake.name()
+    if _CURRENT_LOCALE:
+        return _get_faker(_CURRENT_LOCALE).name()
+    return fake.name()
 
 
 def _gen_phone() -> str:
-    """Generate phone in correct locale format."""
-    if _INDIA_MODE:
-        # Indian mobile: +91 followed by 10-digit number starting with 6-9
-        prefix = random.choice(['6', '7', '8', '9'])
-        rest = random.randint(100000000, 999999999)
-        return f"+91 {prefix}{rest:09d}"
+    if _CURRENT_LOCALE:
+        phone_fn = LOCALE_CONFIGS[_CURRENT_LOCALE].get("phone")
+        if phone_fn:
+            return phone_fn()
+        return _get_faker(_CURRENT_LOCALE).phone_number()
     return fake.phone_number()
 
 # ---------------------------------------------------------------------------
@@ -334,29 +469,13 @@ LOCATION_WEIGHTS = {
 }
 
 # India locations — Bangalore-heavy as requested
-INDIA_LOCATIONS = {
-    "bangalore": ["Bangalore, India"],
-    "hyderabad": ["Hyderabad, India"],
-    "mumbai":    ["Mumbai, India", "Pune, India", "Thane, India"],
-    "chennai":   ["Chennai, India"],
-    "delhi":     ["New Delhi, India", "Gurugram, India", "Noida, India"],
-    "other_in":  ["Kolkata, India", "Ahmedabad, India", "Kochi, India", "Jaipur, India"],
-    "remote_in": ["Remote"],
-}
-
-INDIA_LOCATION_WEIGHTS = {
-    "bangalore": 0.50, "hyderabad": 0.15, "mumbai": 0.12,
-    "chennai": 0.08, "delhi": 0.08, "other_in": 0.04, "remote_in": 0.03,
-}
-
-
 def _random_location():
-    if _INDIA_MODE:
-        region = random.choices(
-            list(INDIA_LOCATION_WEIGHTS.keys()),
-            weights=list(INDIA_LOCATION_WEIGHTS.values())
-        )[0]
-        return random.choice(INDIA_LOCATIONS[region]), "india"
+    if _CURRENT_LOCALE:
+        cfg    = LOCALE_CONFIGS[_CURRENT_LOCALE]
+        locs   = cfg["locations"]
+        wts    = cfg["weights"]
+        region = random.choices(list(wts.keys()), weights=list(wts.values()))[0]
+        return random.choice(locs[region]), _CURRENT_LOCALE
     region = random.choices(
         list(LOCATION_WEIGHTS.keys()),
         weights=list(LOCATION_WEIGHTS.values())
@@ -1101,10 +1220,12 @@ COMPENSATION & BENEFITS
 - {home_office}
 """
 
+    company_name = random.choice(COMPANIES)
     return {
         "text": text,
         "json": {
             "title": title,
+            "company_name": company_name,
             "location": geo,
             "industry": template_key,
             "required_skills": required_skills,
@@ -1491,17 +1612,28 @@ DISTRIBUTION = {
     "strong": 0.10, "good": 0.10, "weak": 0.075, "invalid": 0.05, "not_resume": 0.025,
 }
 
+# Only quality tiers — used when generating demo data (no edge-case files)
+DISTRIBUTION_QUALITY = {
+    "junior": 0.25, "mid": 0.30, "senior": 0.25,
+    "architect": 0.10, "strong": 0.05, "good": 0.05,
+}
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generate synthetic test data for Resume Intelligence")
     parser.add_argument("--resumes", type=int, default=20, help="Number of resumes (default: 20)")
     parser.add_argument("--jds", type=int, default=5, help="Number of job descriptions (default: 5)")
+    parser.add_argument("--locale", metavar="KEY=N", action="append", default=[],
+                        help="Locale-specific resumes, e.g. --locale uk=18 --locale eu=10. "
+                             "Supported: " + ", ".join(LOCALE_CONFIGS.keys()))
     parser.add_argument("--india", type=int, default=0,
-                        help="Number of India-locale resumes to include (subset of --resumes)")
+                        help="Shorthand for --locale india=N (backward compat)")
+    parser.add_argument("--quality-only", action="store_true",
+                        help="Only generate quality tiers (junior/mid/senior/architect/strong/good), skip weak/invalid/not_resume")
     parser.add_argument("--output", type=str, default="data/synthetic", help="Output directory")
     args = parser.parse_args()
 
-    global _INDIA_MODE
+    global _CURRENT_LOCALE
 
     out_dir = os.path.abspath(args.output)
     manifest = {"generated_at": datetime.now().isoformat(), "resumes": [], "job_descriptions": []}
@@ -1512,12 +1644,32 @@ def main():
 
     # --- Compute how many resumes to generate in each tier ---
     # India resumes are distributed proportionally across the same tiers
-    india_n = min(args.india, args.resumes)
-    regular_n = args.resumes - india_n
+    # Parse --locale KEY=N pairs + backward-compat --india
+    locale_counts: dict = {}
+    if args.india > 0:
+        locale_counts["india"] = args.india
+    for pair in args.locale:
+        key, _, val = pair.partition("=")
+        key = LOCALE_ALIASES.get(key.lower(), key.lower())
+        if key not in LOCALE_CONFIGS:
+            print(f"  WARNING: Unknown locale '{key}'. Supported: {', '.join(LOCALE_CONFIGS)}")
+            continue
+        locale_counts[key] = locale_counts.get(key, 0) + int(val)
+
+    # Cap locale counts so they never exceed total --resumes
+    remaining = args.resumes
+    for key in list(locale_counts):
+        locale_counts[key] = min(locale_counts[key], remaining)
+        remaining -= locale_counts[key]
+    regular_n = remaining
+
+    dist = DISTRIBUTION_QUALITY if args.quality_only else DISTRIBUTION
 
     def _build_counts(total_n: int) -> dict:
+        if total_n <= 0:
+            return {}
         counts: dict = {}
-        for cat, weight in DISTRIBUTION.items():
+        for cat, weight in dist.items():
             counts[cat] = max(1, round(total_n * weight))
         diff = total_n - sum(counts.values())
         if diff > 0:
@@ -1532,7 +1684,6 @@ def main():
         return counts
 
     regular_counts = _build_counts(regular_n)
-    india_counts   = _build_counts(india_n) if india_n > 0 else {}
 
     # --- Generate resumes ---
     total = 0
@@ -1565,15 +1716,17 @@ def main():
                 })
 
     # Regular (global) resumes
-    _INDIA_MODE = False
+    _CURRENT_LOCALE = None
     _gen_batch(regular_counts)
 
-    # India resumes
-    if india_counts:
-        _INDIA_MODE = True
-        _gen_batch(india_counts, suffix="_in")
-        _INDIA_MODE = False
-        print(f"  India resumes: {india_n} (Bangalore-heavy)")
+    # Locale-specific resumes
+    for locale_key, locale_n in locale_counts.items():
+        lc_counts = _build_counts(locale_n)
+        _CURRENT_LOCALE = locale_key
+        _gen_batch(lc_counts, suffix=f"_{locale_key[:2]}")
+        _CURRENT_LOCALE = None
+        label = LOCALE_CONFIGS[locale_key].get("label", locale_key)
+        print(f"  {locale_key.title()} resumes: {locale_n} ({label})")
 
     print(f"  Resumes: {total} ({', '.join(f'{cat}={n}' for cat, n in regular_counts.items())})")
 
