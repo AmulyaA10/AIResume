@@ -28,5 +28,5 @@ CORS_ORIGINS = ["*"]  # In production, replace with specific React URL
 UPLOAD_DIR = "data/raw_resumes"
 
 # ---------- URLs ----------
-FRONTEND_URL = "http://localhost:5173"
-BACKEND_URL = "http://localhost:8000"
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
