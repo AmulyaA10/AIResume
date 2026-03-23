@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Header, Depends
 from typing import Optional
 import time
-import os
 
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.models import SearchRequest
-from services.db.lancedb_client import search_resumes_semantic
+from services.db.lancedb_client import search_resumes_hybrid
 from services.ai.common import safe_parse_json
 
 router = APIRouter()
@@ -22,7 +21,7 @@ async def search_resumes(
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
 
     # Early check: no API key configured at all
-    if not creds["openrouter_key"] and not os.getenv("OPEN_ROUTER_KEY"):
+    if not creds["openrouter_key"]:
         return {"results": [], "error": "OpenRouter API key not configured. Please add it in Settings."}
 
     start_time = time.time()
@@ -32,7 +31,7 @@ async def search_resumes(
     # Perform semantic search to filter relevant resumes/chunks
     db_start = time.time()
     try:
-        df = search_resumes_semantic(request.query, user_id, limit=10, api_key=creds["openrouter_key"], is_recruiter=is_recruiter)
+        df = search_resumes_hybrid(request.query, user_id, limit=10, api_key=creds["openrouter_key"], is_recruiter=is_recruiter)
     except Exception as e:
         print(f"DEBUG: [Search] Embedding/DB search failed: {e}")
         return {"results": [], "error": f"Search failed: {str(e)}"}
@@ -96,7 +95,7 @@ Return ONLY a JSON object in this format:
     # Initialize LLM with dynamic config if available
     llm = ChatOpenAI(
         model=creds["llm_model"] or "gpt-4o-mini",
-        api_key=creds["openrouter_key"] or os.getenv("OPEN_ROUTER_KEY"),
+        api_key=creds["openrouter_key"],
         base_url="https://openrouter.ai/api/v1",
         timeout=30
     )

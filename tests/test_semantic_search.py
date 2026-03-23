@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-from services.db.lancedb_client import store_resume, search_resumes_semantic, db
+from services.db.lancedb_client import store_resume, search_resumes_hybrid, db
 
 def verify_semantic_search():
     print("--- Verifying Semantic Search ---")
@@ -32,7 +32,7 @@ def verify_semantic_search():
     # 3. Perform search
     query = "Looking for a Python backend developer"
     print(f"\nSearching for: '{query}'")
-    results = search_resumes_semantic(query, limit=2)
+    results = search_resumes_hybrid(query, limit=2)
     
     print("\nSearch Results:")
     print(results[['filename', 'text']])

@@ -39,6 +39,7 @@ def linkedin_fetch_agent(state: LinkedInResumeState):
                 session_id=session_id,
                 profile_url=url,
                 login_wait=login_wait,
+                email=creds.get("email"),
             )
         else:
             profile_text = scrape_linkedin_profile(

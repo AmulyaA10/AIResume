@@ -114,4 +114,10 @@ export const matchApi = {
     searchJobs: (query: string, limit: number = 50, filters: any = {}) => api.get('/match/search/jobs', { params: { q: query, limit, ...filters } }),
     matchCandidatesForJob: (jobId: string, limit: number = 50) => api.get(`/match/job/${jobId}/candidates`, { params: { limit } }),
 };
+
+export const systemApi = {
+    getSettings: () => api.get('/user/system/settings'),
+    saveSettings: (data: Record<string, string>) => api.put('/user/system/settings', data),
+};
+
 export default api;

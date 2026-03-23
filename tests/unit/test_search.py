@@ -20,7 +20,7 @@ async def test_search_returns_results(app, auth_headers, mock_search_results):
     mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
     with (
-        patch("app.routes.v1.search.search_resumes_semantic", return_value=mock_search_results),
+        patch("app.routes.v1.search.search_resumes_hybrid", return_value=mock_search_results),
         patch("langchain_openai.ChatOpenAI", return_value=mock_llm),
         patch("langchain_core.prompts.PromptTemplate", return_value=mock_prompt),
     ):
@@ -40,7 +40,7 @@ async def test_search_empty_results(app, auth_headers):
     """Search with no matching resumes returns empty list."""
     empty_df = pd.DataFrame(columns=["filename", "text", "user_id"])
 
-    with patch("app.routes.v1.search.search_resumes_semantic", return_value=empty_df):
+    with patch("app.routes.v1.search.search_resumes_hybrid", return_value=empty_df):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/search",
@@ -70,10 +70,10 @@ async def test_search_manager_gets_global_results(app, manager_auth_headers, moc
     mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
     with (
-        patch("app.routes.v1.search.search_resumes_semantic", return_value=mock_search_results) as mock_fn,
+        patch("app.routes.v1.search.search_resumes_hybrid", return_value=mock_search_results) as mock_fn,
         patch("langchain_openai.ChatOpenAI", return_value=mock_llm),
         patch("langchain_core.prompts.PromptTemplate", return_value=mock_prompt),
-        patch("app.routes.v1.search.os.getenv", return_value="fake-test-key"),
+        patch("app.routes.v1.search.resolve_credentials", return_value={"openrouter_key": "fake-test-key", "llm_model": None}),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(

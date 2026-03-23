@@ -33,7 +33,7 @@ const JobDefinitions = () => {
     const [filterHasApplicants, setFilterHasApplicants] = useState(false);
     const [filterLocation, setFilterLocation] = useState('');
     const [filterDateRange, setFilterDateRange] = useState('');
-    const [locationGroups, setLocationGroups] = useState<Record<string, string[]>>({});
+    const [locationGroups, setLocationGroups] = useState<Record<string, { value: string; label: string }[]>>({});
 
     const [searchIntent, setSearchIntent] = useState<{ location: string | null; topN: number | null; sortBySalary: boolean } | null>(null);
 
@@ -70,19 +70,22 @@ const JobDefinitions = () => {
                         intent = r.data;
                         intentCache.current[raw] = intent;
                     } catch {
-                        intent = { cleanQuery: raw, location: null, locationAliases: [], topN: null, sortBySalary: false };
+                        intent = { cleanQuery: raw, location: null, locationAliases: [], companyFilter: [], topN: null, sortBySalary: false };
                     }
                 }
                 apiParams.search = intent.cleanQuery || raw;
                 if (intent.locationAliases?.length && !params.filterLocation) {
                     apiParams.location_aliases = intent.locationAliases.join(',');
                 }
+                if (intent.companyFilter?.length) {
+                    apiParams.employer_filter = intent.companyFilter.join(',');
+                }
                 if (intent.sortBySalary) apiParams.sort_by_salary = true;
                 if (intent.topN && intent.topN > 0) {
                     apiParams.top_n = intent.topN;
                     apiParams.limit = intent.topN;
                 }
-                const hasIntent = !!(intent.location || intent.topN || intent.sortBySalary);
+                const hasIntent = !!(intent.location || intent.topN || intent.sortBySalary || intent.companyFilter?.length);
                 setSearchIntent(hasIntent ? { location: intent.location, topN: intent.topN, sortBySalary: intent.sortBySalary } : null);
             } else {
                 setSearchIntent(null);
@@ -161,6 +164,7 @@ const JobDefinitions = () => {
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         <input
                             type="text"
+                            data-testid="jd-search-input"
                             placeholder="AI search — try 'senior backend engineer'..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
@@ -173,6 +177,7 @@ const JobDefinitions = () => {
                         )}
                     </div>
                     <select
+                        data-testid="jd-level-filter"
                         value={filterLevel}
                         onChange={e => setFilterLevel(e.target.value)}
                         className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-slate-600"
@@ -192,9 +197,9 @@ const JobDefinitions = () => {
                         <option value="completed">Completed</option>
                     </select>
                     <select
+                        data-testid="jd-location-filter"
                         value={filterLocation}
                         onChange={e => setFilterLocation(e.target.value)}
-
                         className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-slate-600"
                     >
                         <option value="">All Locations</option>
@@ -202,9 +207,9 @@ const JobDefinitions = () => {
                             ? [
                                 ...Object.entries(locationGroups).filter(([r]) => r.toLowerCase() !== 'remote'),
                                 ...Object.entries(locationGroups).filter(([r]) => r.toLowerCase() === 'remote'),
-                              ].map(([region, locs]) => (
-                                <optgroup key={region} label={region}>
-                                    {(locs as string[]).map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                              ].map(([group, locs]) => (
+                                <optgroup key={group} label={group}>
+                                    {locs.map(loc => <option key={loc.value} value={loc.value}>{loc.label}</option>)}
                                 </optgroup>
                               ))
                             : null
@@ -236,7 +241,7 @@ const JobDefinitions = () => {
                     )}
                     {isLoading
                         ? <Loader2 size={15} className="text-slate-400 animate-spin" />
-                        : <span className="text-xs text-slate-400 font-medium">{jobs.length} result{jobs.length !== 1 ? 's' : ''}</span>
+                        : <span data-testid="jd-results-count" data-total={jobs.length} className="text-xs text-slate-400 font-medium">{jobs.length} result{jobs.length !== 1 ? 's' : ''}</span>
                     }
                 </div>
             )}
@@ -299,6 +304,7 @@ const JobDefinitions = () => {
                     {jobs.map((job) => (
                         <div
                             key={job.job_id}
+                            data-testid="jd-card"
                             onClick={() => setSelectedJobForDetail(job)}
                             className="glass-card p-4 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer group relative flex flex-col"
                             style={{ minHeight: '220px' }}
@@ -307,7 +313,7 @@ const JobDefinitions = () => {
                             <div className="flex items-start gap-2 shrink-0">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-baseline gap-2 min-w-0">
-                                        <p className="font-bold text-slate-900 text-sm leading-snug truncate">{job.title}</p>
+                                        <p data-testid="jd-card-title" className="font-bold text-slate-900 text-sm leading-snug truncate">{job.title}</p>
                                         {(job.salary_min > 0 || job.salary_max > 0) && (
                                             <span className="shrink-0 text-[11px] font-semibold text-red-600 whitespace-nowrap">
                                                 {job.salary_currency || 'USD'} {job.salary_min > 0 ? `${(job.salary_min / 1000).toFixed(0)}K` : ''}
@@ -336,7 +342,7 @@ const JobDefinitions = () => {
                             {/* Location — second line, colored */}
                             {/* Location · level · employment type — second line in purple */}
                             <div className="flex items-center gap-1.5 mt-0.5 shrink-0 flex-wrap">
-                                <span className="flex items-center gap-1 text-[11px] font-semibold text-purple-600">
+                                <span data-testid="jd-card-location" className="flex items-center gap-1 text-[11px] font-semibold text-purple-600">
                                     <MapPin size={10} className="shrink-0 text-purple-400" />
                                     {(job.location_name || 'Remote').replace(/\s*\(.*?\)\s*/g, '').trim()}
                                 </span>

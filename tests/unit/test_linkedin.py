@@ -233,62 +233,28 @@ def test_resolve_creds_sync_from_stored():
         "openRouterKey": encrypt_value("or-key-abc"),
     }
 
-    with patch("app.routes.v1.linkedin.get_user_settings", return_value=stored), \
-         patch("app.routes.v1.linkedin.migrate_orphaned_settings") as mock_migrate:
+    with patch("app.routes.v1.linkedin.get_user_settings", return_value=stored):
         result = _resolve_credentials_sync("user_other_789")
 
     assert result["linkedin_user"] == "li-user@test.com"
     assert result["linkedin_pass"] == "li-pass-123"
     assert result["openrouter_key"] == "or-key-abc"
-    mock_migrate.assert_not_called()
 
 
-def test_resolve_creds_sync_env_fallback():
-    """Falls back to env vars when no stored credentials exist."""
+def test_resolve_creds_sync_no_stored_creds():
+    """Returns None values when no stored credentials exist (no env fallback)."""
     from app.routes.v1.linkedin import _resolve_credentials_sync
 
-    with patch("app.routes.v1.linkedin.get_user_settings", return_value={}), \
-         patch("app.routes.v1.linkedin.migrate_orphaned_settings") as mock_migrate, \
-         patch("app.routes.v1.linkedin.LINKEDIN_LOGIN", "env-user@test.com"), \
-         patch("app.routes.v1.linkedin.LINKEDIN_PASSWORD", "env-pass-456"):
+    with patch("app.routes.v1.linkedin.get_user_settings", return_value={}):
         result = _resolve_credentials_sync("user_other_789")
 
-    assert result["linkedin_user"] == "env-user@test.com"
-    assert result["linkedin_pass"] == "env-pass-456"
+    assert result["linkedin_user"] is None
+    assert result["linkedin_pass"] is None
     assert result["openrouter_key"] is None
-    mock_migrate.assert_not_called()
 
 
-def test_resolve_creds_sync_triggers_migration():
-    """Triggers orphan migration for user_alex_chen_123 when settings are empty."""
-    from app.common.encryption import encrypt_value
-    from app.routes.v1.linkedin import _resolve_credentials_sync
-
-    migrated = {
-        "linkedinUser": encrypt_value("migrated@test.com"),
-        "linkedinPass": encrypt_value("migrated-pass"),
-    }
-
-    with patch(
-        "app.routes.v1.linkedin.get_user_settings",
-        side_effect=[{}, migrated],
-    ) as mock_get, patch(
-        "app.routes.v1.linkedin.migrate_orphaned_settings"
-    ) as mock_migrate, patch(
-        "app.routes.v1.linkedin.LINKEDIN_LOGIN", None
-    ), patch(
-        "app.routes.v1.linkedin.LINKEDIN_PASSWORD", None
-    ):
-        result = _resolve_credentials_sync("user_alex_chen_123")
-
-    mock_migrate.assert_called_once_with("user_recruiter_456", "user_alex_chen_123")
-    assert mock_get.call_count == 2
-    assert result["linkedin_user"] == "migrated@test.com"
-    assert result["linkedin_pass"] == "migrated-pass"
-
-
-def test_resolve_creds_sync_decryption_failure_env_fallback():
-    """When decryption fails, falls back to env vars gracefully."""
+def test_resolve_creds_sync_decryption_failure_returns_none():
+    """When decryption fails, returns None (no env fallback)."""
     from app.routes.v1.linkedin import _resolve_credentials_sync
 
     stored = {
@@ -296,14 +262,11 @@ def test_resolve_creds_sync_decryption_failure_env_fallback():
         "linkedinPass": "also-corrupted",
     }
 
-    with patch("app.routes.v1.linkedin.get_user_settings", return_value=stored), \
-         patch("app.routes.v1.linkedin.migrate_orphaned_settings"), \
-         patch("app.routes.v1.linkedin.LINKEDIN_LOGIN", "env-fallback-user"), \
-         patch("app.routes.v1.linkedin.LINKEDIN_PASSWORD", "env-fallback-pass"):
+    with patch("app.routes.v1.linkedin.get_user_settings", return_value=stored):
         result = _resolve_credentials_sync("user_other_789")
 
-    assert result["linkedin_user"] == "env-fallback-user"
-    assert result["linkedin_pass"] == "env-fallback-pass"
+    assert result["linkedin_user"] is None
+    assert result["linkedin_pass"] is None
     assert result["openrouter_key"] is None
 
 

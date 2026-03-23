@@ -8,8 +8,7 @@ import shutil
 
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.config import UPLOAD_DIR
-from app.common import build_llm_config, safe_log_activity, decrypt_value
-from app.common import precheck_resume_validation
+from app.common import build_llm_config, safe_log_activity
 from app.common.skill_utils import canonicalize_skill
 from services.resume_parser import extract_text, to_ats_text
 from services.db.lancedb_client import (
@@ -44,14 +43,59 @@ async def list_resumes(user_id: str = Depends(get_current_user)):
 
 
 _REGION_KEYWORDS: list[tuple[str, list[str]]] = [
-    ("United Kingdom", ["united kingdom", " uk", "england", "london", "manchester", "birmingham", "scotland", "wales"]),
-    ("Canada", ["canada", "toronto", "vancouver", "montreal", "calgary", "ontario", "british columbia"]),
-    ("India", ["india", "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai", "pune", "kolkata"]),
-    ("Europe", ["europe", "germany", "france", "spain", "italy", "netherlands", "sweden", "norway", "denmark", "finland", "switzerland", "austria", "poland", "berlin", "paris", "amsterdam", "stockholm", "madrid", "rome", "barcelona", "munich", "dublin", "ireland", "portugal", "belgium", "czech"]),
-    ("Australia / NZ", ["australia", "new zealand", "sydney", "melbourne", "brisbane", "auckland", "perth"]),
-    ("Asia Pacific", ["singapore", "japan", "china", "hong kong", "south korea", "taiwan", "vietnam", "thailand", "malaysia", "philippines", "indonesia", "tokyo", "beijing", "shanghai"]),
-    ("Middle East / Africa", ["dubai", "uae", "saudi", "israel", "south africa", "nigeria", "kenya", "egypt", "qatar", "bahrain"]),
-    ("Latin America", ["brazil", "mexico", "argentina", "colombia", "chile", "peru", "bogota", "sao paulo"]),
+    ("United Kingdom", [
+        "united kingdom", " uk", "england", "london", "manchester", "birmingham",
+        "scotland", "wales", "edinburgh", "glasgow", "leeds", "bristol", "sheffield",
+        "liverpool", "cambridge", "oxford", "nottingham", "newcastle",
+    ]),
+    ("Canada", [
+        "canada", "ontario", "british columbia", "alberta", "quebec", "manitoba",
+        "saskatchewan", "nova scotia", "new brunswick",
+        # Major cities and suburbs — listed explicitly to catch "City, CA" patterns
+        "toronto", "vancouver", "montreal", "calgary", "ottawa", "edmonton",
+        "winnipeg", "mississauga", "brampton", "hamilton", "waterloo", "kitchener",
+        "markham", "richmond hill", "scarborough", "etobicoke", "north york",
+        "surrey", "burnaby", "richmond", "abbotsford", "kelowna", "victoria",
+        "laval", "gatineau", "longueuil", "saskatoon", "regina", "halifax",
+    ]),
+    ("India", [
+        "india", "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai",
+        "pune", "kolkata", "gurgaon", "gurugram", "noida", "ahmedabad", "jaipur",
+        "surat", "lucknow", "chandigarh", "coimbatore", "kochi", "indore", "nagpur",
+        "visakhapatnam", "bhopal", "vadodara", "thiruvananthapuram",
+    ]),
+    ("Europe", [
+        "europe", "germany", "france", "spain", "italy", "netherlands", "sweden",
+        "norway", "denmark", "finland", "switzerland", "austria", "poland",
+        "berlin", "paris", "amsterdam", "stockholm", "madrid", "rome", "barcelona",
+        "munich", "frankfurt", "hamburg", "cologne", "düsseldorf", "zurich",
+        "brussels", "dublin", "ireland", "portugal", "lisbon", "prague", "warsaw",
+        "vienna", "copenhagen", "oslo", "helsinki", "budapest", "bucharest",
+        "athens", "greece", "belgium", "czech", "croatia", "romania", "ukraine",
+    ]),
+    ("Australia / NZ", [
+        "australia", "new zealand", "sydney", "melbourne", "brisbane", "auckland",
+        "perth", "adelaide", "gold coast", "canberra", "newcastle", "wollongong",
+        "wellington", "christchurch", "queensland", "victoria", "new south wales",
+    ]),
+    ("Asia Pacific", [
+        "singapore", "japan", "china", "hong kong", "south korea", "taiwan",
+        "vietnam", "thailand", "malaysia", "philippines", "indonesia",
+        "tokyo", "osaka", "beijing", "shanghai", "shenzhen", "guangzhou",
+        "seoul", "taipei", "kuala lumpur", "jakarta", "manila", "hanoi",
+        "ho chi minh", "bangkok", "yangon", "myanmar",
+    ]),
+    ("Middle East / Africa", [
+        "dubai", "uae", "saudi", "israel", "south africa", "nigeria", "kenya",
+        "egypt", "qatar", "bahrain", "kuwait", "oman", "jordan", "lebanon",
+        "abu dhabi", "riyadh", "tel aviv", "johannesburg", "cape town", "lagos",
+        "nairobi", "cairo", "tunis", "morocco", "casablanca",
+    ]),
+    ("Latin America", [
+        "brazil", "mexico", "argentina", "colombia", "chile", "peru",
+        "bogota", "sao paulo", "buenos aires", "lima", "santiago", "medellin",
+        "guadalajara", "monterrey", "caracas", "venezuela", "ecuador", "uruguay",
+    ]),
 ]
 
 _US_STATE_CODES: frozenset[str] = frozenset({
@@ -131,6 +175,178 @@ _METRO_ALIASES: list[tuple[re.Pattern, str]] = [
 ]
 
 
+# Maps US suburb / satellite city patterns → canonical metro city.
+# Used when building the /locations dropdown so that e.g. "Foothill Ranch, CA"
+# is counted under "Los Angeles, CA" rather than shown as its own entry.
+_US_SUBURB_TO_METRO: list[tuple[re.Pattern, str]] = [
+    # ── Greater Los Angeles ───────────────────────────────────────────────────
+    (re.compile(
+        r'\b(foothill ranch|irvine|anaheim|orange county|long beach|burbank|'
+        r'pasadena|glendale|torrance|santa ana|garden grove|corona|pomona|'
+        r'ontario|rancho cucamonga|compton|inglewood|santa monica|culver city|'
+        r'el monte|downey|west covina|norwalk|fullerton|el segundo|'
+        r'thousand oaks|simi valley|oxnard|ventura|camarillo|'
+        r'lake forest|mission viejo|laguna|aliso viejo|'
+        r'chino|chino hills|fontana|riverside|moreno valley|'
+        r'covina|azusa|glendora|diamond bar|walnut|'
+        r'hawthorne|gardena|lawndale|redondo beach|manhattan beach|hermosa beach|'
+        r'studio city|sherman oaks|encino|van nuys|north hollywood|'
+        r'chatsworth|canoga park|woodland hills|calabasas)\b',
+        re.I,
+    ), "Los Angeles, CA"),
+
+    # ── San Francisco Bay Area ────────────────────────────────────────────────
+    (re.compile(
+        r'\b(palo alto|mountain view|sunnyvale|santa clara|menlo park|'
+        r'cupertino|redwood city|foster city|san mateo|daly city|'
+        r'fremont|hayward|milpitas|livermore|pleasanton|dublin|san ramon|'
+        r'walnut creek|concord|richmond|berkeley|oakland|'
+        r'south san francisco|san bruno|burlingame|millbrae|belmont|'
+        r'san carlos|campbell|los gatos|saratoga|los altos|'
+        r'emeryville|alameda|union city|newark|santa cruz)\b',
+        re.I,
+    ), "San Francisco, CA"),
+
+    # ── San Diego metro ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(chula vista|el cajon|santee|la mesa|escondido|'
+        r'oceanside|carlsbad|vista|san marcos|national city|'
+        r'el cajon|santee|poway|spring valley)\b',
+        re.I,
+    ), "San Diego, CA"),
+
+    # ── Greater Seattle ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(bellevue|redmond|kirkland|renton|kent|auburn|federal way|'
+        r'tukwila|burien|des moines|bothell|woodinville|sammamish|'
+        r'issaquah|mercer island|shoreline|lynnwood|everett|tacoma)\b',
+        re.I,
+    ), "Seattle, WA"),
+
+    # ── Greater New York ──────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(jersey city|hoboken|newark|stamford|white plains|yonkers|'
+        r'bronx|brooklyn|queens|staten island|manhattan|'
+        r'long island|nassau|suffolk)\b',
+        re.I,
+    ), "New York, NY"),
+
+    # ── Greater Boston ────────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(cambridge|somerville|newton|quincy|brookline|waltham|'
+        r'woburn|watertown|malden|medford|lexington|concord|'
+        r'framingham|natick|burlington|woburn|lowell|worcester)\b',
+        re.I,
+    ), "Boston, MA"),
+
+    # ── Greater Chicago ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(evanston|naperville|aurora|joliet|rockford|elgin|'
+        r'schaumburg|oak park|berwyn|cicero|arlington heights|'
+        r'bolingbrook|palatine|waukegan|skokie|des plaines)\b',
+        re.I,
+    ), "Chicago, IL"),
+
+    # ── Greater Dallas / Fort Worth ───────────────────────────────────────────
+    (re.compile(
+        r'\b(fort worth|arlington|plano|frisco|mckinney|garland|'
+        r'irving|grand prairie|mesquite|carrollton|richardson|'
+        r'denton|allen|lewisville|flower mound|addison)\b',
+        re.I,
+    ), "Dallas, TX"),
+
+    # ── Greater Houston ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(sugar land|pearland|pasadena|the woodlands|katy|'
+        r'league city|baytown|conroe|friendswood|galveston|'
+        r'stafford|missouri city|tomball|spring)\b',
+        re.I,
+    ), "Houston, TX"),
+
+    # ── Greater Washington DC ─────────────────────────────────────────────────
+    (re.compile(
+        r'\b(arlington|alexandria|bethesda|rockville|silver spring|'
+        r'tysons|mclean|reston|herndon|falls church|'
+        r'fairfax|gaithersburg|germantown|greenbelt|'
+        r'annapolis|baltimore)\b',
+        re.I,
+    ), "Washington, DC"),
+
+    # ── Greater Miami ─────────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(fort lauderdale|boca raton|west palm beach|hollywood|'
+        r'pompano beach|coral springs|miramar|hialeah|'
+        r'doral|miami beach|homestead|pembroke pines)\b',
+        re.I,
+    ), "Miami, FL"),
+
+    # ── Greater Atlanta ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(alpharetta|roswell|sandy springs|marietta|smyrna|'
+        r'peachtree city|kennesaw|duluth|norcross|lawrenceville|'
+        r'decatur|dunwoody|johns creek|cumming)\b',
+        re.I,
+    ), "Atlanta, GA"),
+
+    # ── Greater Denver ────────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(aurora|lakewood|englewood|arvada|westminster|'
+        r'thornton|brighton|boulder|longmont|fort collins|'
+        r'castle rock|parker|centennial|highlands ranch|littleton)\b',
+        re.I,
+    ), "Denver, CO"),
+
+    # ── Greater Phoenix ───────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(scottsdale|tempe|mesa|chandler|gilbert|glendale|'
+        r'peoria|surprise|goodyear|avondale|fountain hills)\b',
+        re.I,
+    ), "Phoenix, AZ"),
+
+    # ── Greater Austin ────────────────────────────────────────────────────────
+    (re.compile(
+        r'\b(round rock|cedar park|pflugerville|georgetown|'
+        r'kyle|buda|leander|manor|bastrop)\b',
+        re.I,
+    ), "Austin, TX"),
+]
+
+
+def _suburb_to_metro(city: str) -> Optional[str]:
+    """If city is a known US suburb, return its canonical metro city; else None."""
+    for pattern, metro in _US_SUBURB_TO_METRO:
+        if pattern.search(city):
+            return metro
+    return None
+
+
+_US_STATE_NAMES: dict[str, str] = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+    "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+    "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+    "WI": "Wisconsin", "WY": "Wyoming", "DC": "Washington DC",
+}
+
+# Maps filter display value → substring used to match stored location strings.
+# For state-level filters this is just ", ST" (e.g. ", CA"), which matches any
+# "City, CA" or "City, CA, USA" string — no hardcoded city list needed.
+_METRO_TO_SUBSTRINGS: dict[str, list[str]] = {
+    state_name: [f", {code}"] for code, state_name in _US_STATE_NAMES.items()
+}
+
+# Reverse lookup: "california" → "CA"  (used by _city_to_metro for full-name matching)
+_STATE_NAME_LOWER_TO_CODE: dict[str, str] = {v.lower(): k for k, v in _US_STATE_NAMES.items()}
+
+
 def _normalize_location(raw: str) -> Optional[str]:
     """Normalize a raw LLM-extracted location to a clean canonical string."""
     if not raw:
@@ -171,24 +387,60 @@ def _classify_region(location: str) -> str:
 
     Priority:
     1. Remote
-    2. US state code detection (covers any 'City, ST' not in keyword list)
-    3. Keyword matching for international regions
+    2. International keyword matching (before state-code check to avoid false
+       positives from shared codes like CA=Canada/California, IN=India/Indiana,
+       DE=Germany/Delaware)
+    3. US state code detection
+    4. "united states" / "usa" fallback
     """
     if re.search(r'\bremote\b', location, re.IGNORECASE):
         return "Remote"
-    # Detect US state code: "City, ST" or "City, ST, USA"
-    state_match = re.search(r',\s*([A-Z]{2})\b', location)
-    if state_match and state_match.group(1) in _US_STATE_CODES:
-        return "United States"
-    # Keyword matching for international
+    # Keyword matching first — catches international cities that share ISO codes
+    # with US states (e.g. "Calgary, CA" must be Canada, not United States).
     loc_lower = location.lower()
     for region, keywords in _REGION_KEYWORDS:
         if any(kw.strip() in loc_lower for kw in keywords):
             return region
-    # Fallback: if "united states" or "usa" anywhere
+    # US state code detection (safe now that international keywords were checked)
+    state_match = re.search(r',\s*([A-Z]{2})\b', location)
+    if state_match and state_match.group(1) in _US_STATE_CODES:
+        return "United States"
+    # Fallback: explicit US mentions
     if any(kw in loc_lower for kw in ("united states", " usa", "u.s.")):
         return "United States"
     return "Other"
+
+
+def _city_to_metro(loc: str) -> Optional[str]:
+    """Map a normalized US location string to its state-level display name.
+
+    'San Francisco, CA'         → 'California'
+    'San Francisco, California' → 'California'
+    'Foothill Ranch, CA'        → 'California'
+    'Seattle, WA'               → 'Washington'
+    'Calgary, CA'               → None  (CA = Canada ISO code, not California)
+    'Toronto'                   → None  (keyword matched as Canada)
+    'Mississauga'               → None  (keyword matched as Canada)
+    Returns None for non-US or unrecognised formats.
+    """
+    # Delegate country classification to _classify_region so that ambiguous
+    # 2-letter codes (CA=Canada/California, IN=India/Indiana, DE=Germany/Delaware)
+    # are resolved correctly via the international keyword list.
+    if _classify_region(loc) != "United States":
+        return None
+
+    loc_lower = loc.lower()
+    # Try 2-letter state code: "San Jose, CA"
+    m = re.search(r',\s*([A-Z]{2})\b', loc)
+    if m:
+        state = _US_STATE_NAMES.get(m.group(1))
+        if state:
+            return state
+    # Fall back to full state name: "San Jose, California"
+    for name_lower, code in _STATE_NAME_LOWER_TO_CODE.items():
+        if re.search(r',\s*' + re.escape(name_lower) + r'\b', loc_lower):
+            return _US_STATE_NAMES[code]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -199,12 +451,26 @@ def _classify_region(location: str) -> str:
 _QUERY_LOCATION_SIGNALS: list[tuple[list[str], list[str]]] = [
     # (query keywords,  stored location keywords to match)
     (["bay area", "san francisco", "sf bay", "silicon valley", "palo alto", "mountain view",
-      "sunnyvale", "san jose", "santa clara", "foster city", "menlo park"],
+      "sunnyvale", "san jose", "santa clara", "foster city", "menlo park",
+      "sf metro", "sf area", "50 mile radius"],
      ["san francisco", "palo alto", "mountain view", "sunnyvale", "san jose", "santa clara",
       "foster city", "menlo park", "oakland", "berkeley"]),
 
+    (["southern california", "socal", "so cal", "los angeles", "la metro",
+      "la area", "greater la", "greater los angeles", "orange county",
+      "san diego", "irvine", "anaheim", "santa ana", "riverside", "pasadena",
+      "long beach", "culver city", "santa monica", "burbank"],
+     ["los angeles", "san diego", "orange county", "irvine", "anaheim",
+      "riverside", "pasadena", "long beach", "santa monica", "burbank",
+      "culver city", "santa ana", "torrance"]),
+
     (["new york", "nyc", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken"],
-     ["new york", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken"]),
+     ["new york", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken", ", ny"]),
+
+    (["europe", "european", "western europe", "eu"],
+     ["london", "berlin", "paris", "amsterdam", "stockholm", "zurich", "dublin",
+      "madrid", "rome", "england", "germany", "france", "netherlands", "sweden",
+      "switzerland", "ireland", "spain", "italy", "uk", "united kingdom"]),
 
     (["seattle", "bellevue", "redmond", "kirkland"],
      ["seattle", "bellevue", "redmond", "kirkland"]),
@@ -245,20 +511,103 @@ _QUERY_LOCATION_SIGNALS: list[tuple[list[str], list[str]]] = [
 
     (["remote"],
      ["remote"]),
+
+    # US state full names → state abbreviation in stored location (e.g. ", CA")
+    (["california", "the golden state"],
+     [", ca"]),
+    (["new york state", "new york"],      # "new york" already covered above for NYC; this catches state-wide
+     [", ny"]),
+    (["texas", "the lone star state"],
+     [", tx"]),
+    (["washington state"],               # "washington" alone is ambiguous (DC), so require "state"
+     [", wa"]),
+    (["illinois"],
+     [", il"]),
+    (["florida", "the sunshine state"],
+     [", fl"]),
+    (["georgia"],
+     [", ga"]),
+    (["massachusetts"],
+     [", ma"]),
+    (["colorado"],
+     [", co"]),
+    (["arizona"],
+     [", az"]),
+    (["pennsylvania"],
+     [", pa"]),
+    (["ohio"],
+     [", oh"]),
+    (["michigan"],
+     [", mi"]),
+    (["north carolina"],
+     [", nc"]),
+    (["virginia"],
+     [", va"]),
+    (["minnesota"],
+     [", mn"]),
+    (["oregon"],
+     [", or"]),
 ]
+
+# Maps 2-letter US state codes (lowercase) to stored location keywords.
+# Used for queries like "executives from NY" where "NY" can't be matched by the
+# multi-word static map above (which requires len >= 3 in the generic fallback).
+_STATE_CODE_TO_LOC_KWS: dict[str, list[str]] = {
+    "ny": ["new york", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken", ", ny"],
+    "nj": ["new jersey", "hoboken", "jersey city"],
+    "wa": ["seattle", "bellevue", "redmond", "kirkland"],
+    "tx": ["austin", "dallas", "houston", "round rock"],
+    "il": ["chicago"],
+    "fl": ["miami", "orlando", "tampa"],
+    "ga": ["atlanta"],
+    "ma": ["boston"],
+    "co": ["denver", "boulder"],
+    "az": ["phoenix", "scottsdale"],
+    "pa": ["philadelphia", "pittsburgh"],
+    "oh": ["columbus", "cleveland"],
+    "mi": ["detroit", "ann arbor"],
+    "nc": ["charlotte", "raleigh"],
+    "va": ["virginia", "arlington"],
+    "mn": ["minneapolis"],
+    "or": ["portland"],
+    "in": None,  # reserved — "in" is a preposition, not a state here; skip indiana to avoid ambiguity
+}
+
+_RE_STATE_CODE = re.compile(
+    r'\b(?:from|based\s+in|located\s+in)\s+([A-Z]{2})\b',
+    re.IGNORECASE,
+)
 
 # Preposition + location stop-phrases to strip from query for semantic search
 _LOCATION_STRIP_PATTERNS = [
     re.compile(r'\b(?:from|in|based in|located in|near|around|at)\s+', re.I),
     re.compile(r'\b(?:bay area|san francisco|silicon valley|palo alto|mountain view|sunnyvale|san jose)\b', re.I),
-    re.compile(r'\b(?:new york|nyc|manhattan|brooklyn|jersey city)\b', re.I),
+    re.compile(r'\b(?:new york|nyc|manhattan|brooklyn|jersey city|\bNY\b)\b', re.I),
     re.compile(r'\b(?:seattle|bellevue|redmond)\b', re.I),
     re.compile(r'\b(?:london|england|berlin|germany)\b', re.I),
     re.compile(r'\b(?:bangalore|bengaluru|hyderabad|mumbai|chennai|delhi|noida|gurugram|india)\b', re.I),
     re.compile(r'\b(?:singapore|toronto|canada|remote)\b', re.I),
     re.compile(r'\b(?:austin|texas|tx)\b', re.I),
+    re.compile(r'\b(?:california|new\s+york\s+state|washington\s+state|illinois|florida|georgia|massachusetts|colorado|arizona|pennsylvania|ohio|michigan|north\s+carolina|virginia|minnesota|oregon)\b', re.I),
     re.compile(r'\b(?:candidate[s]?|developer[s]?|engineer[s]?)\b', re.I),  # generic noise in location queries
+    re.compile(r'\b(?:southern california|silicon valley|europe|fang|faang|big tech)\b', re.I),
+    re.compile(r'\b(?:los angeles|la metro|la area|greater la|greater los angeles|orange county)\b', re.I),
+    re.compile(r'\b(?:metro\s+area|greater\s+\w+|metro\s+region|metropolitan)\b', re.I),
+    re.compile(r'\b(?:area|region|vicinity|zone|district|suburb[s]?)\b', re.I),
 ]
+
+# Tokens that look geographic in regex but are NOT geographic — skip location pre-filter if
+# all extracted tokens are in this set (e.g. "experts in ML", "working in FANG").
+_NON_LOCATION_TOKENS: set[str] = {
+    "ml", "ai", "fang", "faang", "nlp", "llm", "rag",
+    "machine", "learning", "deep", "data", "science", "analytics",
+    "cloud", "storage", "distributed", "computing", "platform",
+    "technology", "tech", "engineering", "software", "hardware",
+    "finance", "fintech", "healthcare", "education", "gaming",
+    "kubernetes", "docker", "aws", "gcp", "azure", "devops",
+    "blockchain", "crypto", "web3", "defi",
+    "big", "startup", "enterprise",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -325,18 +674,31 @@ def _parse_location_from_query(query: str) -> tuple[list[str], str]:
         if matched_loc_keywords:
             break
 
+    # Pass 1.5: 2-letter US state codes (e.g. "from NY", "based in WA")
+    if not matched_loc_keywords:
+        sm = _RE_STATE_CODE.search(query)
+        if sm:
+            code = sm.group(1).lower()
+            kws = _STATE_CODE_TO_LOC_KWS.get(code)
+            if kws:  # None sentinel means skip (e.g. "in" is ambiguous)
+                matched_loc_keywords = kws
+                loc_phrase_extracted = sm.group(1)
+
     # Pass 2: generic regex extraction (any city not covered by the static map)
     if not matched_loc_keywords:
         m = _RE_LOC_EXTRACT.search(query)
         if m:
             loc_phrase_extracted = m.group(1).strip().rstrip(",. ")
             # Build match keywords: individual tokens (words ≥ 3 chars), lowercased
-            matched_loc_keywords = [
+            tokens = [
                 t.lower() for t in re.split(r'[\s,]+', loc_phrase_extracted)
                 if len(t) >= 3 and t.upper() not in {
                     "THE", "AND", "FOR", "WITH", "FROM", "NEAR",
                 }
             ]
+            # Discard if ALL tokens are known non-geographic terms (e.g. "ML", "FANG", "cloud storage")
+            if tokens and not all(t in _NON_LOCATION_TOKENS for t in tokens):
+                matched_loc_keywords = tokens
 
     # Build a cleaned query by stripping location terms (for better semantic search)
     cleaned = query
@@ -348,9 +710,206 @@ def _parse_location_from_query(query: str) -> tuple[list[str], str]:
             cleaned = re.sub(re.escape(loc_phrase_extracted), ' ', cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
         if len(cleaned) < 3:
-            cleaned = query  # fallback: don't over-strip
+            cleaned = "software engineer"  # generic fallback when location fully consumed query
 
     return matched_loc_keywords, cleaned
+
+
+# ---------------------------------------------------------------------------
+# AI-powered candidate search intent parser
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Intent parse cache — avoids redundant LLM calls for the same query string.
+# Key: (query_lower, llm_model).  Evicts oldest entries when full.
+# ---------------------------------------------------------------------------
+from collections import OrderedDict as _OD
+
+_INTENT_CACHE: "_OD[tuple, dict]" = _OD()
+_INTENT_CACHE_MAX = 256
+
+def _intent_cache_get(key: tuple) -> Optional[dict]:
+    if key in _INTENT_CACHE:
+        _INTENT_CACHE.move_to_end(key)
+        return _INTENT_CACHE[key]
+    return None
+
+def _intent_cache_set(key: tuple, value: dict) -> None:
+    _INTENT_CACHE[key] = value
+    _INTENT_CACHE.move_to_end(key)
+    if len(_INTENT_CACHE) > _INTENT_CACHE_MAX:
+        _INTENT_CACHE.popitem(last=False)
+
+
+# Queries that require LLM: company names/acronyms and group terms.
+# Geographic location signals are handled by the static parser (_QUERY_LOCATION_SIGNALS)
+# which is MORE accurate than the LLM for known cities/metros — the LLM tends to
+# over-broaden (e.g. "greater LA" → ", ca" matching all of California).
+_INTENT_NEEDS_LLM = re.compile(
+    r'\b(faang|fang|manga|witch|big\s*[34]|tier.?1'
+    r'|working at|works at|currently at|ex-|alumni|worked at'
+    r'|google|microsoft|amazon|apple|meta|netflix|nvidia|openai'
+    r'|deloitte|mckinsey|pwc|kpmg|bcg|bain|accenture|ibm|oracle|salesforce'
+    r'|uber|lyft|airbnb|stripe|shopify|twitter|linkedin|snap|pinterest|reddit'
+    r'|palantir|databricks|confluent|snowflake|datadog|cloudflare|hashicorp)\b',
+    re.IGNORECASE,
+)
+
+
+async def _parse_candidate_search_intent(query: str, api_key: Optional[str], llm_model: Optional[str]) -> dict:
+    """
+    Use an LLM to extract structured intent from a natural-language candidate search query.
+
+    Returns a dict with:
+        locationAliases  — substrings to match against stored candidate location fields
+        companyFilter    — company name substrings to match against current_company ONLY for
+                           "currently working at" queries. Empty for past-tense ("worked at",
+                           "previously", "ex-") queries — those are handled via cleanQuery.
+        expLevel         — canonical exp_level string or None
+        cleanQuery       — query stripped of intent tokens, ready for vector search.
+                           MUST include company names when company context is present so that
+                           semantic search finds both current AND past employees via resume text.
+
+    Falls back to static parsing (regex + alias map) if no API key or LLM fails.
+    """
+    cache_key = (query.strip().lower(), llm_model or "")
+
+    # 1. Cache hit — skip LLM entirely
+    cached = _intent_cache_get(cache_key)
+    if cached is not None:
+        print(f"DEBUG: [search intent] cache hit for {query!r:.40}")
+        return cached
+
+    # 2. Static fast-path — if the query contains no location/company signals,
+    #    skip the LLM and use the regex parser. Saves ~1-2s per search.
+    if not api_key or not _INTENT_NEEDS_LLM.search(query):
+        loc_kws, clean = _parse_location_from_query(query)
+        exp = _parse_exp_level_from_query(query)
+        result = {"locationAliases": loc_kws, "locationExclusions": [], "companyFilter": [],
+                  "strictCompany": False, "hasRoleSignal": bool(clean.strip()), "expLevel": exp,
+                  "cleanQuery": clean}
+        _intent_cache_set(cache_key, result)
+        return result
+
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import StrOutputParser
+        import json as _json
+
+        llm = ChatOpenAI(
+            model=llm_model or "gpt-4o-mini",
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            max_tokens=300,
+        )
+        prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You are a candidate/resume search query parser. Given a natural-language recruiter query, "
+             "extract structured intent. Return ONLY valid JSON — no markdown, no explanation.\n\n"
+             "KEY RULE 1 — company keyword expansion: whenever the query contains an industry group name, acronym, "
+             "or collective term that refers to a set of companies, expand it to the actual company names.\n"
+             "  FANG / FAANG → google, meta/facebook, amazon, apple, netflix (+ microsoft for FAANG)\n"
+             "  MANGA → meta, apple, netflix, google, amazon\n"
+             "  WITCH → wipro, infosys, tcs, cognizant, hcl\n"
+             "  Big 4 (consulting) → deloitte, pwc, ernst & young, kpmg\n"
+             "  Big 3 (consulting) → mckinsey, bain, bcg\n"
+             "  Big Tech → google, microsoft, amazon, apple, meta\n"
+             "  FAANG+ / Tier-1 tech → google, meta, amazon, apple, netflix, microsoft, nvidia, openai\n"
+             "  Any other recognisable industry group → expand to its well-known member companies\n\n"
+             "KEY RULE 2 — geographic region expansion: when the query mentions a macro region, "
+             "expand it to specific city/country substrings that appear in candidate location strings. "
+             "Candidate locations may use full state names ('California') OR abbreviations (', CA') — "
+             "include BOTH forms for US states. Choose 6-8 most representative aliases:\n"
+             "  Asia            → india, singapore, japan, china, hong kong, south korea, tokyo, bangalore, hyderabad, mumbai, beijing, shanghai, seoul\n"
+             "  Southeast Asia  → singapore, vietnam, thailand, philippines, malaysia, indonesia, jakarta, kuala lumpur, ho chi minh, bangkok\n"
+             "  South Asia      → india, bangalore, hyderabad, mumbai, delhi, pune, chennai, kolkata, pakistan, sri lanka\n"
+             "  Europe          → london, uk, germany, france, netherlands, sweden, ireland, switzerland, italy, spain, berlin, paris, amsterdam, stockholm, dublin, munich, barcelona, zurich\n"
+             "  North America   → usa, united states, canada, toronto, vancouver, montreal, california, new york, texas, washington\n"
+             "  USA (whole)     → usa, united states, california, new york, texas, washington, illinois, florida, georgia, , ca, , ny, , tx, , wa, , il\n"
+             "  West Coast      → san francisco, los angeles, seattle, california, washington, oregon, silicon valley, bay area, , ca, , wa, , or\n"
+             "  California      → california, san francisco, los angeles, silicon valley, bay area, san jose, sacramento, , ca\n"
+             "  Silicon Valley / Bay Area / SF metro / SF area → san francisco, palo alto, mountain view, sunnyvale, san jose, santa clara, menlo park, foster city, oakland, berkeley, cupertino, redwood city, fremont, hayward, san mateo, napa, vallejo, concord\n"
+             "  IMPORTANT: 'Silicon Valley', 'SF metro', 'Bay Area', 'SF area', '50 mile radius of SF' are Bay Area ONLY — do NOT include Seattle, Washington, Oregon, Los Angeles, San Diego, or any non-Bay-Area cities. Do NOT use ', ca' for these since that matches all of California.\n"
+             "  East Coast      → new york, boston, washington dc, philadelphia, miami, atlanta, new york, , ny, , ma, , pa, , fl, , ga\n"
+             "  Midwest USA     → chicago, detroit, minneapolis, cleveland, columbus, milwaukee, illinois, michigan, ohio, minnesota, , il, , mi, , oh, , mn\n"
+             "  South USA       → dallas, houston, austin, atlanta, miami, charlotte, nashville, texas, georgia, florida, , tx, , ga, , fl, , nc, , tn\n"
+             "  Middle East     → dubai, uae, saudi, israel, qatar, bahrain, abu dhabi, riyadh\n"
+             "  Africa          → south africa, nigeria, kenya, egypt, johannesburg, lagos, nairobi, cairo\n"
+             "  Australia       → australia, new zealand, sydney, melbourne, brisbane, auckland, perth\n"
+             "  Latin America   → brazil, argentina, colombia, chile, mexico, sao paulo, bogota, buenos aires, lima\n\n"
+             "Fields:\n"
+             '  "locationAliases": array of lowercase substrings that a stored location must CONTAIN at least one of. '
+             "For broad regions use the state/country abbreviation (', ca', ', ny') so ANY city in that state matches — "
+             "do NOT enumerate individual cities for large regions, that will miss lesser-known cities. "
+             "For sub-regions (Southern California, Bay Area) use the state abbreviation PLUS a few anchor city names.\n"
+             '  "locationExclusions": array of lowercase substrings to EXCLUDE from results — any candidate whose '
+             "location contains one of these is filtered out. Use this for sub-region searches to exclude the "
+             "opposite sub-region. E.g. SoCal search: exclude NorCal cities. Bay Area search: exclude LA/SD.\n"
+             '  "companyFilter": array of lowercase company name substrings. Populate whenever a company '
+             "or company group is mentioned (present OR past tense). Always expand acronyms/group names "
+             "to individual company name substrings.\n"
+             '  "strictCompany": true when the query uses present tense implying the candidate IS CURRENTLY '
+             "at the company ('working in', 'works at', 'currently at'). "
+             "false for past tense ('worked at', 'ex-', 'alumni', 'from') — those also include past employees.\n"
+             '  "hasRoleSignal": true when a specific role, skill, or technology is stated beyond just company/location '
+             "(e.g. 'java developer', 'data scientist', 'ML engineer', 'python'). "
+             "false when the query is purely about company/location/seniority with no specific role "
+             "(e.g. 'candidates from apple', 'engineers from FANG'). "
+             "Use this to decide whether role or company is the primary filter.\n"
+             '  "expLevel": one of "Entry","Junior","Mid-level","Senior","Lead","Executive" or null.\n'
+             '  "cleanQuery": the role/skill signal for vector search — location, seniority, and company tokens removed. '
+             "When hasRoleSignal=true put ONLY the role/skill. "
+             "When hasRoleSignal=false include company names so semantic search finds past employees. "
+             "If nothing meaningful remains, infer a generic role.\n\n"
+             "Examples:\n"
+             '  "java developer from apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"java developer"}}\n'
+             '  "senior python engineer at google" → {{"locationAliases":[],"companyFilter":["google"],"strictCompany":true,"hasRoleSignal":true,"expLevel":"Senior","cleanQuery":"python engineer"}}\n'
+             '  "candidates from southern california" → {{"locationAliases":[", ca"],"locationExclusions":["san francisco","bay area","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","oakland","berkeley","cupertino","redwood city","sacramento","fresno","stockton","modesto"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from northern california" → {{"locationAliases":[", ca"],"locationExclusions":["los angeles","san diego","irvine","anaheim","riverside","long beach","santa monica","burbank","orange county","chula vista","san bernardino","oxnard","fontana","moreno valley"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from Asia" → {{"locationAliases":["india","singapore","japan","china","hong kong","south korea","bangalore","tokyo","shanghai","seoul"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from Europe" → {{"locationAliases":["london","uk","germany","france","netherlands","berlin","paris","amsterdam","dublin","zurich"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from USA" → {{"locationAliases":["usa","united states","california","new york","texas","washington",", ca",", ny",", tx",", wa"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from west coast" → {{"locationAliases":["san francisco","los angeles","seattle","california","washington","oregon","silicon valley","bay area",", ca",", wa"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from midwest USA" → {{"locationAliases":["chicago","detroit","minneapolis","cleveland","illinois","michigan","ohio","minnesota",", il",", mi",", oh",", mn"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "senior managers from europe" → {{"locationAliases":["london","berlin","paris","amsterdam","uk","germany","france","netherlands","ireland"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":"Senior","cleanQuery":"engineering manager"}}\n'
+             '  "candidates from Southeast Asia" → {{"locationAliases":["singapore","vietnam","thailand","philippines","malaysia","indonesia","jakarta","kuala lumpur","bangkok"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from South Asia" → {{"locationAliases":["india","bangalore","hyderabad","mumbai","delhi","pune","chennai","kolkata","pakistan"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates currently working in FANG" → {{"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidate working in microsoft" → {{"locationAliases":[],"companyFilter":["microsoft"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates who worked in FANG" → {{"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft","facebook"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Google Meta Amazon Apple Netflix"}}\n'
+             '  "candidate worked in apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple"}}\n'
+             '  "candidate from apple and google" → {{"locationAliases":[],"companyFilter":["apple","google"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple Google"}}\n'
+             '  "experts in ML or machine learning" → {{"locationAliases":[],"companyFilter":[],"strictCompany":false,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"machine learning expert"}}\n'
+             '  "smart engineers in data science" → {{"locationAliases":[],"companyFilter":[],"strictCompany":false,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"data science engineer"}}\n'
+             '  "candidates from silicon valley" → {{"locationAliases":["san francisco","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","foster city","oakland","berkeley","cupertino","redwood city"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from SF metro area" → {{"locationAliases":["san francisco","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","foster city","oakland","berkeley","redwood city","cupertino"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidates from SF metro area or 50 mile radius" → {{"locationAliases":["san francisco","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","foster city","oakland","berkeley","redwood city","cupertino","fremont","hayward","san mateo","napa","vallejo","concord","walnut creek"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}'
+            ),
+            ("human", "Query: {query}"),
+        ])
+        chain = prompt | llm | StrOutputParser()
+        raw = await chain.ainvoke({"query": query})
+        parsed = _json.loads(raw.strip())
+        result = {
+            "locationAliases":    parsed.get("locationAliases")    or [],
+            "locationExclusions": parsed.get("locationExclusions") or [],
+            "companyFilter":      parsed.get("companyFilter")      or [],
+            "strictCompany":      bool(parsed.get("strictCompany", False)),
+            "hasRoleSignal":      bool(parsed.get("hasRoleSignal", False)),
+            "expLevel":           parsed.get("expLevel"),
+            "cleanQuery":         parsed.get("cleanQuery") or query,
+        }
+        _intent_cache_set(cache_key, result)
+        return result
+    except Exception as e:
+        print(f"DEBUG: [search intent] LLM parse failed ({e}), falling back to static parser")
+        loc_kws, clean = _parse_location_from_query(query)
+        exp = _parse_exp_level_from_query(query)
+        result = {"locationAliases": loc_kws, "locationExclusions": [], "companyFilter": [],
+                  "strictCompany": False, "hasRoleSignal": False, "expLevel": exp, "cleanQuery": clean}
+        _intent_cache_set(cache_key, result)
+        return result
 
 
 @router.get("/locations")
@@ -365,18 +924,61 @@ async def get_resume_locations(
         df = get_or_create_resume_meta_table().to_pandas()
         if not is_recruiter:
             df = df[df["user_id"] == user_id]
+        from collections import Counter
+        # Count resumes by metro_location (LLM-resolved at ingest).
+        # For older resumes without metro_location, fall back to _suburb_to_metro.
+        city_counts: Counter = Counter()
+        has_metro_col = "metro_location" in df.columns
+        for _, row in df.iterrows():
+            metro = str(row.get("metro_location") or "") if has_metro_col else ""
+            if not metro or metro == "nan":
+                # Legacy row — derive metro on the fly
+                raw_loc = str(row.get("location") or "")
+                loc = _normalize_location(raw_loc)
+                if not loc:
+                    continue
+                metro = _suburb_to_metro(loc) or loc
+            city_counts[metro] += 1
+
+        # Group cities by state (US) or region (international) with their counts
+        state_cities: Dict[str, list] = {}   # state   → [(city, count)]
+        region_cities: Dict[str, list] = {}  # region  → [(city, count)]
+        for loc, count in city_counts.items():
+            state = _city_to_metro(loc)
+            if state:
+                state_cities.setdefault(state, []).append((loc, count))
+            else:
+                region = _classify_region(loc)
+                region_cities.setdefault(region, []).append((loc, count))
+
+        # Show only cities with 2+ resumes; cap international regions at 5.
+        MIN_COUNT = 2
+        MAX_PER_REGION = 5
         groups: Dict[str, list] = {}
-        seen: set = set()
-        for raw_loc in df["location"].dropna():
-            loc = _normalize_location(str(raw_loc))
-            if not loc or loc in seen:
-                continue
-            seen.add(loc)
-            region = _classify_region(loc)
-            groups.setdefault(region, []).append({"value": loc, "label": loc})
-        for region in groups:
-            groups[region].sort(key=lambda x: x["label"])
-        return {"groups": groups, "total": len(seen)}
+
+        # US states: "All {State}" + all cities with 2+ resumes, sorted by frequency.
+        for state in sorted(state_cities):
+            cities = state_cities[state]
+            qualifying = sorted(
+                [(c, n) for c, n in cities if n >= MIN_COUNT],
+                key=lambda x: (-x[1], x[0]),
+            )
+            groups[state] = [{"value": state, "label": f"All {state}"}]
+            for city, _ in qualifying:
+                groups[state].append({"value": city, "label": city})
+
+        # International regions: show top cities by frequency, capped at MAX_PER_REGION
+        for region in sorted(region_cities):
+            cities = region_cities[region]
+            top = sorted(
+                [(c, n) for c, n in cities if n >= MIN_COUNT],
+                key=lambda x: (-x[1], x[0]),
+            )[:MAX_PER_REGION]
+            for city, _ in top:
+                groups.setdefault(region, []).append({"value": city, "label": city})
+
+        total = sum(city_counts.values())
+        return {"groups": groups, "total": total}
     except Exception as e:
         print(f"DEBUG: [locations] DB read failed: {e}")
         return {"groups": {}, "total": 0}
@@ -425,12 +1027,16 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
 
     loc = raw.strip()
 
+    # Skip LLM entirely if no config/key provided (e.g. during demo ingest)
+    if not llm_config:
+        return raw
+
     # Only invoke AI when the location looks sub-city (3+ parts, or contains known suburb markers)
     parts = [p.strip() for p in loc.split(",")]
     _SUBURB_HINTS = re.compile(
-        r'\b(layout|nagar|puram|pur|city|district|ward|sector|colony|'
+        r'\b(layout|nagar|puram|pur|district|ward|sector|colony|'
         r'township|heights|hills|gardens|park|village|area|zone|'
-        r'county|borough|township|quarters)\b', re.IGNORECASE
+        r'county|borough|quarters)\b', re.IGNORECASE
     )
     needs_ai = len(parts) >= 3 or bool(_SUBURB_HINTS.search(loc))
     if not needs_ai:
@@ -462,6 +1068,47 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
     return raw
 
 
+def _ai_metro_for_location(location: str, llm_config: dict = None) -> Optional[str]:
+    """Use LLM to resolve a city to its canonical major metro area.
+
+    'Foothill Ranch, CA'  → 'Los Angeles, CA'
+    'Palo Alto, CA'       → 'San Francisco, CA'
+    'San Francisco, CA'   → 'San Francisco, CA'  (already a metro)
+    'London, UK'          → 'London, UK'
+    'Remote'              → None
+
+    Falls back to None on failure so callers can use _suburb_to_metro as backup.
+    """
+    if not location or location.strip().lower() in ("remote", ""):
+        return None
+    if not llm_config:
+        return None
+    try:
+        from services.ai.common.llm_factory import get_llm
+        prompt = (
+            "You are a geography assistant. Given a city or location, return the nearest "
+            "major metropolitan city that a recruiter would recognize.\n\n"
+            "Rules:\n"
+            "- US locations: return 'City, ST' with 2-letter state code, e.g. 'Los Angeles, CA'\n"
+            "- International: return 'City, Country', e.g. 'London, UK', 'Bangalore, India'\n"
+            "- If the input is already a major metro city, return it as-is\n"
+            "- Suburbs and satellite cities must be mapped to their metro: "
+            "'Foothill Ranch, CA' → 'Los Angeles, CA', 'Palo Alto, CA' → 'San Francisco, CA', "
+            "'Bellevue, WA' → 'Seattle, WA', 'Round Rock, TX' → 'Austin, TX'\n"
+            "- Remote or no location: return the string 'Remote'\n"
+            "- Return ONLY the metro city string. No explanation, no quotes.\n\n"
+            f"Location: {location}"
+        )
+        llm = get_llm(llm_config or {}, temperature=0)
+        response = llm.invoke(prompt)
+        result = response.content.strip().strip('"').strip("'")
+        if result and len(result) < 60:
+            return result
+    except Exception as e:
+        print(f"DEBUG: [metro-ai] failed for '{location}': {e}")
+    return None
+
+
 def _clean_metadata(meta: dict, llm_config: dict = None) -> dict:
     """Normalize and validate LLM-extracted candidate metadata before storage."""
     if not meta:
@@ -481,6 +1128,15 @@ def _clean_metadata(meta: dict, llm_config: dict = None) -> dict:
         normalized_loc = _ai_normalize_location(normalized_loc, llm_config)
     cleaned["location"] = normalized_loc
 
+    # Resolve to major metro area via LLM (e.g. "Foothill Ranch, CA" → "Los Angeles, CA").
+    # Falls back to hardcoded _suburb_to_metro for any LLM failure.
+    metro_loc: Optional[str] = None
+    if normalized_loc and normalized_loc.lower() != "remote":
+        metro_loc = _ai_metro_for_location(normalized_loc, llm_config)
+        if not metro_loc:
+            metro_loc = _suburb_to_metro(normalized_loc) or normalized_loc
+    cleaned["metro_location"] = metro_loc
+
     # Normalize phone — strip non-phone chars, format, extract extension
     phone_raw = re.sub(r'[^\d\s\+\-\(\)\.extEXT]', '', str(meta.get("phone") or "")).strip()
     # Extract extension before stripping
@@ -488,22 +1144,130 @@ def _clean_metadata(meta: dict, llm_config: dict = None) -> dict:
     ext_suffix = f" ext. {ext_match.group(1)}" if ext_match else ""
     if ext_match:
         phone_raw = phone_raw[:ext_match.start()].strip()
-    if re.search(r'\d{7,}', phone_raw.replace(" ", "")):
-        digits_only = re.sub(r'\D', '', phone_raw)
-        # Infer country code from location for formatting
+    # Check digit count on digits-only string (dots/dashes break consecutive-digit regex)
+    digits_only = re.sub(r'\D', '', phone_raw)
+    if len(digits_only) >= 7:
+        # Infer country code from candidate location
         _loc = str(meta.get("location") or "").lower()
-        _INTL = {"united kingdom": "+44", "uk": "+44", "england": "+44", "scotland": "+44",
-                 "wales": "+44", "india": "+91", "australia": "+61", "germany": "+49",
-                 "france": "+33", "netherlands": "+31", "singapore": "+65",
-                 "new zealand": "+64", "ireland": "+353", "pakistan": "+92",
-                 "uae": "+971", "dubai": "+971", "philippines": "+63",
-                 "brazil": "+55", "mexico": "+52", "south africa": "+27"}
-        cc = next((code for kw, code in _INTL.items() if kw in _loc), "+1")
+        # Ordered from most-specific to least-specific so cities match before countries
+        _LOCATION_CC = [
+            # USA cities / states / indicators ("+1" shared with Canada)
+            ("san francisco", "+1"), ("los angeles", "+1"), ("new york", "+1"),
+            ("chicago", "+1"), ("seattle", "+1"), ("boston", "+1"), ("austin", "+1"),
+            ("dallas", "+1"), ("houston", "+1"), ("atlanta", "+1"), ("miami", "+1"),
+            ("denver", "+1"), ("portland", "+1"), ("phoenix", "+1"), ("detroit", "+1"),
+            ("united states", "+1"), ("usa", "+1"), (", ca", "+1"), (", ny", "+1"),
+            (", tx", "+1"), (", wa", "+1"), (", fl", "+1"), (", il", "+1"),
+            (", ma", "+1"), (", co", "+1"), (", or", "+1"), (", ga", "+1"),
+            (", nc", "+1"), (", va", "+1"), (", oh", "+1"), (", mi", "+1"),
+            (", az", "+1"), (", nj", "+1"), (", pa", "+1"), (", tn", "+1"),
+            # Canada
+            ("toronto", "+1"), ("vancouver", "+1"), ("montreal", "+1"),
+            ("calgary", "+1"), ("ottawa", "+1"), ("canada", "+1"),
+            # UK
+            ("london", "+44"), ("manchester", "+44"), ("birmingham", "+44"),
+            ("edinburgh", "+44"), ("glasgow", "+44"), ("bristol", "+44"),
+            ("united kingdom", "+44"), ("england", "+44"), ("scotland", "+44"),
+            ("wales", "+44"), (", uk", "+44"),
+            # India
+            ("bangalore", "+91"), ("bengaluru", "+91"), ("mumbai", "+91"),
+            ("delhi", "+91"), ("hyderabad", "+91"), ("pune", "+91"),
+            ("chennai", "+91"), ("kolkata", "+91"), ("india", "+91"),
+            # Australia
+            ("sydney", "+61"), ("melbourne", "+61"), ("brisbane", "+61"),
+            ("perth", "+61"), ("adelaide", "+61"), ("australia", "+61"),
+            # Germany
+            ("berlin", "+49"), ("munich", "+49"), ("hamburg", "+49"),
+            ("frankfurt", "+49"), ("germany", "+49"),
+            # France
+            ("paris", "+33"), ("lyon", "+33"), ("marseille", "+33"), ("france", "+33"),
+            # Netherlands
+            ("amsterdam", "+31"), ("rotterdam", "+31"), ("netherlands", "+31"),
+            # Singapore
+            ("singapore", "+65"),
+            # Ireland
+            ("dublin", "+353"), ("ireland", "+353"),
+            # Sweden
+            ("stockholm", "+46"), ("gothenburg", "+46"), ("sweden", "+46"),
+            # Switzerland
+            ("zurich", "+41"), ("geneva", "+41"), ("switzerland", "+41"),
+            # New Zealand
+            ("auckland", "+64"), ("wellington", "+64"), ("new zealand", "+64"),
+            # Israel
+            ("tel aviv", "+972"), ("jerusalem", "+972"), ("israel", "+972"),
+            # UAE
+            ("dubai", "+971"), ("abu dhabi", "+971"), ("uae", "+971"),
+            # Pakistan
+            ("karachi", "+92"), ("lahore", "+92"), ("islamabad", "+92"), ("pakistan", "+92"),
+            # Philippines
+            ("manila", "+63"), ("philippines", "+63"),
+            # Brazil
+            ("são paulo", "+55"), ("sao paulo", "+55"), ("rio de janeiro", "+55"), ("brazil", "+55"),
+            # Mexico
+            ("mexico city", "+52"), ("guadalajara", "+52"), ("mexico", "+52"),
+            # South Africa
+            ("johannesburg", "+27"), ("cape town", "+27"), ("south africa", "+27"),
+            # Japan
+            ("tokyo", "+81"), ("osaka", "+81"), ("japan", "+81"),
+            # China
+            ("beijing", "+86"), ("shanghai", "+86"), ("shenzhen", "+86"), ("china", "+86"),
+            # South Korea
+            ("seoul", "+82"), ("busan", "+82"), ("south korea", "+82"), ("korea", "+82"),
+            # Indonesia
+            ("jakarta", "+62"), ("bali", "+62"), ("indonesia", "+62"),
+            # Malaysia
+            ("kuala lumpur", "+60"), ("malaysia", "+60"),
+            # Thailand
+            ("bangkok", "+66"), ("thailand", "+66"),
+            # Vietnam
+            ("ho chi minh", "+84"), ("hanoi", "+84"), ("vietnam", "+84"),
+            # Portugal
+            ("lisbon", "+351"), ("porto", "+351"), ("portugal", "+351"),
+            # Spain
+            ("madrid", "+34"), ("barcelona", "+34"), ("spain", "+34"),
+            # Italy
+            ("rome", "+39"), ("milan", "+39"), ("italy", "+39"),
+            # Poland
+            ("warsaw", "+48"), ("krakow", "+48"), ("poland", "+48"),
+            # Belgium
+            ("brussels", "+32"), ("antwerp", "+32"), ("belgium", "+32"),
+            # Argentina
+            ("buenos aires", "+54"), ("argentina", "+54"),
+            # Colombia
+            ("bogota", "+57"), ("medellin", "+57"), ("colombia", "+57"),
+            # Chile
+            ("santiago", "+56"), ("chile", "+56"),
+        ]
+        cc = next((code for kw, code in _LOCATION_CC if kw in _loc), None)
+
+        # For "Remote" with no city/country match, fall back to timezone hints
+        if cc is None:
+            _TZ_CC = [
+                ("est", "+1"), ("edt", "+1"), ("cst", "+1"), ("cdt", "+1"),
+                ("mst", "+1"), ("mdt", "+1"), ("pst", "+1"), ("pdt", "+1"),
+                ("gmt", "+44"), ("bst", "+44"),
+                ("ist", "+91"),   # India Standard Time
+                ("aest", "+61"), ("aedt", "+61"),
+                ("jst", "+81"),
+                ("kst", "+82"),
+                ("cet", "+49"), ("cest", "+49"),
+                ("sgt", "+65"),   # Singapore
+            ]
+            tz_loc = re.sub(r'[()]', ' ', _loc)  # treat parentheses as spaces
+            cc = next((code for tz, code in _TZ_CC if re.search(r'\b' + tz + r'\b', tz_loc)), "+1")
+
         if len(digits_only) == 10:
+            # 10-digit number: apply inferred country code
             phone_raw = f"{cc} ({digits_only[:3]}) {digits_only[3:6]}-{digits_only[6:]}"
         elif len(digits_only) == 11 and digits_only[0] == '1':
+            # 11-digit NANP (1 + 10): always +1
             phone_raw = f"+1 ({digits_only[1:4]}) {digits_only[4:7]}-{digits_only[7:]}"
-        # else keep as-is (international with country code already present)
+        elif phone_raw.startswith('+'):
+            # Already has country code prefix — keep as-is (international)
+            pass
+        else:
+            # Unknown length with no country code — prefix the inferred one
+            phone_raw = f"{cc} {phone_raw.strip()}"
         cleaned["phone"] = phone_raw + ext_suffix
     else:
         cleaned["phone"] = None
@@ -694,6 +1458,8 @@ async def get_resume_database(
     role: Optional[str] = None,
     exp_level: Optional[str] = None,
     applied: Optional[str] = None,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user),
     current_role: str = Depends(get_user_role),
 ):
@@ -702,14 +1468,31 @@ async def get_resume_database(
     from datetime import datetime, timedelta
     from services.db.lancedb_client import (
         list_all_resumes_with_users, get_or_create_resume_meta_table,
-        search_resumes_semantic,
+        search_resumes_hybrid, get_or_create_table,
     )
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     is_recruiter = current_role in ("recruiter", "manager")
+
+    # Load the set of filenames that actually have chunks AND exist on disk.
+    # Both conditions must be true for a resume to appear in the database view.
+    try:
+        _chunks_df = get_or_create_table().to_pandas()[["filename"]]
+        _chunks_fns = set(_chunks_df["filename"].unique()) if not _chunks_df.empty else set()
+        # Intersect with files that are actually on disk
+        _valid_filenames: Optional[set] = {
+            fn for fn in _chunks_fns
+            if os.path.exists(os.path.join(UPLOAD_DIR, fn))
+        }
+    except Exception:
+        _valid_filenames = None  # can't determine — skip filter
 
     # 1. Load validation metadata once (1 row per resume, much smaller than chunk table)
     meta_table = get_or_create_resume_meta_table()
     try:
         meta_df = meta_table.to_pandas()
+        # Drop dangling/orphaned rows to prevent stub cards in UI
+        if _valid_filenames is not None and meta_df is not None and not meta_df.empty:
+            meta_df = meta_df[meta_df["filename"].isin(_valid_filenames)]
     except Exception:
         meta_df = None
 
@@ -776,6 +1559,7 @@ async def get_resume_database(
                 "exp_level": _normalize_exp_level(_str(row.get("exp_level"))),
                 "current_company": _str(row.get("current_company")),
                 "location": _str(row.get("location")),
+                "metro_location": _str(row.get("metro_location")),
                 "phone": _str(row.get("phone")),
                 "email": _str(row.get("email")),
                 "linkedin_url": _str(row.get("linkedin_url")),
@@ -832,30 +1616,115 @@ async def get_resume_database(
                 base_filenames.append(fn)
                 filename_to_user[fn] = user_id
 
-    # 2. Semantic search — re-rank filenames by similarity
+    # 2. Name search — fast exact/substring match on candidate_name before semantic search
     if search and search.strip():
-        # Extract location and exp_level signals from the query text
-        loc_match_kws, semantic_query = _parse_location_from_query(search.strip())
-        query_exp_level = _parse_exp_level_from_query(search.strip())
-        if loc_match_kws:
-            print(f"DEBUG: [search] location signal detected: {loc_match_kws} | semantic query: '{semantic_query}'")
-        if query_exp_level:
-            print(f"DEBUG: [search] exp_level signal detected: '{query_exp_level}'")
+        q_name = search.strip().lower()
+        name_matched = [
+            fn for fn in base_filenames
+            if q_name in str(meta_lookup.get(fn, {}).get("candidate_name") or "").lower()
+        ]
+        if name_matched:
+            print(f"DEBUG: [search] name match '{q_name}': {len(name_matched)} results")
+            ranked = name_matched
+            # Sort: exact full-name match first, then partial
+            ranked.sort(key=lambda fn: (
+                0 if str(meta_lookup.get(fn, {}).get("candidate_name") or "").lower() == q_name else 1,
+                str(meta_lookup.get(fn, {}).get("candidate_name") or "")
+            ))
+            resumes_out = []
+            for fn in ranked[skip: skip + limit]:
+                rec = dict(meta_lookup.get(fn, {}))
+                rec["filename"] = fn
+                rec["apply_count"] = _apply_counts.get(fn, 0)
+                rec["shortlist_count"] = _shortlist_counts.get(fn, 0)
+                resumes_out.append(rec)
+            return {"resumes": resumes_out, "total": len(ranked)}
 
-        # Pre-filter the candidate pool from metadata (complete, no chunk-limit gaps)
-        # using any location and exp_level signals extracted from the query text.
+    # 3. Semantic search — re-rank filenames by similarity
+    if search and search.strip():
+        import asyncio as _asyncio
+        # Run intent parsing and raw-query embedding in parallel.
+        # If cleanQuery == raw query (common for pure role/skill queries), the pre-computed
+        # vector is reused and no second embedding call is needed.
+        _raw_query = search.strip()
+        _api_key   = creds["openrouter_key"]
+        _llm_model = creds.get("llm_model")
+
+        async def _embed_raw() -> Optional[list]:
+            try:
+                loop = _asyncio.get_event_loop()
+                from services.db.lancedb_client import get_embeddings_model
+                emb = get_embeddings_model(api_key=_api_key)
+                return await loop.run_in_executor(None, emb.embed_query, _raw_query)
+            except Exception as e:
+                print(f"DEBUG: [parallel-embed] failed: {e}")
+                return None
+
+        intent, raw_vector = await _asyncio.gather(
+            _parse_candidate_search_intent(_raw_query, _api_key, _llm_model),
+            _embed_raw(),
+        )
+        loc_match_kws   = [kw.lower() for kw in intent["locationAliases"]]
+        loc_excl_kws    = [kw.lower() for kw in intent.get("locationExclusions") or []]
+        company_filter  = [c.lower() for c in intent["companyFilter"]]
+        strict_company  = bool(intent.get("strictCompany", False))
+        has_role_signal = bool(intent.get("hasRoleSignal", False))
+        query_exp_level = intent["expLevel"]
+        semantic_query  = intent["cleanQuery"]
+
+        print(f"DEBUG: [search intent] loc={loc_match_kws} | excl={loc_excl_kws} | company={company_filter} | strict={strict_company} | exp={query_exp_level} | q='{semantic_query}'")
+
+        # Pre-filter the candidate pool from metadata using extracted signals.
         def _loc_matches(fn: str) -> bool:
-            stored_loc = str(meta_lookup.get(fn, {}).get("location") or "").lower()
-            return any(kw in stored_loc for kw in loc_match_kws)
+            rec = meta_lookup.get(fn, {})
+            raw_loc = str(rec.get("location") or "")
+            # Build effective location string to match against:
+            # 1. metro_location (LLM-resolved at ingest, e.g. "Foothill Ranch, CA" → "Los Angeles, CA")
+            # 2. _suburb_to_metro fallback for older resumes without metro_location
+            # 3. raw location as last resort
+            stored_metro = str(rec.get("metro_location") or "")
+            if not stored_metro or stored_metro == "nan":
+                stored_metro = _suburb_to_metro(raw_loc) or ""
+            effective_loc = (stored_metro or raw_loc).lower()
+            raw_loc_lower = raw_loc.lower()
+
+            if loc_excl_kws and (
+                any(ex in effective_loc for ex in loc_excl_kws)
+                or any(ex in raw_loc_lower for ex in loc_excl_kws)
+            ):
+                return False
+            return (
+                any(kw in effective_loc for kw in loc_match_kws)
+                or any(kw in raw_loc_lower for kw in loc_match_kws)
+            )
+
+        def _company_matches(fn: str) -> bool:
+            stored_co = str(meta_lookup.get(fn, {}).get("current_company") or "").lower()
+            return any(c in stored_co for c in company_filter)
 
         def _exp_matches(fn: str) -> bool:
             stored_exp = str(meta_lookup.get(fn, {}).get("exp_level") or "").strip().lower()
             return stored_exp == query_exp_level.lower()
 
         pre_filtered = list(base_filenames)
+        company_boost_set: set = set()  # current-company matches → sorted to top of results
+
         if loc_match_kws:
             pre_filtered = [fn for fn in pre_filtered if _loc_matches(fn)]
             print(f"DEBUG: [search] location pre-filter: {len(pre_filtered)} resumes")
+        if company_filter:
+            co_filtered = [fn for fn in base_filenames if _company_matches(fn)]
+            if co_filtered:
+                if strict_company:
+                    # Present tense ("working in X") → show ONLY current-company matches
+                    pre_filtered = [fn for fn in pre_filtered if fn in set(co_filtered)]
+                    print(f"DEBUG: [search] company strict-filter: {len(pre_filtered)} resumes")
+                else:
+                    # Past tense ("worked at X") → boost current matches to top, keep rest
+                    company_boost_set = set(co_filtered)
+                    print(f"DEBUG: [search] company boost set: {len(company_boost_set)} resumes (will be ranked first)")
+            else:
+                print(f"DEBUG: [search] company filter had 0 current-company matches — relying on semantic search")
         if query_exp_level and not exp_level:
             # Only apply query exp_level if the dropdown filter isn't already set
             exp_filtered = [fn for fn in pre_filtered if _exp_matches(fn)]
@@ -865,12 +1734,29 @@ async def get_resume_database(
             else:
                 print(f"DEBUG: [search] exp_level '{query_exp_level}' had 0 matches — skipping filter")
 
-        loc_pool = pre_filtered if (loc_match_kws or query_exp_level) else None
+        # loc_pool restricts semantic results to the pre-filtered set.
+        # Strict company filter (present tense) acts like a hard filter — only those candidates returned.
+        # Past-tense company filter uses boost instead, so loc_pool stays None.
+        # If location was explicitly specified but no candidates match, return empty — don't fall back to all.
+        if loc_match_kws and not pre_filtered:
+            print(f"DEBUG: [search] location pre-filter matched 0 resumes — returning empty")
+            return {"resumes": [], "total": 0}
+
+        if (loc_match_kws or query_exp_level or strict_company) and pre_filtered:
+            loc_pool = pre_filtered
+        else:
+            loc_pool = None
 
         try:
             # Search limit: cover entire loc_pool (or full DB if no location filter)
             sem_limit = max(500, len(loc_pool) * 3) if loc_pool is not None else 500
-            results = search_resumes_semantic(semantic_query or search.strip(), user_id, limit=sem_limit, is_recruiter=is_recruiter)
+            final_query = semantic_query or _raw_query
+            # Reuse pre-computed embedding when the query wasn't modified by intent parsing
+            reuse_vector = raw_vector if (final_query.strip() == _raw_query.strip()) else None
+            results = search_resumes_hybrid(final_query, user_id, limit=sem_limit,
+                                            api_key=creds["openrouter_key"],
+                                            is_recruiter=is_recruiter,
+                                            pre_computed_vector=reuse_vector)
             if results is not None and not results.empty:
                 seen: set = set()
                 ranked = []
@@ -907,6 +1793,22 @@ async def get_resume_database(
                         # Fallback: no semantic results at all — return full loc_pool
                         ranked = loc_pool
                     print(f"DEBUG: [search] location result: {len(ranked_loc)} semantic, {len(missed)} appended")
+
+                if company_boost_set and not has_role_signal:
+                    # Boost only when there is no specific role/skill in the query.
+                    # For role+company queries ("java developer from apple"), semantic
+                    # search already ranks by role — boosting ALL company employees
+                    # would promote non-Java Apple employees above Java developers.
+                    # For company-only queries ("candidates from apple"), boost is the
+                    # primary signal so all company matches go first.
+                    boosted   = [fn for fn in ranked if fn in company_boost_set]
+                    rest      = [fn for fn in ranked if fn not in company_boost_set]
+                    sem_set   = set(ranked)
+                    missed_co = [fn for fn in company_boost_set if fn not in sem_set]
+                    ranked    = boosted + rest + missed_co
+                    print(f"DEBUG: [search] company boost: {len(boosted)} boosted, {len(rest)} rest, {len(missed_co)} appended")
+                elif company_boost_set and has_role_signal:
+                    print(f"DEBUG: [search] role+company query — semantic order preserved, company boost skipped")
 
                 base_filenames = ranked
         except Exception as e:
@@ -950,14 +1852,34 @@ async def get_resume_database(
         target = exp_level.strip().lower()
         resumes = [r for r in resumes if str(r.get("exp_level") or "").strip().lower() == target]
     if location and location.strip():
-        # Normalize the filter value the same way stored values are normalized
-        norm_filter = (_normalize_location(location.strip()) or location.strip()).lower()
-        city_only = norm_filter.split(",")[0].strip()
-        resumes = [
-            r for r in resumes
-            if norm_filter in (_normalize_location(str(r.get("location") or "")) or "").lower()
-            or city_only in str(r.get("location") or "").lower()
-        ]
+        loc_filter = location.strip()
+        metro_substrings = _METRO_TO_SUBSTRINGS.get(loc_filter)
+        if metro_substrings:
+            # State-level filter (e.g. "California"): match ", CA" substring, exclude international
+            subs_lower = [s.lower() for s in metro_substrings]
+            resumes = [
+                r for r in resumes
+                if any(sub in str(r.get("location") or "").lower() for sub in subs_lower)
+                and _classify_region(str(r.get("location") or "")) == "United States"
+            ]
+        else:
+            # City-level filter: prefer metro_location field (LLM-resolved at ingest).
+            # For older resumes without it, fall back to _suburb_to_metro + substring match.
+            norm_filter = (_normalize_location(loc_filter) or loc_filter)
+            norm_filter_lower = norm_filter.lower()
+            city_only = norm_filter_lower.split(",")[0].strip()
+            def _city_matches(r: dict) -> bool:
+                stored_metro = str(r.get("metro_location") or "")
+                if stored_metro and stored_metro != "nan":
+                    return stored_metro.lower() == norm_filter_lower
+                # Legacy fallback
+                raw_loc = str(r.get("location") or "")
+                return (
+                    norm_filter_lower in (_normalize_location(raw_loc) or "").lower()
+                    or city_only in raw_loc.lower()
+                    or _suburb_to_metro(raw_loc) == norm_filter
+                )
+            resumes = [r for r in resumes if _city_matches(r)]
 
     # 5b. Applied filter — sourced from job_resume_applied counts built above
     if applied == "applied":
@@ -1117,9 +2039,6 @@ async def upload_resumes(
             if store_db_bool:
                 print(f"Storing in DB: {safe_filename}")
                 store_resume(safe_filename, text, user_id, api_key=creds["openrouter_key"])
-                # Register in resume_meta immediately so the tile appears right away,
-                # even before LLM metadata extraction completes.
-                store_resume_validation(user_id, safe_filename, {}, {})
                 db_changed = True
 
             # Quick text-based field presence check (no structured JSON needed)
@@ -1183,6 +2102,23 @@ async def delete_resume(filename: str, user_id: str = Depends(get_current_user))
     return {"success": True, "deleted": filename}
 
 
+@router.post("/purge-dangling")
+async def purge_dangling_metadata(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+):
+    """Remove resume_meta rows that have no corresponding chunks in the resumes table.
+
+    Only managers may run this. Returns the list of purged filenames.
+    """
+    if role not in ("manager",):
+        raise HTTPException(status_code=403, detail="Manager role required")
+
+    from services.db.lancedb_client import purge_dangling_meta
+    purged = purge_dangling_meta()
+    return {"purged": purged, "count": len(purged)}
+
+
 @router.get("")
 async def list_resumes_all(
     user_id: str = Depends(get_current_user),
@@ -1230,14 +2166,30 @@ async def update_resume_text(
     x_llm_model: Optional[str] = Header(None),
     user_id: str = Depends(get_current_user)
 ):
-    """Update extracted text for a resume and re-index in vector DB."""
+    """Update extracted text for a resume: re-index chunks/vectors AND refresh metadata."""
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     from services.db.lancedb_client import update_resume_text as db_update
+
+    # 1. Re-chunk, re-embed and store new vectors
     try:
         db_update(filename, user_id, body.text, api_key=creds["openrouter_key"])
-        return {"success": True, "filename": filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    # 2. Re-extract candidate metadata and update resume_meta table
+    text = body.text.strip()
+    if text:
+        llm_config = build_llm_config(creds["openrouter_key"], creds.get("llm_model"))
+        candidate_meta: dict = {}
+        try:
+            cls_result = _llm_classify_batch([(filename, text)], llm_config)
+            candidate_meta = _clean_metadata(cls_result.get(filename, {}), llm_config)
+            print(f"DEBUG: [update] Re-extracted metadata for '{filename}': {list(candidate_meta.keys())}")
+        except Exception as e:
+            print(f"DEBUG: [update] Metadata re-extraction failed for '{filename}': {e}")
+        store_resume_validation(user_id, filename, {}, candidate_meta)
+
+    return {"success": True, "filename": filename}
 
 
 @router.put("/{filename}/rename")

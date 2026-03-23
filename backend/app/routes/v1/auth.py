@@ -3,14 +3,7 @@ from fastapi.responses import RedirectResponse
 import urllib.parse
 
 from app.models import LoginRequest
-from app.config import (
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    LINKEDIN_CLIENT_ID,
-    LINKEDIN_CLIENT_SECRET,
-    FRONTEND_URL,
-    BACKEND_URL,
-)
+from app.config import FRONTEND_URL, BACKEND_URL, get_oauth_creds
 from services.db.lancedb_client import get_or_create_table
 
 router = APIRouter()
@@ -26,25 +19,27 @@ async def login(request: LoginRequest):
 
 @router.get("/google")
 async def auth_google():
+    creds = get_oauth_creds()
     return RedirectResponse(
-        url=f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/auth/google/callback&scope=openid%20email%20profile"
+        url=f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={creds['google_client_id']}&redirect_uri={BACKEND_URL}/api/auth/google/callback&scope=openid%20email%20profile"
     )
 
 
 @router.get("/google/callback")
 async def auth_google_callback(code: str):
     import requests as req
+    creds = get_oauth_creds()
     display_name = "Google User"
     email = "user@example.com"
 
-    if GOOGLE_CLIENT_ID != "placeholder_id" and GOOGLE_CLIENT_SECRET != "placeholder_secret":
+    if creds["google_client_id"] != "placeholder_id" and creds["google_client_secret"] != "placeholder_secret":
         try:
             token_res = req.post("https://oauth2.googleapis.com/token", data={
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": f"{BACKEND_URL}/api/auth/google/callback",
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
+                "client_id": creds["google_client_id"],
+                "client_secret": creds["google_client_secret"],
             })
             token_data = token_res.json()
             if "access_token" in token_data:
@@ -66,15 +61,17 @@ async def auth_google_callback(code: str):
 
 @router.get("/linkedin")
 async def auth_linkedin():
+    creds = get_oauth_creds()
     print("--- [Auth] Redirecting to LinkedIn OAuth ---")
     return RedirectResponse(
-        url=f"https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id={LINKEDIN_CLIENT_ID}&redirect_uri={BACKEND_URL}/api/auth/linkedin/callback&scope=openid%20profile%20email"
+        url=f"https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id={creds['linkedin_client_id']}&redirect_uri={BACKEND_URL}/api/auth/linkedin/callback&scope=openid%20profile%20email"
     )
 
 
 @router.get("/linkedin/callback")
 async def auth_linkedin_callback(code: str, background_tasks: BackgroundTasks):
     import requests
+    creds = get_oauth_creds()
 
     user_id = "user_alex_chen_123"  # LinkedIn OAuth users are jobseekers
     profile_data = None
@@ -84,7 +81,7 @@ async def auth_linkedin_callback(code: str, background_tasks: BackgroundTasks):
     auth_debug_msg = ""
 
     # 1. Attempt Real Token Exchange if secrets are present
-    if LINKEDIN_CLIENT_ID != "placeholder_id" and LINKEDIN_CLIENT_SECRET != "placeholder_secret":
+    if creds["linkedin_client_id"] != "placeholder_id" and creds["linkedin_client_secret"] != "placeholder_secret":
         try:
             print("--- Attempting Real LinkedIn Token Exchange ---")
             token_url = "https://www.linkedin.com/oauth/v2/accessToken"
@@ -92,8 +89,8 @@ async def auth_linkedin_callback(code: str, background_tasks: BackgroundTasks):
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": f"{BACKEND_URL}/api/auth/linkedin/callback",
-                "client_id": LINKEDIN_CLIENT_ID,
-                "client_secret": LINKEDIN_CLIENT_SECRET
+                "client_id": creds["linkedin_client_id"],
+                "client_secret": creds["linkedin_client_secret"]
             }
             token_res = requests.post(token_url, data=payload)
             token_data = token_res.json()

@@ -2,7 +2,6 @@ import lancedb
 from pathlib import Path
 from uuid import uuid4
 import pyarrow as pa
-import os
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
@@ -21,10 +20,10 @@ db = lancedb.connect(DB_PATH)
 _embeddings_cache = {}
 
 def get_embeddings_model(api_key=None, model="text-embedding-3-small"):
-    key = api_key or os.getenv("OPEN_ROUTER_KEY")
+    key = api_key
     if not key:
         print("DEBUG: [embeddings] ERROR: No API key found for embeddings")
-        raise ValueError("OPEN_ROUTER_KEY is required for semantic search. Please set it in your .env file or environment.")
+        raise ValueError("OpenRouter API key is required for semantic search. Please save your key in Settings.")
     
     # OpenRouter often requires 'openai/' prefix for OpenAI models
     model_name = model if "/" in model else f"openai/{model}"
@@ -64,6 +63,7 @@ job_schema = pa.schema([
     pa.field("employer_name", pa.string()),
     pa.field("employer_email", pa.string()),
     pa.field("location_name", pa.string()),
+    pa.field("metro_location", pa.string()),    # LLM-resolved major metro (e.g. "Los Angeles, CA")
     pa.field("location_lat", pa.float64()),
     pa.field("location_lng", pa.float64()),
     pa.field("employment_type", pa.string()),
@@ -422,6 +422,7 @@ resume_meta_schema = pa.schema([
     pa.field("exp_level", pa.string()),
     pa.field("current_company", pa.string()),
     pa.field("location", pa.string()),
+    pa.field("metro_location", pa.string()),    # LLM-resolved major metro (e.g. "Los Angeles, CA")
     pa.field("phone", pa.string()),
     pa.field("email", pa.string()),
     pa.field("linkedin_url", pa.string()),
@@ -434,12 +435,13 @@ resume_meta_schema = pa.schema([
 ])
 
 _RESUME_META_COLS = ["candidate_name", "role", "industry", "exp_level",
-                     "current_company", "location", "phone", "email",
+                     "current_company", "location", "metro_location", "phone", "email",
                      "linkedin_url", "github_url", "skills_json",
                      "summary", "years_experience", "education", "certifications_json"]
 
-_RESUME_META_NEW_COLS = {"email", "linkedin_url", "github_url",
-                         "summary", "years_experience", "education", "certifications_json"}
+_RESUME_META_NEW_COLS = {"phone", "email", "linkedin_url", "github_url",
+                         "summary", "years_experience", "education", "certifications_json",
+                         "metro_location"}
 
 
 def get_or_create_resume_meta_table():
@@ -523,14 +525,34 @@ def delete_resume_validation(user_id: str, filename: str):
 
 # ---------- DELETE USER RESUME ----------
 def delete_user_resume(user_id: str, filename: str):
-    """Delete all LanceDB entries for a specific user's resume."""
+    """Delete all LanceDB entries for a specific user's resume across all tables."""
+    safe_fn = filename.replace("'", "''")
+    safe_uid = user_id.replace("'", "''")
+
+    # 1. Resume chunks + vectors
     table = get_or_create_table()
     try:
-        table.delete(f"user_id = '{user_id}' AND filename = '{filename}'")
-        print(f"DEBUG: Deleted resume '{filename}' for user {user_id}")
+        table.delete(f"user_id = '{safe_uid}' AND filename = '{safe_fn}'")
+        print(f"DEBUG: Deleted resume chunks '{filename}' for user {user_id}")
     except Exception as e:
-        print(f"DEBUG: Failed to delete resume '{filename}' for {user_id}: {e}")
+        print(f"DEBUG: Failed to delete resume chunks '{filename}' for {user_id}: {e}")
         raise e
+
+    # 2. Job applications referencing this resume
+    try:
+        applied_table = get_or_create_job_applied_table()
+        applied_table.delete(f"user_id = '{safe_uid}' AND resume_id = '{safe_fn}'")
+        print(f"DEBUG: Deleted job_resume_applied rows for '{filename}'")
+    except Exception as e:
+        print(f"DEBUG: Failed to clean job_resume_applied for '{filename}': {e}")
+
+    # 3. Activity log entries referencing this resume
+    try:
+        activity_table = get_or_create_activity_table()
+        activity_table.delete(f"user_id = '{safe_uid}' AND filename = '{safe_fn}'")
+        print(f"DEBUG: Deleted activity rows for '{filename}'")
+    except Exception as e:
+        print(f"DEBUG: Failed to clean activity for '{filename}': {e}")
 
 # ---------- LIST USER RESUMES ----------
 def list_user_resumes(user_id: str) -> list:
@@ -659,29 +681,273 @@ def get_resume_text_map(filenames: list) -> dict:
         return {}
 
 
+# ---------- PURGE DANGLING METADATA ----------
+
+def purge_dangling_meta() -> list:
+    """Remove resume_meta (and orphaned chunks) where either:
+      - The meta row has no corresponding chunks in the resumes table, OR
+      - The physical file no longer exists on disk (lost file — DB is stale).
+
+    Called at server startup and available to the API layer. Returns list of purged filenames.
+    """
+    import os
+    from pathlib import Path as _Path
+
+    # Derive upload dir the same way the app config does
+    upload_dir = str(_PROJECT_ROOT / "data" / "raw_resumes")
+
+    try:
+        chunks_table = get_or_create_table()
+        chunks_df = chunks_table.to_pandas()
+        chunks_filenames = set(chunks_df["filename"].unique()) if not chunks_df.empty else set()
+    except Exception as e:
+        print(f"DEBUG: [purge] Could not load chunks table: {e}")
+        return []
+
+    try:
+        meta_table = get_or_create_resume_meta_table()
+        meta_df = meta_table.to_pandas()
+        if meta_df.empty:
+            return []
+        meta_filenames = set(meta_df["filename"].unique())
+    except Exception as e:
+        print(f"DEBUG: [purge] Could not load meta table: {e}")
+        return []
+
+    # Case 1: meta with no chunks
+    no_chunks = meta_filenames - chunks_filenames
+
+    # Case 2: has chunks + meta but physical file is gone from disk
+    disk_missing = {
+        fn for fn in meta_filenames
+        if not os.path.exists(os.path.join(upload_dir, fn))
+    }
+
+    dangling = no_chunks | disk_missing
+
+    purged = []
+    for fn in sorted(dangling):
+        safe = fn.replace("'", "''")
+        try:
+            meta_table.delete(f"filename = '{safe}'")
+        except Exception as e:
+            print(f"DEBUG: [purge] Failed to remove meta for '{fn}': {e}")
+            continue
+        # Also remove orphaned chunks if disk file is missing
+        if fn in disk_missing:
+            try:
+                chunks_table.delete(f"filename = '{safe}'")
+            except Exception as e:
+                print(f"DEBUG: [purge] Failed to remove chunks for '{fn}': {e}")
+        purged.append(fn)
+        print(f"DEBUG: [purge] Removed dangling entry for '{fn}'")
+
+    if purged:
+        print(f"DEBUG: [purge] Removed {len(purged)} dangling entries: {purged}")
+    return purged
+
+
+# ---------- HYBRID SEARCH UTILITIES ----------
+
+# Track which tables already have an FTS index this session to avoid recreating
+_fts_indexed: set = set()
+
+def _ensure_fts_index(table, columns: list, table_name: str) -> list:
+    """Create per-column FTS indexes lazily (LanceDB supports only one field per index).
+
+    Returns the list of columns that now have a usable FTS index.
+    """
+    global _fts_indexed
+    ready = []
+    for col in columns:
+        key = f"{table_name}.{col}"
+        if key in _fts_indexed:
+            ready.append(col)
+            continue
+        try:
+            table.create_fts_index(col, replace=True)
+            _fts_indexed.add(key)
+            print(f"DEBUG: [fts] Created FTS index on {table_name}.{col}")
+            ready.append(col)
+        except Exception as e:
+            print(f"DEBUG: [fts] Could not create FTS index on {table_name}.{col}: {e}")
+    return ready
+
+
+def _rrf_merge(ranked_lists: list, k: int = 60) -> list:
+    """
+    Reciprocal Rank Fusion: merge multiple ranked ID lists into one.
+    score(id) = Σ 1 / (k + rank_i + 1)  for each list that contains id.
+    Returns IDs sorted by descending combined score.
+    """
+    scores: dict = {}
+    for ranked in ranked_lists:
+        for rank, item_id in enumerate(ranked):
+            scores[item_id] = scores.get(item_id, 0.0) + 1.0 / (k + rank + 1)
+    return sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+
+
 # ---------- SEARCH ----------
-def search_resumes_semantic(query: str, user_id: str, limit: int = 5, api_key: str = None, is_recruiter: bool = False):
-    print(f"DEBUG: Semantic search query: {query} (User: {user_id}, IsRecruiter: {is_recruiter})")
+
+def search_resumes_hybrid(query: str, user_id: str, limit: int = 5, api_key: str = None,
+                          is_recruiter: bool = False, pre_computed_vector: list = None):
+    """
+    Hybrid search: vector (semantic) + FTS (keyword) merged with Reciprocal Rank Fusion.
+    Falls back gracefully — if one source fails, the other is used alone.
+    Returns a pandas DataFrame in RRF-merged order (compatible with search_resumes_semantic).
+
+    pre_computed_vector: optional pre-computed query embedding (avoids a second embed API call
+    when the caller already embedded the query in parallel with intent parsing).
+    """
+    import pandas as pd
+    print(f"DEBUG: Hybrid search query: {query!r} (IsRecruiter: {is_recruiter})")
     table = get_or_create_table()
-    
-    total_rows = len(table)
-    if total_rows == 0:
-        import pandas as pd
+    if len(table) == 0:
         return pd.DataFrame()
 
-    embeddings = get_embeddings_model(api_key=api_key)
-    
+    where_clause = None if is_recruiter else f"user_id = '{user_id}'"
+
+    # -- Vector (semantic) search --
+    sem_rows: list = []
     try:
-        query_vector = embeddings.embed_query(query)
+        embeddings = get_embeddings_model(api_key=api_key)
+        query_vector = pre_computed_vector if pre_computed_vector is not None else embeddings.embed_query(query)
+        op = table.search(query_vector)
+        if where_clause:
+            op = op.where(where_clause)
+        sem_rows = op.limit(limit).to_list()
+        print(f"DEBUG: [hybrid] Semantic returned {len(sem_rows)} rows")
     except Exception as e:
-        print(f"DEBUG: [search] FATAL: embed_query failed: {e}")
-        raise e
-    
-    # Use LanceDB's where clause for filtering
-    search_op = table.search(query_vector)
-    if not is_recruiter:
-        search_op = search_op.where(f"user_id = '{user_id}'")
-        
-    results = search_op.limit(limit).to_pandas()
-    print(f"DEBUG: Found {len(results)} matches (Global: {is_recruiter})")
-    return results
+        print(f"DEBUG: [hybrid] Semantic search failed: {e}")
+
+    # -- FTS (keyword) search --
+    fts_rows: list = []
+    if _ensure_fts_index(table, ["text"], "resumes"):
+        try:
+            op = table.search(query, query_type="fts", fts_columns="text")
+            if where_clause:
+                op = op.where(where_clause)
+            fts_rows = op.limit(limit).to_list()
+            print(f"DEBUG: [hybrid] FTS returned {len(fts_rows)} rows")
+        except Exception as e:
+            print(f"DEBUG: [hybrid] FTS search failed: {e}")
+
+    if not sem_rows and not fts_rows:
+        return pd.DataFrame()
+
+    # Deduplicate each source to a ranked filename list (first occurrence = best chunk)
+    def _dedup(rows: list) -> list:
+        seen: set = set()
+        out: list = []
+        for r in rows:
+            fn = r.get("filename", "")
+            if fn and fn not in seen:
+                seen.add(fn)
+                out.append(fn)
+        return out
+
+    sem_fns = _dedup(sem_rows)
+    fts_fns = _dedup(fts_rows)
+    print(f"DEBUG: [hybrid] Unique filenames — semantic: {len(sem_fns)}, fts: {len(fts_fns)}")
+
+    # RRF merge
+    lists = [l for l in [sem_fns, fts_fns] if l]
+    merged_fns = _rrf_merge(lists)
+
+    # Build row lookup — prefer semantic row (richer data with distance)
+    row_lookup: dict = {}
+    for r in fts_rows:
+        fn = r.get("filename", "")
+        if fn and fn not in row_lookup:
+            row_lookup[fn] = r
+    for r in sem_rows:
+        fn = r.get("filename", "")
+        if fn:
+            row_lookup[fn] = r
+
+    records = [row_lookup[fn] for fn in merged_fns if fn in row_lookup]
+    df = pd.DataFrame(records[:limit])
+    print(f"DEBUG: [hybrid] Final merged result: {len(df)} rows")
+    return df
+
+
+def search_jobs_hybrid(query: str, limit: int = 50, api_key: str = None,
+                       where_clause: str = None, fetch_cap: int = 500) -> list:
+    """
+    Hybrid search for jobs: vector + FTS merged with RRF.
+    Returns a list of raw LanceDB row dicts in merged order.
+    Falls back gracefully — if one source fails, the other is used alone.
+    """
+    table = get_or_create_jobs_table()
+    if len(table) == 0:
+        return []
+
+    # -- Vector (semantic) search --
+    sem_rows: list = []
+    try:
+        embeddings = get_embeddings_model(api_key=api_key)
+        query_vector = embeddings.embed_query(query)
+        op = table.search(query_vector).metric("cosine")
+        if where_clause:
+            op = op.where(where_clause)
+        sem_rows = op.limit(fetch_cap).to_list()
+        print(f"DEBUG: [hybrid-jobs] Semantic returned {len(sem_rows)} rows")
+    except Exception as e:
+        print(f"DEBUG: [hybrid-jobs] Semantic search failed: {e}")
+
+    # -- FTS (keyword) search — one index per column, results merged by job_id --
+    fts_rows: list = []
+    fts_cols = _ensure_fts_index(table, ["title", "description", "employer_name"], "jobs")
+    if fts_cols:
+        fts_seen: set = set()
+        for col in fts_cols:
+            try:
+                op = table.search(query, query_type="fts", fts_columns=col)
+                if where_clause:
+                    op = op.where(where_clause)
+                col_rows = op.limit(fetch_cap).to_list()
+                for r in col_rows:
+                    jid = r.get("job_id", "")
+                    if jid and jid not in fts_seen:
+                        fts_seen.add(jid)
+                        fts_rows.append(r)
+            except Exception as e:
+                print(f"DEBUG: [hybrid-jobs] FTS search on '{col}' failed: {e}")
+        if fts_rows:
+            print(f"DEBUG: [hybrid-jobs] FTS returned {len(fts_rows)} unique rows across {fts_cols}")
+
+    if not sem_rows and not fts_rows:
+        return []
+
+    # Deduplicate each source to a ranked job_id list
+    def _dedup(rows: list) -> list:
+        seen: set = set()
+        out: list = []
+        for r in rows:
+            jid = r.get("job_id", "")
+            if jid and jid not in seen:
+                seen.add(jid)
+                out.append(jid)
+        return out
+
+    sem_ids = _dedup(sem_rows)
+    fts_ids = _dedup(fts_rows)
+    print(f"DEBUG: [hybrid-jobs] Unique jobs — semantic: {len(sem_ids)}, fts: {len(fts_ids)}")
+
+    lists = [l for l in [sem_ids, fts_ids] if l]
+    merged_ids = _rrf_merge(lists)
+
+    # Build row lookup — prefer semantic row (has _distance)
+    row_lookup: dict = {}
+    for r in fts_rows:
+        jid = r.get("job_id", "")
+        if jid and jid not in row_lookup:
+            row_lookup[jid] = r
+    for r in sem_rows:
+        jid = r.get("job_id", "")
+        if jid:
+            row_lookup[jid] = r
+
+    result = [row_lookup[jid] for jid in merged_ids if jid in row_lookup]
+    print(f"DEBUG: [hybrid-jobs] Final merged result: {len(result)} rows")
+    return result

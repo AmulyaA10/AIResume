@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 import json
 
-from app.dependencies import get_current_user
-from app.models import UserSettingsUpdate, UserSettingsResponse
+from app.dependencies import get_current_user, get_user_role
+from app.models import UserSettingsUpdate, UserSettingsResponse, SystemSettingsUpdate, SystemSettingsResponse
 from app.common import encrypt_value, decrypt_value, mask_value
 from services.db.lancedb_client import (
     get_or_create_table,
@@ -15,6 +15,13 @@ from services.db.lancedb_client import (
 router = APIRouter()
 
 SENSITIVE_KEYS = ["openRouterKey", "linkedinUser", "linkedinPass"]
+
+SYSTEM_USER = "__system__"
+SYSTEM_SENSITIVE_KEYS = [
+    "googleClientId", "googleClientSecret",
+    "linkedinClientId", "linkedinClientSecret",
+    "smtpServer", "smtpPort", "smtpUsername", "smtpPassword", "smtpSender",
+]
 
 
 @router.get("/profile")
@@ -73,11 +80,14 @@ async def save_user_settings(
     if not updates:
         raise HTTPException(status_code=400, detail="No settings provided.")
 
+    # Sensitive credentials are stored globally under the manager account so that
+    # resolve_credentials() can find them regardless of which user is logged in.
+    CREDENTIAL_STORE_USER = "user_manager_789"
     try:
         for key, plaintext in updates.items():
             if key in SENSITIVE_KEYS:
                 encrypted = encrypt_value(plaintext)
-                upsert_user_setting(user_id, key, encrypted)
+                upsert_user_setting(CREDENTIAL_STORE_USER, key, encrypted)
     except Exception as e:
         print(f"ERROR: [save_user_settings] Failed to encrypt/store credentials for user '{user_id}': {e}")
         raise HTTPException(
@@ -131,3 +141,48 @@ async def clear_user_settings(
     """Delete all stored credentials for the user."""
     delete_user_settings(user_id)
     return {"success": True, "message": "All credentials cleared."}
+
+
+@router.put("/system/settings")
+async def save_system_settings(
+    body: SystemSettingsUpdate,
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+):
+    """Encrypt and store system-level credentials (manager only)."""
+    if role not in ("recruiter", "manager"):
+        raise HTTPException(status_code=403, detail="Manager access required.")
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No settings provided.")
+    try:
+        for key, plaintext in updates.items():
+            if key in SYSTEM_SENSITIVE_KEYS and plaintext:
+                encrypted = encrypt_value(plaintext)
+                upsert_user_setting(SYSTEM_USER, key, encrypted)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save system settings: {str(e)}")
+    return {"success": True, "updated_keys": list(updates.keys())}
+
+
+@router.get("/system/settings", response_model=SystemSettingsResponse)
+async def get_system_settings_endpoint(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+):
+    """Return masked system settings (manager only)."""
+    if role not in ("recruiter", "manager"):
+        raise HTTPException(status_code=403, detail="Manager access required.")
+    stored = get_user_settings(SYSTEM_USER) or {}
+    return SystemSettingsResponse(
+        has_googleClientId=bool(stored.get("googleClientId")),
+        has_googleClientSecret=bool(stored.get("googleClientSecret")),
+        has_linkedinClientId=bool(stored.get("linkedinClientId")),
+        has_linkedinClientSecret=bool(stored.get("linkedinClientSecret")),
+        has_smtpServer=bool(stored.get("smtpServer")),
+        has_smtpUsername=bool(stored.get("smtpUsername")),
+        googleClientId=mask_value(decrypt_value(stored["googleClientId"])) if stored.get("googleClientId") else None,
+        linkedinClientId=mask_value(decrypt_value(stored["linkedinClientId"])) if stored.get("linkedinClientId") else None,
+        smtpServer=decrypt_value(stored["smtpServer"]) if stored.get("smtpServer") else None,  # not sensitive to display
+        smtpUsername=mask_value(decrypt_value(stored["smtpUsername"])) if stored.get("smtpUsername") else None,
+    )

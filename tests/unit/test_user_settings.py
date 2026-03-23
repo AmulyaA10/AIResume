@@ -37,7 +37,9 @@ async def test_save_settings_success(app, auth_headers):
         data = resp.json()
         assert data["success"] is True
         assert "openRouterKey" in data["updated_keys"]
-        mock_upsert.assert_called_once_with("user_alex_chen_123", "openRouterKey", "encrypted_blob")
+        # Sensitive credentials are always stored under user_manager_789 so that
+        # resolve_credentials() can find them regardless of which user is logged in.
+        mock_upsert.assert_called_once_with("user_manager_789", "openRouterKey", "encrypted_blob")
 
 
 @pytest.mark.asyncio
@@ -243,29 +245,16 @@ async def test_resolve_credentials_partial_fallback():
 
 
 @pytest.mark.asyncio
-async def test_resolve_credentials_triggers_migration_on_empty():
-    """resolve_credentials triggers orphan migration when jobseeker user has no settings."""
-    from app.common.encryption import encrypt_value
+async def test_resolve_credentials_returns_none_when_no_stored():
+    """resolve_credentials returns None values when manager has no stored credentials."""
     from app.dependencies import resolve_credentials
 
-    migrated = {
-        "linkedinUser": encrypt_value("migrated@email.com"),
-        "linkedinPass": encrypt_value("migrated-pass"),
-    }
-
-    # First call returns empty (no settings), second call returns migrated values
-    with patch(
-        "services.db.lancedb_client.get_user_settings",
-        side_effect=[{}, migrated],
-    ) as mock_get, patch(
-        "services.db.lancedb_client.migrate_orphaned_settings"
-    ) as mock_migrate:
+    with patch("services.db.lancedb_client.get_user_settings", return_value={}):
         result = await resolve_credentials(user_id="user_alex_chen_123")
 
-    mock_migrate.assert_called_once_with("user_recruiter_456", "user_alex_chen_123")
-    assert mock_get.call_count == 2
-    assert result["linkedin_user"] == "migrated@email.com"
-    assert result["linkedin_pass"] == "migrated-pass"
+    assert result["openrouter_key"] is None
+    assert result["linkedin_user"] is None
+    assert result["linkedin_pass"] is None
 
 
 @pytest.mark.asyncio

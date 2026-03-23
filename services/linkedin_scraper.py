@@ -1,5 +1,4 @@
 import json
-import os
 import time
 import threading
 from pathlib import Path
@@ -135,7 +134,7 @@ def check_profile_scrapable(profile_url: str, email: str = None) -> dict:
         }
 
     # 2. Load saved cookies if available
-    _email = email or os.getenv("LinkedinLogin")
+    _email = email
     cookies_dict = {}
     if _email:
         try:
@@ -561,7 +560,7 @@ def _poll_login(driver, login_wait: int, early_return_on_challenge: bool = False
         if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
             raise ValueError(
                 "LinkedIn login failed — incorrect email or password. "
-                "Check your LinkedinLogin and LinkedinPassword in .env."
+                "Please update your LinkedIn credentials in Settings."
             )
 
         # If we're past the login/checkpoint pages, we're in
@@ -614,7 +613,7 @@ def _poll_login(driver, login_wait: int, early_return_on_challenge: bool = False
     return login_success, challenge_detected
 
 
-def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
+def _scrape_profile_content(driver, profile_url: str, start_time: float, email: str = None) -> str:
     """Navigate to profile and extract all content (Steps 2–7).
 
     Shared by both scrape_linkedin_profile() and resume_linkedin_session().
@@ -639,11 +638,10 @@ def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
     print(f"--- [Scraper] Profile page URL: {current_url} ---")
     if any(kw in current_url for kw in ["authwall", "login", "checkpoint", "challenge"]):
         # Invalidate stale cookies so the next attempt does a fresh login
-        _email = os.getenv("LinkedinLogin")
-        if _email:
+        if email:
             try:
-                _cookie_path(_email).unlink(missing_ok=True)
-                print(f"--- [Scraper] Deleted stale cookies for {_email} ---")
+                _cookie_path(email).unlink(missing_ok=True)
+                print(f"--- [Scraper] Deleted stale cookies for {email} ---")
             except Exception:
                 pass
         raise ValueError(
@@ -713,11 +711,10 @@ def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
         if "page not found" in body_snippet.lower() or "this page doesn" in body_snippet.lower():
             raise ValueError(f"LinkedIn profile not found at {profile_url}. The URL may be incorrect.")
         if any(kw in current_url for kw in ["authwall", "login", "checkpoint", "challenge"]):
-            _email = os.getenv("LinkedinLogin")
-            if _email:
+            if email:
                 try:
-                    _cookie_path(_email).unlink(missing_ok=True)
-                    print(f"--- [Scraper] Deleted stale cookies for {_email} ---")
+                    _cookie_path(email).unlink(missing_ok=True)
+                    print(f"--- [Scraper] Deleted stale cookies for {email} ---")
                 except Exception:
                     pass
             raise ValueError(
@@ -733,10 +730,9 @@ def _scrape_profile_content(driver, profile_url: str, start_time: float) -> str:
     # Sanity check: if we're still on a login/authwall page, the content is useless
     current_url_final = driver.current_url
     if any(kw in current_url_final for kw in ["authwall", "login", "checkpoint", "challenge"]):
-        _email = os.getenv("LinkedinLogin")
-        if _email:
+        if email:
             try:
-                _cookie_path(_email).unlink(missing_ok=True)
+                _cookie_path(email).unlink(missing_ok=True)
             except Exception:
                 pass
         raise ValueError(
@@ -764,21 +760,17 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
             When a security challenge is detected, the Selenium driver is
             kept alive so that ``resume_linkedin_session()`` can pick it up.
 
-    Requires LinkedinLogin and LinkedinPassword in .env or passed as arguments.
+    Requires LinkedIn email and password passed as arguments (stored in DB via Settings).
     """
     # Clean up any stale sessions before starting
     _cleanup_stale_sessions()
 
     start_time = time.time()
 
-    email = email or os.getenv("LinkedinLogin")
-    password = password or os.getenv("LinkedinPassword")
-
     if not email or not password:
         raise ValueError(
             "LinkedIn scraper credentials are not configured. "
-            "Please set LinkedinLogin and LinkedinPassword in your backend/.env file "
-            "or save your LinkedIn email and password in Settings."
+            "Please save your LinkedIn email and password in Settings."
         )
 
     chrome_options = Options()
@@ -955,14 +947,14 @@ def scrape_linkedin_profile(profile_url, email=None, password=None,
                 print(f"--- [Scraper] Warning: Still on login-like page after {_login_wait}s: {current_url} ---")
 
         # Logged in (either via cookies or fresh login) — scrape profile
-        return _scrape_profile_content(driver, profile_url, start_time)
+        return _scrape_profile_content(driver, profile_url, start_time, email=email)
 
     finally:
         if not session_cached:
             driver.quit()
 
 
-def resume_linkedin_session(session_id: str, profile_url: str, login_wait: int = 60):
+def resume_linkedin_session(session_id: str, profile_url: str, login_wait: int = 60, email: str = None):
     """Resume polling a cached Selenium session after the user approved on phone.
 
     On the first scrape attempt, if a security challenge was detected, the
@@ -1040,10 +1032,9 @@ def resume_linkedin_session(session_id: str, profile_url: str, login_wait: int =
 
         # Login succeeded! Save cookies so the next scrape can skip login.
         print(f"--- [Scraper] Session {session_id}: challenge approved, proceeding to scrape ---")
-        _email = os.getenv("LinkedinLogin")
-        if _email:
-            _save_cookies(driver, _email)
-        return _scrape_profile_content(driver, profile_url, start_time)
+        if email:
+            _save_cookies(driver, email)
+        return _scrape_profile_content(driver, profile_url, start_time, email=email)
 
     finally:
         # Clean up the session UNLESS we need to keep it for another retry

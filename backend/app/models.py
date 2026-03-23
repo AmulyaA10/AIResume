@@ -53,6 +53,34 @@ class UserSettingsResponse(BaseModel):
     has_linkedinUser: bool = False
     has_linkedinPass: bool = False
 
+
+class SystemSettingsUpdate(BaseModel):
+    """System-level settings (OAuth app credentials, SMTP). Manager-only."""
+    googleClientId: Optional[str] = None
+    googleClientSecret: Optional[str] = None
+    linkedinClientId: Optional[str] = None
+    linkedinClientSecret: Optional[str] = None
+    smtpServer: Optional[str] = None
+    smtpPort: Optional[str] = None
+    smtpUsername: Optional[str] = None
+    smtpPassword: Optional[str] = None
+    smtpSender: Optional[str] = None
+
+
+class SystemSettingsResponse(BaseModel):
+    """Masked view of system settings for display."""
+    has_googleClientId: bool = False
+    has_googleClientSecret: bool = False
+    has_linkedinClientId: bool = False
+    has_linkedinClientSecret: bool = False
+    has_smtpServer: bool = False
+    has_smtpUsername: bool = False
+    googleClientId: Optional[str] = None
+    linkedinClientId: Optional[str] = None
+    smtpServer: Optional[str] = None
+    smtpUsername: Optional[str] = None
+
+
 class JobCreate(BaseModel):
     title: str
     description: str

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Key, User, Lock, Save, Database, Cpu, Trash2, CheckCircle, AlertCircle, Loader2, Shield } from 'lucide-react';
 import { PageHeader } from '../../common';
 import { useCredentials } from '../../context/CredentialContext';
+import { systemApi } from '../../api';
 
 const Settings = () => {
     const {
@@ -14,15 +15,30 @@ const Settings = () => {
         isLoaded,
     } = useCredentials();
 
+    // Role is stored as 'persona' in localStorage by AuthContext
+    const isManager = ['manager', 'recruiter'].includes(localStorage.getItem('persona') || '');
+
     const [llmModel, setLlmModel] = useState(localStorage.getItem('llmModel') || 'gpt-4o-mini');
     const [saving, setSaving] = useState(false);
     const [clearing, setClearing] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+    const [systemSettings, setSystemSettings] = useState({
+        googleClientId: '', googleClientSecret: '',
+        linkedinClientId: '', linkedinClientSecret: '',
+        smtpServer: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', smtpSender: '',
+    });
+    const [maskedSystem, setMaskedSystem] = useState<any>(null);
+
     // Load masked credentials from server on mount
     useEffect(() => {
         loadMaskedCredentials();
     }, [loadMaskedCredentials]);
+
+    useEffect(() => {
+        if (!isManager) return;
+        systemApi.getSettings().then(r => setMaskedSystem(r.data)).catch(() => {});
+    }, [isManager]);
 
     const models = [
         { id: 'gpt-4o-mini', name: 'GPT-4o Mini (OpenAI)' },
@@ -41,6 +57,17 @@ const Settings = () => {
 
             // Save sensitive credentials to server (encrypted)
             await saveCredentials();
+
+            if (isManager) {
+                const sysPayload: Record<string, string> = {};
+                Object.entries(systemSettings).forEach(([k, v]) => { if (v) sysPayload[k] = v; });
+                if (Object.keys(sysPayload).length > 0) {
+                    await systemApi.saveSettings(sysPayload);
+                    const r = await systemApi.getSettings();
+                    setMaskedSystem(r.data);
+                    setSystemSettings({ googleClientId: '', googleClientSecret: '', linkedinClientId: '', linkedinClientSecret: '', smtpServer: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', smtpSender: '' });
+                }
+            }
 
             setMessage({ type: 'success', text: 'Configuration saved securely.' });
             setTimeout(() => setMessage(null), 4000);
@@ -199,6 +226,99 @@ const Settings = () => {
                     </div>
                 </div>
             </div>
+
+            {isManager && (
+                <div className="glass-card p-8 space-y-6">
+                    <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
+                        <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
+                            <Shield size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900">OAuth & System Config</h3>
+                            <p className="text-xs text-slate-500 font-medium">Google/LinkedIn OAuth app credentials and SMTP</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Google OAuth */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Google Client ID</label>
+                            {maskedSystem?.has_googleClientId && !systemSettings.googleClientId && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved: {maskedSystem.googleClientId}</p>
+                            )}
+                            <input type="text" value={systemSettings.googleClientId}
+                                onChange={e => setSystemSettings(s => ({...s, googleClientId: e.target.value}))}
+                                placeholder="169779074152-..."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Google Client Secret</label>
+                            {maskedSystem?.has_googleClientSecret && !systemSettings.googleClientSecret && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved</p>
+                            )}
+                            <input type="password" value={systemSettings.googleClientSecret}
+                                onChange={e => setSystemSettings(s => ({...s, googleClientSecret: e.target.value}))}
+                                placeholder="GOCSPX-..."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        {/* LinkedIn OAuth */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">LinkedIn Client ID</label>
+                            {maskedSystem?.has_linkedinClientId && !systemSettings.linkedinClientId && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved: {maskedSystem.linkedinClientId}</p>
+                            )}
+                            <input type="text" value={systemSettings.linkedinClientId}
+                                onChange={e => setSystemSettings(s => ({...s, linkedinClientId: e.target.value}))}
+                                placeholder="78wrjblug83ngo"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">LinkedIn Client Secret</label>
+                            {maskedSystem?.has_linkedinClientSecret && !systemSettings.linkedinClientSecret && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved</p>
+                            )}
+                            <input type="password" value={systemSettings.linkedinClientSecret}
+                                onChange={e => setSystemSettings(s => ({...s, linkedinClientSecret: e.target.value}))}
+                                placeholder="WPL_AP1...."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        {/* SMTP */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">SMTP Server</label>
+                            {maskedSystem?.has_smtpServer && !systemSettings.smtpServer && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved: {maskedSystem.smtpServer}</p>
+                            )}
+                            <input type="text" value={systemSettings.smtpServer}
+                                onChange={e => setSystemSettings(s => ({...s, smtpServer: e.target.value}))}
+                                placeholder="smtp.gmail.com"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">SMTP Port</label>
+                            <input type="text" value={systemSettings.smtpPort}
+                                onChange={e => setSystemSettings(s => ({...s, smtpPort: e.target.value}))}
+                                placeholder="587"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">SMTP Username</label>
+                            {maskedSystem?.has_smtpUsername && !systemSettings.smtpUsername && (
+                                <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Saved: {maskedSystem.smtpUsername}</p>
+                            )}
+                            <input type="text" value={systemSettings.smtpUsername}
+                                onChange={e => setSystemSettings(s => ({...s, smtpUsername: e.target.value}))}
+                                placeholder="admin@example.com"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">SMTP Password</label>
+                            <input type="password" value={systemSettings.smtpPassword}
+                                onChange={e => setSystemSettings(s => ({...s, smtpPassword: e.target.value}))}
+                                placeholder="app password"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all" />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex justify-between items-center pt-6">
                 {/* Clear credentials button */}

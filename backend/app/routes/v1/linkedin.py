@@ -4,7 +4,6 @@ import json
 
 from app.dependencies import get_current_user, resolve_credentials
 from app.models import LinkedInScrapeRequest, LinkedInParseRequest, LinkedInCheckRequest
-from app.config import LINKEDIN_LOGIN, LINKEDIN_PASSWORD
 from app.common import build_llm_config, build_linkedin_creds, safe_log_activity
 from app.common import decrypt_value
 from app.common import validate_resume_fields, validate_resume_output
@@ -56,10 +55,6 @@ def _resolve_credentials_sync(user_id: str) -> dict:
         print(f"ERROR: [_resolve_credentials_sync] OUTER EXCEPTION (user={user_id}): {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-
-    # Fall back to environment variables if server-stored values are missing
-    li_user = li_user or LINKEDIN_LOGIN
-    li_pass = li_pass or LINKEDIN_PASSWORD
 
     final_status = f"linkedin_user={'SET' if li_user else 'MISSING'}, linkedin_pass={'SET' if li_pass else 'MISSING'}, openrouter_key={'SET' if openrouter_key else 'MISSING'}"
     print(f"DEBUG: [_resolve_credentials_sync] Final: {final_status}")

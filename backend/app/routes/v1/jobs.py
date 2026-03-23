@@ -6,14 +6,15 @@ import shutil
 from datetime import datetime
 from typing import List, Optional
 import json
+from collections import OrderedDict as _OD
 from pathlib import Path
 
 from app.dependencies import get_current_user, get_user_role, resolve_credentials
 from app.models import JobCreate, JobResponse
 from app.config import UPLOAD_DIR
-from app.routes.v1.resumes import _normalize_location
+from app.routes.v1.resumes import _normalize_location, _city_to_metro, _classify_region, _METRO_TO_SUBSTRINGS, _suburb_to_metro, _ai_metro_for_location
 from app.common.skill_utils import canonicalize_skill
-from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table
+from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table, search_jobs_hybrid
 from services.resume_parser import extract_text
 from services.ai.common import clean_json_output
 
@@ -239,7 +240,7 @@ async def parse_job_upload(
 
         llm = ChatOpenAI(
             model=creds["llm_model"] or "gpt-4o-mini",
-            api_key=creds["openrouter_key"] or os.getenv("OPEN_ROUTER_KEY"),
+            api_key=creds["openrouter_key"],
             base_url="https://openrouter.ai/api/v1"
         )
 
@@ -293,6 +294,26 @@ async def parse_job_upload(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+# ---------------------------------------------------------------------------
+# Parse-query-intent cache — avoids redundant LLM calls for the same query.
+# Keyed by (query_lower, llm_model).  Max 256 entries, LRU eviction.
+# ---------------------------------------------------------------------------
+_JOB_INTENT_CACHE: "_OD[tuple, dict]" = _OD()
+_JOB_INTENT_CACHE_MAX = 256
+
+def _job_intent_cache_get(key: tuple):
+    if key in _JOB_INTENT_CACHE:
+        _JOB_INTENT_CACHE.move_to_end(key)
+        return _JOB_INTENT_CACHE[key]
+    return None
+
+def _job_intent_cache_set(key: tuple, value: dict) -> None:
+    _JOB_INTENT_CACHE[key] = value
+    _JOB_INTENT_CACHE.move_to_end(key)
+    if len(_JOB_INTENT_CACHE) > _JOB_INTENT_CACHE_MAX:
+        _JOB_INTENT_CACHE.popitem(last=False)
+
+
 @router.post("/parse-query-intent")
 async def parse_query_intent(
     body: dict,
@@ -318,38 +339,111 @@ async def parse_query_intent(
     from langchain_core.output_parsers import StrOutputParser
 
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    if not creds["openrouter_key"]:
+        # No API key — return a basic fallback intent so the caller can still search
+        return {
+            "location": None,
+            "locationAliases": [],
+            "companyFilter": [],
+            "topN": None,
+            "sortBySalary": False,
+            "cleanQuery": query,
+        }
+
+    # Cache hit — skip LLM entirely
+    llm_model = creds["llm_model"] or "gpt-4o-mini"
+    _cache_key = (query.lower(), llm_model)
+    cached = _job_intent_cache_get(_cache_key)
+    if cached is not None:
+        return cached
+
     llm = ChatOpenAI(
-        model=creds["llm_model"] or "gpt-4o-mini",
-        api_key=creds["openrouter_key"] or os.getenv("OPEN_ROUTER_KEY"),
+        model=llm_model,
+        api_key=creds["openrouter_key"],
         base_url="https://openrouter.ai/api/v1",
+        timeout=15,
     )
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "You are a job search query parser. Given a natural-language query, extract structured intent.\n\n"
+         "KEY RULE 1 — company keyword expansion: whenever the query contains an acronym, abbreviation, or group name "
+         "for companies, expand it to explicit employer names before filling companyFilter. Examples:\n"
+         "  FANG/FAANG → google meta amazon apple netflix microsoft\n"
+         "  Big 4 (consulting) → deloitte pwc ernst kpmg\n"
+         "  Big 3 / MBB → mckinsey bain bcg\n"
+         "  Big Tech / MANGA / FAANG+ → google microsoft amazon apple meta nvidia openai\n"
+         "  WITCH → wipro infosys tcs cognizant hcl\n"
+         "  SWE → software engineer  |  PM → product manager  |  MLE → machine learning engineer\n"
+         "  ML → machine learning  |  NLP → natural language processing  |  CV → computer vision\n\n"
+         "KEY RULE 2 — geographic region expansion: when the query mentions a macro region or sub-region, "
+         "expand it to the specific location substrings that appear in job posting location strings. "
+         "Use these expansions (choose the 6-8 most relevant):\n"
+         "  Asia            → india, singapore, japan, china, hong kong, south korea, tokyo, bangalore, hyderabad, mumbai, beijing, shanghai, seoul, taipei, jakarta, kuala lumpur\n"
+         "  Southeast Asia  → singapore, vietnam, thailand, philippines, malaysia, indonesia, jakarta, kuala lumpur, ho chi minh, bangkok\n"
+         "  South Asia      → india, bangalore, hyderabad, mumbai, delhi, pune, chennai, kolkata, pakistan, sri lanka\n"
+         "  Europe          → london, uk, germany, france, netherlands, sweden, ireland, switzerland, italy, spain, berlin, paris, amsterdam, stockholm, dublin, munich, barcelona, zurich, warsaw, prague\n"
+         "  North America   → usa, canada, mexico, toronto, vancouver, montreal\n"
+         "  USA (whole)     → usa, , ca, , ny, , tx, , wa, , il, , fl, , ga, , ma, , co\n"
+         "  West Coast      → san francisco, los angeles, seattle, , ca, , wa, , or, portland, silicon valley, bay area\n"
+         "  California      → san francisco, , ca, los angeles, silicon valley, bay area, san jose, sacramento\n"
+         "  Southern California / SoCal → los angeles, san diego, orange county, irvine, anaheim, riverside, pasadena, long beach, santa monica, burbank, san bernardino, , ca\n"
+         "  Northern California / NorCal / Bay Area / Silicon Valley → san francisco, palo alto, mountain view, sunnyvale, san jose, santa clara, menlo park, oakland, berkeley, cupertino, redwood city, , ca\n"
+         "  IMPORTANT: 'Southern California' and 'SoCal' do NOT include San Francisco, Bay Area, Silicon Valley, or Seattle. 'Northern California/Bay Area/Silicon Valley' do NOT include Los Angeles, San Diego, Seattle.\n"
+         "  East Coast      → new york, boston, washington, philadelphia, miami, atlanta, , ny, , ma, , dc, , pa, , fl, , ga\n"
+         "  Midwest USA     → chicago, detroit, minneapolis, cleveland, columbus, milwaukee, st. louis, kansas city, , il, , mi, , oh, , mn, , wi, , in, , mo\n"
+         "  South USA       → dallas, houston, austin, atlanta, miami, charlotte, nashville, , tx, , ga, , fl, , nc, , tn\n"
+         "  Middle East     → dubai, uae, saudi, israel, qatar, bahrain, abu dhabi, riyadh\n"
+         "  Africa          → south africa, nigeria, kenya, egypt, johannesburg, lagos, nairobi, cairo\n"
+         "  Australia       → australia, new zealand, sydney, melbourne, brisbane, auckland, perth\n"
+         "  Latin America   → brazil, argentina, colombia, chile, sao paulo, bogota, buenos aires, lima\n\n"
          "Return ONLY valid JSON with these fields (no markdown, no explanation):\n"
          "{{\n"
-         '  "location": <canonical location string in lowercase, or null>,\n'
-         '  "locationAliases": <array of 4-8 lowercase substrings that uniquely identify this location in job posting strings. '
-         "IMPORTANT: avoid short ambiguous abbreviations (e.g. do NOT use 'ca' for California — it matches 'canada'; "
-         "do NOT use 'ny' alone — use ', ny' or 'new york'). Prefer full city/region names and metro area labels.>,\n"
+         '  "location": <canonical region/location name in lowercase, or null>,\n'
+         '  "locationAliases": <array of lowercase substrings a job location must contain at least one of. '
+         "For broad US regions use the state abbreviation (', ca', ', ny') so ANY city in that state matches — "
+         "do NOT enumerate individual cities for large regions, that will miss lesser-known cities. "
+         "For sub-regions (Southern California, Bay Area) use the state abbreviation as the catch-all "
+         "plus a few anchor cities, and rely on locationExclusions to remove the opposite sub-region.>,\n"
+         '  "locationExclusions": <array of lowercase substrings — any job whose location contains one of these '
+         "is excluded. Use for sub-region searches to remove the opposite sub-region. "
+         "E.g. SoCal: exclude NorCal cities. Bay Area: exclude LA/San Diego.>,\n"
+         '  "companyFilter": <array of lowercase employer name substrings. Expand group names. Empty array if no company.>,\n'
          '  "topN": <integer if user wants top N results, else null>,\n'
-         '  "sortBySalary": <true if user wants highest-paid / best-paying / top salary jobs, else false>,\n'
-         '  "cleanQuery": <the query with all intent tokens removed, keeping only the job-type signal. If nothing meaningful remains, use a sensible default like "software engineering jobs".>\n'
+         '  "sortBySalary": <true if user wants highest-paid / best-paying / top salary, else false>,\n'
+         '  "cleanQuery": <role/skill signal only — strip location, count, salary, and company tokens. '
+         "Expand acronyms. Never include company names or 'jobs in X' — infer role if only company remains "
+         "(e.g. 'jobs in Apple' → 'software engineer', 'Big 4 jobs' → 'consultant').>\n"
          "}}\n\n"
          "Examples:\n"
-         '  "top paid 5 jobs in california" → {{"location":"california","locationAliases":["san francisco","bay area","los angeles","silicon valley","west coast","sacramento"],"topN":5,"sortBySalary":true,"cleanQuery":"software engineering jobs"}}\n'
-         '  "best paying data scientist roles in NYC" → {{"location":"new york","locationAliases":["new york city","manhattan","brooklyn","new york"],"topN":null,"sortBySalary":true,"cleanQuery":"data scientist"}}\n'
-         '  "remote python developer" → {{"location":null,"locationAliases":[],"topN":null,"sortBySalary":false,"cleanQuery":"remote python developer"}}'
+         '  "google jobs in Asia" → {{"location":"asia","locationAliases":["india","singapore","japan","china","hong kong","south korea","bangalore","tokyo","shanghai"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "google jobs in Europe" → {{"location":"europe","locationAliases":["london","uk","germany","france","netherlands","berlin","paris","amsterdam","dublin","zurich"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "google jobs in North America" → {{"location":"north america","locationAliases":["usa","canada","toronto","vancouver","mexico",", ca",", ny",", tx"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "google jobs in midwest USA" → {{"location":"midwest usa","locationAliases":["chicago","detroit","minneapolis","cleveland","columbus",", il",", mi",", oh",", mn"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "google jobs in west coast" → {{"location":"west coast","locationAliases":[", ca",", wa",", or"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in southern california" → {{"location":"southern california","locationAliases":[", ca"],"locationExclusions":["san francisco","bay area","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","oakland","berkeley","cupertino","sacramento","fresno","stockton"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in socal" → {{"location":"southern california","locationAliases":[", ca"],"locationExclusions":["san francisco","bay area","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","oakland","berkeley","cupertino","sacramento","fresno","stockton"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in northern california" → {{"location":"northern california","locationAliases":[", ca"],"locationExclusions":["los angeles","san diego","irvine","anaheim","riverside","long beach","santa monica","burbank","orange county","chula vista","san bernardino","oxnard"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "top paid 5 jobs in california" → {{"location":"california","locationAliases":[", ca"],"locationExclusions":[],"companyFilter":[],"topN":5,"sortBySalary":true,"cleanQuery":"software engineer"}}\n'
+         '  "top 5 paid jobs in google, USA" → {{"location":"usa","locationAliases":["usa",", ca",", ny",", tx",", wa",", il","san francisco","new york"],"companyFilter":["google"],"topN":5,"sortBySalary":true,"cleanQuery":"software engineer"}}\n'
+         '  "best paying data scientist roles in NYC" → {{"location":"new york","locationAliases":["new york city","manhattan","brooklyn","new york",", ny"],"companyFilter":[],"topN":null,"sortBySalary":true,"cleanQuery":"data scientist"}}\n'
+         '  "remote python developer" → {{"location":null,"locationAliases":[],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"remote python developer"}}\n'
+         '  "jobs in apple" → {{"location":null,"locationAliases":[],"companyFilter":["apple"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "top paid jobs in apple, france" → {{"location":"france","locationAliases":["paris","france","lyon","marseille","ile-de-france"],"companyFilter":["apple"],"topN":null,"sortBySalary":true,"cleanQuery":"software engineer"}}\n'
+         '  "FANG jobs" → {{"location":null,"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "Big 4 consulting jobs in London" → {{"location":"london","locationAliases":["london","uk","england"],"companyFilter":["deloitte","pwc","ernst","kpmg"],"topN":null,"sortBySalary":false,"cleanQuery":"consultant"}}\n'
+         '  "MLE roles at FAANG" → {{"location":null,"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft"],"topN":null,"sortBySalary":false,"cleanQuery":"machine learning engineer"}}'
         ),
         ("human", "Query: {query}"),
     ])
     chain = prompt | llm | StrOutputParser()
-    raw = await chain.ainvoke({"query": query})
     try:
+        raw = await chain.ainvoke({"query": query})
         result = json.loads(raw.strip())
         # Ensure required fields with safe defaults
         result.setdefault("location", None)
         result.setdefault("locationAliases", [])
+        result.setdefault("locationExclusions", [])
+        result.setdefault("companyFilter", [])
         result.setdefault("topN", None)
         result.setdefault("sortBySalary", False)
         result.setdefault("cleanQuery", query)
@@ -357,11 +451,14 @@ async def parse_query_intent(
         result = {
             "location": None,
             "locationAliases": [],
+            "locationExclusions": [],
+            "companyFilter": [],
             "topN": None,
             "sortBySalary": False,
             "cleanQuery": query,
         }
 
+    _job_intent_cache_set(_cache_key, result)
     return result
 
 
@@ -401,44 +498,91 @@ async def get_job_locations(user_id: str = Depends(get_current_user), role: str 
     except Exception:
         rows = []
 
-    seen: set[str] = set()
-    groups: dict[str, list[str]] = {}
+    from collections import Counter
+    # Count jobs by metro_location (LLM-resolved at ingest).
+    # Fall back to _suburb_to_metro for older JDs without the field.
+    city_counts: Counter = Counter()
     for row in rows:
-        loc = (row.get("location_name") or "").strip()
-        if not loc or loc in seen:
-            continue
-        seen.add(loc)
-        region = _classify_region(loc)
-        groups.setdefault(region, []).append(loc)
+        metro = (row.get("metro_location") or "").strip()
+        if not metro:
+            loc = (row.get("location_name") or "").strip()
+            if not loc:
+                continue
+            metro = _suburb_to_metro(loc) or loc
+        city_counts[metro] += 1
 
-    # Sort locations within each group and order groups sensibly
-    region_order = [r for r, _ in _REGION_KEYWORDS] + ["Other"]
-    ordered: dict[str, list[str]] = {}
-    for region in region_order:
-        if region in groups:
-            ordered[region] = sorted(groups[region])
+    # Group cities by state (US) or region (international) with their counts
+    state_cities: dict[str, list] = {}   # state  → [(city, count)]
+    region_cities: dict[str, list] = {}  # region → [(city, count)]
+    for loc, count in city_counts.items():
+        state = _city_to_metro(loc)
+        if state:
+            state_cities.setdefault(state, []).append((loc, count))
+        else:
+            region = _classify_region(loc)
+            region_cities.setdefault(region, []).append((loc, count))
+
+    # Show only cities with 2+ jobs; cap international regions at 5.
+    MIN_COUNT = 2
+    MAX_PER_REGION = 5
+    groups: dict[str, list[dict]] = {}
+
+    # US states: "All {State}" + all cities with 2+ jobs, sorted by frequency.
+    for state in sorted(state_cities):
+        cities = state_cities[state]
+        qualifying = sorted(
+            [(c, n) for c, n in cities if n >= MIN_COUNT],
+            key=lambda x: (-x[1], x[0]),
+        )
+        groups[state] = [{"value": state, "label": f"All {state}"}]
+        for city, _ in qualifying:
+            groups[state].append({"value": city, "label": city})
+
+    # International regions: top cities by frequency, capped at MAX_PER_REGION
+    for region in sorted(region_cities):
+        cities = region_cities[region]
+        top = sorted(
+            [(c, n) for c, n in cities if n >= MIN_COUNT],
+            key=lambda x: (-x[1], x[0]),
+        )[:MAX_PER_REGION]
+        for city, _ in top:
+            groups.setdefault(region, []).append({"value": city, "label": city})
 
     return {
-        "locations": sorted(seen),
-        "groups": ordered,
-        "total": len(seen),
+        "locations": sorted(city_counts.keys()),
+        "groups": groups,
+        "total": sum(city_counts.values()),
     }
 
 
 @router.post("", response_model=JobResponse)
-async def create_job(job: JobCreate, user_id: str = Depends(get_current_user)):
+async def create_job(
+    job: JobCreate,
+    user_id: str = Depends(get_current_user),
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+):
     table = get_or_create_jobs_table()
-    
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+
     job_dict = job.model_dump()
     job_id = str(uuid.uuid4())
     job_dict["job_id"] = job_id
     job_dict["user_id"] = user_id
     job_dict["posted_date"] = datetime.now().isoformat()
     job_dict = _normalize_job_fields(job_dict)
-    
+
+    # Resolve metro area via LLM; fall back to hardcoded mapping
+    loc = job_dict.get("location_name") or ""
+    if loc and loc.lower() != "remote":
+        metro = _ai_metro_for_location(loc, creds)
+        job_dict["metro_location"] = metro or _suburb_to_metro(loc) or loc
+    else:
+        job_dict["metro_location"] = None
+
     # Generate embedding for the job
     try:
-        embeddings = get_embeddings_model()
+        embeddings = get_embeddings_model(api_key=creds["openrouter_key"])
         skills_text = ", ".join(job_dict.get("skills_required", []))
         embed_text = f"{job_dict['title']}\n{job_dict['description']}\nSkills: {skills_text}"
         vector = embeddings.embed_query(embed_text)
@@ -449,6 +593,52 @@ async def create_job(job: JobCreate, user_id: str = Depends(get_current_user)):
     
     table.add([job_dict])
     return _serialize_job(job_dict)
+
+
+@router.post("/reindex-embeddings")
+async def reindex_job_embeddings(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_user_role),
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+):
+    """Re-generate embeddings for all jobs that have zero vectors. Recruiter/manager only."""
+    if role not in ("recruiter", "manager"):
+        raise HTTPException(status_code=403, detail="Recruiter or manager role required")
+
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+    table = get_or_create_jobs_table()
+
+    import numpy as np
+    rows = table.search().limit(10000).to_list()
+    zero_rows = [r for r in rows if not any(v != 0 for v in (r.get("vector") or []))]
+    print(f"DEBUG: [reindex] Found {len(zero_rows)} jobs with zero vectors out of {len(rows)}")
+
+    if not zero_rows:
+        return {"reindexed": 0, "message": "All jobs already have embeddings"}
+
+    try:
+        embeddings = get_embeddings_model(api_key=creds["openrouter_key"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding model unavailable: {e}")
+
+    updated = 0
+    errors = 0
+    for row in zero_rows:
+        try:
+            skills_text = ", ".join(row.get("skills_required") or [])
+            embed_text = f"{row.get('title', '')}\n{row.get('description', '')}\nSkills: {skills_text}"
+            vector = embeddings.embed_query(embed_text)
+            job_id = row["job_id"]
+            table.update(where=f"job_id = '{job_id}'", values={"vector": vector})
+            updated += 1
+        except Exception as e:
+            print(f"DEBUG: [reindex] Failed for job {row.get('job_id')}: {e}")
+            errors += 1
+
+    print(f"DEBUG: [reindex] Done: {updated} updated, {errors} errors")
+    return {"reindexed": updated, "errors": errors, "total_zero": len(zero_rows)}
+
 
 @router.get("/public", response_model=List[JobResponse])
 async def list_public_jobs(
@@ -476,14 +666,18 @@ async def list_jobs(
     has_applicants: Optional[bool] = Query(None),
     status: Optional[str] = Query(None, description="in_progress or completed"),
     location_aliases: Optional[str] = Query(None, description="Comma-separated location substrings for soft geo matching"),
+    employer_filter: Optional[str] = Query(None, description="Comma-separated employer name substrings; matching jobs are sorted first"),
     sort_by_salary: Optional[bool] = Query(None),
     top_n: Optional[int] = Query(None, description="Limit to top N results after all filters"),
     user_id: str = Depends(get_current_user),
     role: str = Depends(get_user_role),
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
 ):
     from datetime import timedelta
 
     table = get_or_create_jobs_table()
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     is_recruiter = role in ("recruiter", "manager")
 
     # --- DB-level WHERE filters (pushed to LanceDB) ---
@@ -492,34 +686,33 @@ async def list_jobs(
         where_parts.append(f"job_level = '{job_level}'")
     if job_category:
         where_parts.append(f"job_category = '{job_category}'")
+    # Only use SQL WHERE for exact location match when it's not a state-level metro name.
+    # State-level names (e.g. "California") are handled as a Python post-filter below.
+    location_metro_substrings: list[str] = []
+    location_city_filter: str = ""   # city-level filter (includes suburbs)
     if location:
-        safe_loc = location.replace("'", "''")
-        where_parts.append(f"location_name = '{safe_loc}'")
+        metro_subs = _METRO_TO_SUBSTRINGS.get(location.strip())
+        if metro_subs:
+            location_metro_substrings = metro_subs
+        else:
+            # City-level: use Python post-filter so suburbs roll up to their metro
+            location_city_filter = location.strip()
     where_clause = " AND ".join(where_parts) if where_parts else None
 
     # For post-DB filters (date_range, has_applicants, status) we need a larger pool to filter from.
     # For plain list or vector search, use limit + skip directly.
-    needs_post_filter = bool(date_range or has_applicants or status or location_aliases)
+    needs_post_filter = bool(date_range or has_applicants or status or location_aliases or employer_filter or location_metro_substrings or location_city_filter)
     FETCH_CAP = max(limit + skip, 500) if needs_post_filter else limit + skip
 
-    # --- AI vector search when a query is provided ---
+    # --- Hybrid search (vector + FTS via RRF) when a query is provided ---
     if search and search.strip():
-        try:
-            embeddings = get_embeddings_model()
-            query_vec = embeddings.embed_query(search.strip())
-            q = table.search(query_vec)
-            if where_clause:
-                q = q.where(where_clause)
-            results = q.limit(FETCH_CAP).to_list()
-        except Exception as e:
-            print(f"DEBUG: [jobs] Vector search failed, falling back to scan: {e}")
-            # Fallback: keyword filter on title + description
-            q = table.search()
-            if where_clause:
-                q = q.where(where_clause)
-            results = q.limit(FETCH_CAP).to_list()
-            s = search.strip().lower()
-            results = [r for r in results if s in (r.get("title") or "").lower() or s in (r.get("description") or "").lower()]
+        results = search_jobs_hybrid(
+            search.strip(),
+            limit=FETCH_CAP,
+            api_key=creds["openrouter_key"],
+            where_clause=where_clause,
+            fetch_cap=FETCH_CAP,
+        )
     else:
         q = table.search()
         if where_clause:
@@ -527,6 +720,32 @@ async def list_jobs(
         results = q.limit(FETCH_CAP).to_list()
 
     jobs = [_serialize_job(r) for r in results]
+
+    # --- State-level metro location post-filter ---
+    if location_metro_substrings:
+        subs_lower = [s.lower() for s in location_metro_substrings]
+        jobs = [
+            j for j in jobs
+            if any(sub in (j.get("location_name") or "").lower() for sub in subs_lower)
+            and _classify_region(j.get("location_name") or "") == "United States"
+        ]
+
+    # --- City-level location post-filter ---
+    if location_city_filter:
+        city_lower = location_city_filter.lower()
+        city_name_only = city_lower.split(",")[0].strip()
+        def _job_city_matches(j: dict) -> bool:
+            stored_metro = (j.get("metro_location") or "").strip()
+            if stored_metro:
+                return stored_metro.lower() == city_lower
+            # Legacy fallback
+            loc = j.get("location_name") or ""
+            return (
+                city_lower in loc.lower()
+                or city_name_only in loc.lower()
+                or _suburb_to_metro(loc) == location_city_filter
+            )
+        jobs = [j for j in jobs if _job_city_matches(j)]
 
     # --- Date range filter (Python-level, needs datetime parse) ---
     if date_range:
@@ -583,6 +802,59 @@ async def list_jobs(
                         return True
                 return False
             jobs = [j for j in jobs if _alias_match(j.get("location_name", ""))]
+
+    # --- Employer filter: strict — only return jobs at matching companies ---
+    # Semantic search may only return a subset of all jobs, missing employer-specific jobs
+    # that rank low for the generic query. So we ALSO do a full-table scan for the employer
+    # and merge the results, preserving semantic rank order for overlapping results.
+    if employer_filter:
+        emp_terms = [e.strip().lower() for e in employer_filter.split(",") if e.strip()]
+        if emp_terms:
+            def _emp_match(j: dict) -> bool:
+                name = (j.get("employer_name") or "").lower()
+                return any(t in name for t in emp_terms)
+
+            # Full-table scan to ensure ALL employer jobs are captured
+            try:
+                eq = table.search()
+                if where_clause:
+                    eq = eq.where(where_clause)
+                all_employer_jobs = [s for r in eq.limit(10000).to_list()
+                                     for s in [_serialize_job(r)] if _emp_match(s)]
+            except Exception:
+                all_employer_jobs = []
+
+            # Apply state-level metro filter to full-table scan results
+            if location_metro_substrings:
+                subs_lower = [s.lower() for s in location_metro_substrings]
+                all_employer_jobs = [
+                    j for j in all_employer_jobs
+                    if any(sub in (j.get("location_name") or "").lower() for sub in subs_lower)
+                    and _classify_region(j.get("location_name") or "") == "United States"
+                ]
+            if location_city_filter:
+                all_employer_jobs = [j for j in all_employer_jobs if _job_city_matches(j)]
+
+            # Apply location alias filter to the full-table scan results too
+            if location_aliases and not location:
+                loc_aliases = [a.strip().lower() for a in location_aliases.split(",") if a.strip()]
+                def _loc_alias_match(j: dict) -> bool:
+                    loc_lower = (j.get("location_name") or "").lower()
+                    for alias in loc_aliases:
+                        if len(alias) <= 3:
+                            if re.search(r"\b" + re.escape(alias) + r"\b", loc_lower):
+                                return True
+                        elif alias in loc_lower:
+                            return True
+                    return False
+                all_employer_jobs = [j for j in all_employer_jobs if _loc_alias_match(j)]
+
+            # Semantic employer matches (ranked by relevance) come first
+            sem_employer = [j for j in jobs if _emp_match(j)]
+            sem_ids = {j.get("job_id") for j in sem_employer}
+            # Append any employer jobs not already in semantic results
+            extra = [j for j in all_employer_jobs if j.get("job_id") not in sem_ids]
+            jobs = sem_employer + extra
 
     # --- Sort by salary ---
     if sort_by_salary:
@@ -655,21 +927,36 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user), role: s
     return job_dict
 
 @router.put("/{job_id}", response_model=JobResponse)
-async def update_job(job_id: str, job: JobCreate, user_id: str = Depends(get_current_user)):
+async def update_job(
+    job_id: str,
+    job: JobCreate,
+    user_id: str = Depends(get_current_user),
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+):
     table = get_or_create_jobs_table()
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     existing = table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     updated = job.model_dump()
     updated["job_id"] = job_id
     updated["user_id"] = user_id
     updated["posted_date"] = existing[0]["posted_date"]
     updated = _normalize_job_fields(updated)
-    
+
+    # Resolve metro area via LLM; fall back to hardcoded mapping
+    loc = updated.get("location_name") or ""
+    if loc and loc.lower() != "remote":
+        metro = _ai_metro_for_location(loc, creds)
+        updated["metro_location"] = metro or _suburb_to_metro(loc) or loc
+    else:
+        updated["metro_location"] = None
+
     # Re-generate embedding
     try:
-        embeddings = get_embeddings_model()
+        embeddings = get_embeddings_model(api_key=creds["openrouter_key"])
         skills_text = ", ".join(updated.get("skills_required", []))
         embed_text = f"{updated['title']}\n{updated['description']}\nSkills: {skills_text}"
         vector = embeddings.embed_query(embed_text)
@@ -685,11 +972,23 @@ async def update_job(job_id: str, job: JobCreate, user_id: str = Depends(get_cur
 @router.delete("/{job_id}")
 async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
     table = get_or_create_jobs_table()
-    existing = table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+    safe_jid = job_id.replace("'", "''")
+    existing = table.search().where(f"job_id = '{safe_jid}' AND user_id = '{user_id}'").limit(1).to_list()
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    table.delete(f"job_id = '{job_id}'")
+
+    # 1. Delete job posting + vector
+    table.delete(f"job_id = '{safe_jid}'")
+
+    # 2. Delete all candidate applications / shortlist entries for this job
+    try:
+        from services.db.lancedb_client import get_or_create_job_applied_table
+        applied_table = get_or_create_job_applied_table()
+        applied_table.delete(f"job_id = '{safe_jid}'")
+        print(f"DEBUG: Deleted job_resume_applied rows for job '{job_id}'")
+    except Exception as e:
+        print(f"DEBUG: Failed to clean job_resume_applied for job '{job_id}': {e}")
+
     return {"message": "Deleted"}
 
 @router.get("/{job_id}/candidates", response_model=List[dict])
