@@ -779,6 +779,7 @@ const ResumeDatabase: React.FC = () => {
                 <div className="relative flex-1 min-w-48">
                     <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     <input
+                        data-testid="resume-search-input"
                         type="text"
                         placeholder="AI search — try 'Python developer with React'..."
                         value={searchQuery}
@@ -792,7 +793,7 @@ const ResumeDatabase: React.FC = () => {
                     )}
                 </div>
 
-                <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className={selectCls}>
+                <select data-testid="location-filter" value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className={selectCls}>
                     <option value="">All Locations</option>
                     {Object.entries(locationGroups).map(([region, locs]) => (
                         <optgroup key={region} label={region}>
@@ -803,14 +804,14 @@ const ResumeDatabase: React.FC = () => {
                     ))}
                 </select>
 
-                <select value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)} className={selectCls}>
+                <select data-testid="industry-filter" value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)} className={selectCls}>
                     <option value="">All Industries</option>
                     {filterOptions.industries.map(ind => (
                         <option key={ind} value={ind}>{ind}</option>
                     ))}
                 </select>
 
-                <select value={filterExpLevel} onChange={e => setFilterExpLevel(e.target.value)} className={selectCls}>
+                <select data-testid="exp-level-filter" value={filterExpLevel} onChange={e => setFilterExpLevel(e.target.value)} className={selectCls}>
                     <option value="">All Experience Levels</option>
                     {filterOptions.exp_levels.map(e => (
                         <option key={e} value={e}>{e}</option>
@@ -840,7 +841,7 @@ const ResumeDatabase: React.FC = () => {
                 )}
                 {isLoading
                     ? <Loader2 size={15} className="text-slate-400 animate-spin" />
-                    : <span className="text-xs text-slate-400 font-medium">{resumes.length} of {total} resume{total !== 1 ? 's' : ''}</span>
+                    : <span className="text-xs text-slate-400 font-medium" data-testid="results-count" data-total={total}>{resumes.length} of {total} resume{total !== 1 ? 's' : ''}</span>
                 }
             </div>
 
@@ -892,6 +893,9 @@ const ResumeDatabase: React.FC = () => {
                                         onClick={() => setPreviewResume(r)}
                                         className="glass-card p-4 hover:shadow-lg hover:border-purple-200 transition-all cursor-pointer group flex flex-col gap-0"
                                         style={{ minHeight: '220px' }}
+                                        data-testid="resume-card"
+                                        data-location={r.location || ''}
+                                        data-name={r.candidate_name || ''}
                                     >
                                         {/* Header row: avatar + name/role + actions */}
                                         <div className="flex items-start gap-2.5 shrink-0">
@@ -936,7 +940,7 @@ const ResumeDatabase: React.FC = () => {
                                         {r.location && (
                                             <div className="flex items-center gap-0.5 mt-1.5 shrink-0">
                                                 <MapPin size={9} className="shrink-0 text-slate-300" />
-                                                <span className="text-[11px] text-slate-400 truncate">{r.location}</span>
+                                                <span className="text-[11px] text-slate-400 truncate" data-testid="card-location">{r.location}</span>
                                             </div>
                                         )}
 

@@ -12,58 +12,39 @@ def _ensure_key() -> str:
 
     Resolution order:
       1. Module-level cache (_ENCRYPTION_KEY)
-      2. Environment variable ENCRYPTION_KEY
-      3. Auto-generate a new key → append to backend/.env → set in os.environ
+      2. Dedicated key file (backend/.secret_key)
+      3. Environment variable ENCRYPTION_KEY (migration fallback)
+      4. Auto-generate a new key → write to backend/.secret_key
     """
     global _ENCRYPTION_KEY
-
     if _ENCRYPTION_KEY:
         return _ENCRYPTION_KEY
 
-    # Safety: ensure backend/.env is loaded even if config.py hasn't been imported yet
+    # 1. Dedicated key file (preferred)
+    key_file = Path(__file__).resolve().parents[2] / ".secret_key"
+    if key_file.exists():
+        key = key_file.read_text().strip()
+        if key and not key.startswith("your_"):
+            _ENCRYPTION_KEY = key
+            return key
+
+    # 2. Env var fallback (migration path)
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    key = os.getenv("ENCRYPTION_KEY", "")
+    if key and not key.startswith("your_"):
+        _ENCRYPTION_KEY = key
+        return key
 
-    key = os.getenv("ENCRYPTION_KEY")
-
-    # Reject obvious placeholders from .env.example
-    if key and key.startswith("your_"):
-        key = None
-
-    if not key:
-        key = Fernet.generate_key().decode()
-        os.environ["ENCRYPTION_KEY"] = key
-        print("INFO: [encryption] Auto-generated ENCRYPTION_KEY (first run).")
-
-        # Persist to backend/.env so it survives restarts
-        env_path = Path(__file__).resolve().parents[2] / ".env"
-        try:
-            if env_path.exists():
-                content = env_path.read_text()
-                if "ENCRYPTION_KEY=" in content:
-                    # Replace existing placeholder line
-                    lines = content.splitlines(keepends=True)
-                    new_lines = []
-                    for line in lines:
-                        if line.strip().startswith("ENCRYPTION_KEY="):
-                            new_lines.append(f"ENCRYPTION_KEY={key}\n")
-                        else:
-                            new_lines.append(line)
-                    env_path.write_text("".join(new_lines))
-                else:
-                    # Append to existing .env
-                    with open(env_path, "a") as f:
-                        f.write(f"\n# Auto-generated Fernet encryption key\nENCRYPTION_KEY={key}\n")
-            else:
-                # Create new .env with just the key
-                env_path.write_text(
-                    "# Auto-generated Fernet encryption key\n"
-                    f"ENCRYPTION_KEY={key}\n"
-                )
-            print(f"INFO: [encryption] Persisted ENCRYPTION_KEY to {env_path}")
-        except Exception as e:
-            print(f"WARNING: [encryption] Could not persist ENCRYPTION_KEY to {env_path}: {e}")
-
+    # 3. Auto-generate and persist
+    key = Fernet.generate_key().decode()
+    print("INFO: [encryption] Auto-generated ENCRYPTION_KEY (first run).")
+    try:
+        key_file.write_text(key)
+        print(f"INFO: [encryption] Persisted encryption key to {key_file}")
+    except Exception as e:
+        print(f"WARNING: [encryption] Could not persist encryption key to {key_file}: {e}")
+    os.environ["ENCRYPTION_KEY"] = key
     _ENCRYPTION_KEY = key
     return key
 

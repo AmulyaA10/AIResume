@@ -69,6 +69,36 @@ def _job(
     }
 
 
+def _google_job(
+    job_id: str,
+    title: str,
+    level: str,
+    location: str,
+    salary_min: int,
+    salary_max: int,
+    days_ago: int = 5,
+) -> dict:
+    """Like _job but with employer_name='Google'."""
+    base = _job(job_id, title, level, location, salary_min, salary_max, days_ago)
+    base["employer_name"] = "Google"
+    return base
+
+
+def _apple_job(
+    job_id: str,
+    title: str,
+    level: str,
+    location: str,
+    salary_min: int,
+    salary_max: int,
+    days_ago: int = 5,
+) -> dict:
+    """Like _job but with employer_name='Apple Inc'."""
+    base = _job(job_id, title, level, location, salary_min, salary_max, days_ago)
+    base["employer_name"] = "Apple Inc"
+    return base
+
+
 SAMPLE_JOBS = [
     # California jobs
     _job("j01", "Senior Python Engineer",        "SENIOR", "San Francisco, CA, USA",   140, 180, days_ago=2),
@@ -111,6 +141,45 @@ SAMPLE_JOBS = [
     _job("j28", "Staff Engineer",                 "SENIOR", "Menlo Park, CA, USA",      165, 210, days_ago=2),   # high salary CA
     _job("j29", "Junior Designer",                "JUNIOR", "New York, NY, USA",         55,  75, days_ago=5),
     _job("j30", "Mid Data Scientist",             "MID",    "San Francisco, CA, USA",   115, 150, days_ago=12),
+    # Apple jobs (employer_name = "Apple Inc") – used for employer_filter tests
+    _apple_job("j31", "Senior iOS Engineer",       "SENIOR", "Cupertino, CA, USA",       200, 280, days_ago=3),
+    _apple_job("j32", "Staff Software Engineer",   "SENIOR", "Cupertino, CA, USA",       170, 250, days_ago=5),
+    _apple_job("j33", "Mid macOS Developer",       "MID",    "Cupertino, CA, USA",       130, 170, days_ago=7),
+    _apple_job("j34", "Senior SRE",                "SENIOR", "Austin, TX, USA",          150, 220, days_ago=4),
+    _apple_job("j35", "Junior QA Engineer",        "JUNIOR", "Austin, TX, USA",           70,  90, days_ago=6),
+    # Apple France jobs – used for employer_filter + location_aliases combo tests
+    _apple_job("j36", "Senior Software Engineer",  "SENIOR", "Paris, France",            160, 210, days_ago=4),
+    _apple_job("j37", "Mid iOS Developer",         "MID",    "Paris, France",            110, 150, days_ago=6),
+    _apple_job("j38", "Senior Data Engineer",      "SENIOR", "Lyon, France",             140, 190, days_ago=5),
+
+    # Google jobs across regions – used for geographic region expansion tests
+    # Asia
+    _google_job("g01", "Senior SWE",               "SENIOR", "Bangalore, India",         120, 160, days_ago=3),
+    _google_job("g02", "Staff Engineer",           "SENIOR", "Singapore",                150, 200, days_ago=4),
+    _google_job("g03", "Mid SWE",                  "MID",    "Tokyo, Japan",             100, 140, days_ago=5),
+    _google_job("g04", "Senior ML Engineer",       "SENIOR", "Shanghai, China",          130, 175, days_ago=4),
+    # Europe
+    _google_job("g05", "Staff Engineer",           "SENIOR", "London, UK",               160, 220, days_ago=3),
+    _google_job("g06", "Senior Backend Engineer",  "SENIOR", "Berlin, Germany",          140, 190, days_ago=5),
+    _google_job("g07", "Mid Frontend Developer",   "MID",    "Amsterdam, Netherlands",   110, 150, days_ago=6),
+    # North America (USA)
+    _google_job("g08", "Senior SWE",               "SENIOR", "San Francisco, CA, USA",   180, 260, days_ago=2),
+    _google_job("g09", "Mid SWE",                  "MID",    "New York, NY, USA",        140, 200, days_ago=4),
+    _google_job("g10", "Senior Data Scientist",    "SENIOR", "Austin, TX, USA",          150, 210, days_ago=3),
+    # North America (Canada)
+    _google_job("g11", "Senior Engineer",          "SENIOR", "Toronto, Canada",          130, 180, days_ago=5),
+    # Midwest USA
+    _google_job("g12", "Senior SWE",               "SENIOR", "Chicago, IL, USA",         145, 195, days_ago=4),
+    _google_job("g13", "Mid Platform Engineer",    "MID",    "Detroit, MI, USA",         110, 155, days_ago=6),
+    # West Coast USA
+    _google_job("g14", "Staff ML Engineer",        "SENIOR", "Seattle, WA, USA",         170, 240, days_ago=2),
+    _google_job("g15", "Senior iOS Engineer",      "SENIOR", "Los Angeles, CA, USA",     155, 215, days_ago=3),
+    # South Asia
+    _google_job("g16", "Mid SWE",                  "MID",    "Hyderabad, India",          90, 130, days_ago=5),
+    _google_job("g17", "Senior Data Engineer",     "SENIOR", "Mumbai, India",            110, 155, days_ago=4),
+    # Southeast Asia
+    _google_job("g18", "Senior SWE",               "SENIOR", "Jakarta, Indonesia",       100, 140, days_ago=5),
+    _google_job("g19", "Mid DevOps Engineer",      "MID",    "Kuala Lumpur, Malaysia",    80, 115, days_ago=6),
 ]
 
 # Applied records – used to simulate applied_count / shortlisted_count
@@ -584,3 +653,711 @@ async def test_top_10_paid_california(app):
         loc = (job.get("location_name") or "").lower()
         assert any(kw in loc for kw in ca_keywords), \
             f"job {job['job_id']} has non-CA location: {job.get('location_name')}"
+
+
+@pytest.mark.asyncio
+async def test_top_paid_jobs_in_apple(app):
+    """
+    'top paid jobs in apple' → employer_filter=apple, sort_by_salary=True.
+    STRICT filter: ONLY Apple jobs returned, salary-sorted.
+    """
+    apple_jobs = [j for j in SAMPLE_JOBS if "apple" in (j.get("employer_name") or "").lower()]
+    apple_ids = {j["job_id"] for j in apple_jobs}
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "sort_by_salary": True,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected some results"
+
+    # Strict filter: every returned job must be Apple
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} ({job.get('employer_name')}) returned — employer_filter must be strict"
+        )
+
+    # All Apple jobs must be present
+    returned_ids = {j["job_id"] for j in jobs}
+    for jid in apple_ids:
+        assert jid in returned_ids, f"Apple job {jid} missing from results"
+
+    # Results are salary-sorted
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_top_paid_jobs_in_apple_ca(app):
+    """
+    'top paid jobs in apple, CA' → employer_filter=apple, location_aliases=cupertino, sort_by_salary=True.
+    STRICT filter: ONLY Apple Cupertino/CA jobs returned, salary-sorted.
+    """
+    apple_ca_ids = {"j31", "j32", "j33"}   # Cupertino Apple jobs
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "location_aliases": "cupertino,san jose,bay area",
+                    "sort_by_salary": True,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected some results"
+
+    # Strict filter: every job must be Apple
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} returned with employer_filter=apple"
+        )
+
+    # All returned jobs must be in CA (cupertino / san jose / bay area)
+    ca_keywords = {"cupertino", "san jose", "bay area"}
+    for job in jobs:
+        loc = (job.get("location_name") or "").lower()
+        assert any(kw in loc for kw in ca_keywords), (
+            f"job {job['job_id']} has unexpected location '{job.get('location_name')}'"
+        )
+
+    # Results must be salary-sorted
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_jobs_in_apple(app):
+    """
+    'jobs in apple' → employer_filter=apple.
+    STRICT filter: ONLY Apple jobs returned.
+    """
+    apple_jobs = [j for j in SAMPLE_JOBS if "apple" in (j.get("employer_name") or "").lower()]
+    apple_ids = {j["job_id"] for j in apple_jobs}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={"employer_filter": "apple", "limit": 30},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected some results for 'jobs in apple'"
+
+    # Strict filter: every returned job must be Apple — no other employers
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} ({job.get('employer_name')}) returned — employer_filter must be strict"
+        )
+
+    # All Apple jobs from the pool must be present
+    returned_ids = {j["job_id"] for j in jobs}
+    for jid in apple_ids:
+        assert jid in returned_ids, f"Apple job {jid} missing from 'jobs in apple' results"
+
+
+@pytest.mark.asyncio
+async def test_top_10_paid_jobs_in_apple(app):
+    """
+    'top 10 paid jobs in apple' → employer_filter=apple, sort_by_salary=True, top_n=10.
+    STRICT filter: ONLY Apple jobs, salary-sorted, capped at 10.
+    No non-Apple jobs should appear even when top_n=10 and there are fewer than 10 Apple jobs.
+    """
+    apple_jobs = [j for j in SAMPLE_JOBS if "apple" in (j.get("employer_name") or "").lower()]
+    apple_ids = {j["job_id"] for j in apple_jobs}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "sort_by_salary": True,
+                    "top_n": 10,
+                    "limit": 10,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected some results"
+    assert len(jobs) <= 10, f"top_n=10 but got {len(jobs)} results"
+
+    # Strict filter: ONLY Apple jobs — no Coinbase/Salesforce padding to fill top_n
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} ({job.get('employer_name')}) returned — "
+            "employer_filter should be strict even when fewer than top_n Apple jobs exist"
+        )
+
+    # Results are salary-sorted
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_top_paid_jobs_in_apple_france(app):
+    """
+    'top paid jobs in apple, france' → employer_filter=apple, location_aliases=france aliases,
+    sort_by_salary=True.
+
+    Root cause the bug: LLM was treating 'apple' as a location alias instead of a company name.
+    Fix: added 'top paid jobs in apple, france' example to parse-query-intent prompt so LLM
+    correctly splits company → companyFilter and country → locationAliases.
+
+    This test validates the API layer: employer_filter=apple + location_aliases=france/paris/lyon
+    returns only French Apple jobs, boosted to top, salary-sorted.
+    """
+    france_apple_ids = {"j36", "j37", "j38"}   # Paris/Lyon Apple jobs added to SAMPLE_JOBS
+    france_aliases = "paris,france,lyon,marseille,ile-de-france"
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "location_aliases": france_aliases,
+                    "sort_by_salary": True,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Apple France jobs but got 0 results"
+
+    # Strict filter: every returned job must be Apple
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} ({job.get('employer_name')}) returned — employer_filter must be strict"
+        )
+
+    # All returned jobs must be in France (location_aliases filter)
+    france_kws = {"paris", "france", "lyon", "marseille"}
+    for job in jobs:
+        loc = (job.get("location_name") or "").lower()
+        assert any(kw in loc for kw in france_kws), (
+            f"job {job['job_id']} has non-France location '{job.get('location_name')}'"
+        )
+
+    # All Apple France jobs must appear
+    returned_ids = {j["job_id"] for j in jobs}
+    for jid in france_apple_ids:
+        assert jid in returned_ids, f"Apple France job {jid} missing from results"
+
+    # Results are salary-sorted
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Geographic region expansion tests (Google jobs across regions)
+# ---------------------------------------------------------------------------
+
+def _google_ids_in(location_keywords: set) -> set:
+    """Return job_ids of Google jobs whose location matches any keyword."""
+    return {
+        j["job_id"] for j in SAMPLE_JOBS
+        if "google" in (j.get("employer_name") or "").lower()
+        and any(kw in (j.get("location_name") or "").lower() for kw in location_keywords)
+    }
+
+
+def _google_region_patches():
+    return (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    )
+
+
+async def _google_region_request(app, aliases: list, extra_params: dict = {}):
+    params = {"employer_filter": "google", "location_aliases": ",".join(aliases), "limit": 50}
+    params.update(extra_params)
+    with _google_region_patches()[0], _google_region_patches()[1], _google_region_patches()[2]:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs", params=params,
+                                    headers={"Authorization": "Bearer mock-recruiter-token-123"})
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_asia(app):
+    """'google jobs in Asia' — India, Singapore, Japan, China, South Korea."""
+    aliases = ["india", "singapore", "japan", "china", "hong kong",
+               "south korea", "bangalore", "tokyo", "shanghai"]
+    expected = {"g01", "g02", "g03", "g04", "g16", "g17"}  # Bangalore/Hyderabad/Mumbai/Singapore/Tokyo/Shanghai
+    excluded = {"g05", "g06", "g07", "g08", "g09", "g10", "g11", "g12", "g13", "g14", "g15"}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google Asia jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"Asia job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-Asia job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_europe(app):
+    """'google jobs in Europe' — London, Berlin, Amsterdam."""
+    aliases = ["london", "uk", "germany", "france", "netherlands",
+               "berlin", "paris", "amsterdam", "dublin", "zurich"]
+    expected = {"g05", "g06", "g07"}
+    excluded = {"g01", "g02", "g03", "g04", "g08", "g09", "g10", "g11",
+                "g12", "g13", "g14", "g15", "g16", "g17", "g18", "g19"}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google Europe jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"Europe job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-Europe job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_north_america(app):
+    """'google jobs in North America' — USA + Canada (all US and Canada Google jobs)."""
+    aliases = ["usa", "canada", "toronto", "vancouver", "mexico", ", ca", ", ny", ", tx"]
+    expected = {"g08", "g09", "g10", "g11", "g12", "g13", "g14", "g15"}
+    excluded = {"g01", "g02", "g03", "g04", "g05", "g06", "g07",
+                "g16", "g17", "g18", "g19"}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google North America jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"North America job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-NA job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_midwest_usa(app):
+    """'google jobs in midwest USA' — Chicago IL, Detroit MI; comma-prefixed state abbrevs."""
+    aliases = ["chicago", "detroit", "minneapolis", "cleveland",
+               "columbus", ", il", ", mi", ", oh", ", mn"]
+    expected = {"g12", "g13"}   # Chicago IL, Detroit MI
+    excluded = {"g08", "g09", "g10", "g11", "g14", "g15",
+                "g01", "g02", "g03", "g04", "g05", "g06", "g07"}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google Midwest jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"Midwest job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-Midwest job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_west_coast(app):
+    """'google jobs in west coast' — SF CA, Seattle WA, LA CA; state abbrevs."""
+    aliases = ["san francisco", "los angeles", "seattle", ", ca", ", wa", ", or",
+               "silicon valley", "bay area"]
+    expected = {"g08", "g14", "g15"}  # SF CA, Seattle WA, LA CA
+    excluded = {"g09", "g10", "g11", "g12", "g13",
+                "g01", "g02", "g03", "g04", "g05", "g06", "g07"}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google West Coast jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"West Coast job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-West-Coast job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_california(app):
+    """'google jobs in california' — only CA jobs (SF, LA); Seattle WA excluded."""
+    aliases = ["san francisco", ", ca", "los angeles", "silicon valley",
+               "bay area", "san jose", "sacramento"]
+    expected = {"g08", "g15"}   # San Francisco CA, Los Angeles CA
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google California jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"California job {jid} missing"
+    assert "g14" not in returned, "Seattle (WA) wrongly included in California filter"
+    assert "g09" not in returned, "New York wrongly included in California filter"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_south_asia(app):
+    """'google jobs in South Asia' — India offices (Bangalore, Hyderabad, Mumbai)."""
+    aliases = ["india", "bangalore", "hyderabad", "mumbai",
+               "delhi", "pune", "chennai", "kolkata"]
+    expected = {"g01", "g16", "g17"}   # Bangalore, Hyderabad, Mumbai
+    excluded = {"g02", "g03", "g04", "g05", "g06", "g07", "g08",
+                "g18", "g19"}  # Singapore/Japan/etc must not appear
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google South Asia jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"South Asia job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-South-Asia job {jid} wrongly included"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_in_southeast_asia(app):
+    """'google jobs in Southeast Asia' — Singapore, Jakarta, Kuala Lumpur."""
+    aliases = ["singapore", "vietnam", "thailand", "philippines",
+               "malaysia", "indonesia", "jakarta", "kuala lumpur"]
+    expected = {"g02", "g18", "g19"}   # Singapore, Jakarta, Kuala Lumpur
+    excluded = {"g01", "g03", "g04", "g05", "g06", "g07", "g08",
+                "g16", "g17"}  # India/Japan/China/Europe must not appear
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/jobs",
+                params={"employer_filter": "google",
+                        "location_aliases": ",".join(aliases), "limit": 50},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"})
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Google Southeast Asia jobs"
+    for job in jobs:
+        assert "google" in (job.get("employer_name") or "").lower()
+    returned = {j["job_id"] for j in jobs}
+    for jid in expected:
+        assert jid in returned, f"SEA job {jid} missing"
+    for jid in excluded:
+        assert jid not in returned, f"Non-SEA job {jid} wrongly included"
+
+
+# ---------------------------------------------------------------------------
+# "jobs in apple, california" — company + location combo tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_jobs_in_apple_california_returns_ca_apple_jobs(app):
+    """
+    'jobs in apple, california' → employer_filter=apple, location_aliases includes CA keywords.
+    Apple CA jobs (j31=Cupertino, j32=Cupertino, j33=Cupertino) must appear.
+    Apple non-CA jobs (j34=Austin TX, j35=Austin TX, j36/j37/j38=France) must NOT appear.
+    """
+    ca_apple_ids   = {"j31", "j32", "j33"}   # Cupertino — in California
+    non_ca_apple_ids = {"j34", "j35",         # Austin, TX
+                        "j36", "j37", "j38"}  # Paris / Lyon, France
+
+    ca_aliases = "california,san francisco,los angeles,cupertino,silicon valley,bay area,, ca"
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "location_aliases": ca_aliases,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) > 0, "Expected Apple CA jobs but got 0"
+
+    returned = {j["job_id"] for j in jobs}
+
+    # Every returned job must be Apple
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} returned — employer_filter must be strict"
+        )
+
+    # All CA Apple jobs must be present
+    for jid in ca_apple_ids:
+        assert jid in returned, f"Apple CA job {jid} missing from 'jobs in apple, california'"
+
+    # No non-CA Apple jobs should appear
+    for jid in non_ca_apple_ids:
+        assert jid not in returned, (
+            f"Non-CA Apple job {jid} ({next(j.get('location_name') for j in SAMPLE_JOBS if j['job_id'] == jid)}) "
+            f"wrongly included in 'jobs in apple, california'"
+        )
+
+
+@pytest.mark.asyncio
+async def test_jobs_in_apple_california_no_matches_returns_empty(app):
+    """
+    When Apple has NO jobs in California (simulated with Texas-only Apple pool),
+    'jobs in apple, california' must return 0 results — not fall back to all jobs.
+    This mirrors the real-world DB state where Apple jobs are Remote/London/Singapore/Paris.
+    """
+    # Build a pool with only non-CA Apple jobs + some non-Apple CA jobs
+    non_ca_only = [
+        j for j in SAMPLE_JOBS
+        if not ("apple" in (j.get("employer_name") or "").lower()
+                and any(kw in (j.get("location_name") or "").lower()
+                        for kw in ("california", "cupertino", ", ca")))
+    ]
+    # Remove CA Apple jobs (j31, j32, j33) — only Apple TX + France remain
+    ca_apple_ids = {"j31", "j32", "j33"}
+    restricted_pool = [j for j in non_ca_only if j["job_id"] not in ca_apple_ids]
+
+    mock_table = _make_mock_table(jobs=restricted_pool)
+
+    ca_aliases = "california,san francisco,cupertino,silicon valley,bay area,, ca"
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=mock_table),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "location_aliases": ca_aliases,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    # Must be empty — no Apple jobs in CA, don't fall back to showing everyone
+    assert len(jobs) == 0, (
+        f"Expected 0 results when no Apple CA jobs exist, got {len(jobs)}: "
+        f"{[j['job_id'] for j in jobs]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_jobs_in_apple_no_location_returns_all_apple(app):
+    """
+    'jobs in apple' (no location) → employer_filter=apple only.
+    ALL Apple jobs from all locations must appear — Remote, TX, France, CA.
+    """
+    all_apple_ids = {j["job_id"] for j in SAMPLE_JOBS
+                     if "apple" in (j.get("employer_name") or "").lower()}
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={"employer_filter": "apple", "limit": 30},
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    returned = {j["job_id"] for j in jobs}
+
+    # Strict: only Apple jobs
+    for job in jobs:
+        assert "apple" in (job.get("employer_name") or "").lower(), (
+            f"Non-Apple job {job['job_id']} returned"
+        )
+
+    # All Apple jobs (across all locations) must be present
+    for jid in all_apple_ids:
+        assert jid in returned, f"Apple job {jid} missing from 'jobs in apple'"
+
+
+@pytest.mark.asyncio
+async def test_jobs_in_apple_california_salary_sorted(app):
+    """
+    'top paid jobs in apple, california' → employer_filter=apple, CA location_aliases,
+    sort_by_salary=True. CA Apple jobs returned salary-sorted, TX/France jobs excluded.
+    """
+    ca_apple_ids   = {"j31", "j32", "j33"}
+    non_ca_apple_ids = {"j34", "j35", "j36", "j37", "j38"}
+    ca_aliases = "california,cupertino,san jose,bay area,, ca"
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "employer_filter": "apple",
+                    "location_aliases": ca_aliases,
+                    "sort_by_salary": True,
+                    "limit": 30,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    returned = {j["job_id"] for j in jobs}
+
+    assert len(jobs) > 0, "Expected Apple CA jobs"
+    for jid in ca_apple_ids:
+        assert jid in returned, f"Apple CA job {jid} missing"
+    for jid in non_ca_apple_ids:
+        assert jid not in returned, f"Non-CA Apple job {jid} should be excluded"
+
+    # Salary-sorted
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )

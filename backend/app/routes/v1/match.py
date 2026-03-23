@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import List, Optional
 import json
-import os
 
 from app.models import JobMatchResponse, JobSkillMatchResponse
 from app.dependencies import get_current_user, resolve_credentials
-from services.db.lancedb_client import get_or_create_jobs_table, get_or_create_table, get_embeddings_model
+from services.db.lancedb_client import get_or_create_jobs_table, get_or_create_table, get_embeddings_model, search_jobs_hybrid
 
 router = APIRouter(tags=["v1 — Matching"])
 
@@ -141,65 +140,87 @@ async def match_candidates_for_job(
     return matches
 
 
+def _apply_employer_filter(matches: list, employer_filter: str, jobs_table) -> list:
+    """
+    Strict employer filter for job seeker search.
+    Keeps semantically-ranked employer matches, then appends any employer jobs
+    that weren't in the semantic result set (full-table scan).
+    """
+    emp_terms = [e.strip().lower() for e in employer_filter.split(",") if e.strip()]
+    if not emp_terms:
+        return matches
+
+    def _emp_match(job: dict) -> bool:
+        return any(t in (job.get("employer_name") or "").lower() for t in emp_terms)
+
+    # Semantic matches that pass the employer filter (preserve score/rank)
+    sem_employer = [m for m in matches if _emp_match(m["job"])]
+    sem_ids = {m["job"].get("job_id") for m in sem_employer}
+
+    # Full-table scan to capture ALL employer jobs missed by semantic search
+    try:
+        all_rows = jobs_table.search().limit(10000).to_list()
+        for r in all_rows:
+            job = _serialize_job(r)
+            if _emp_match(job) and job.get("job_id") not in sem_ids:
+                sem_employer.append({"score": 0.0, "job": job})
+                sem_ids.add(job.get("job_id"))
+    except Exception:
+        pass
+
+    return sem_employer
+
+
 @router.get("/search/jobs", response_model=List[JobMatchResponse])
 async def search_jobs(
     q: str,
     limit: int = 50,
     job_level: Optional[str] = None,
     job_category: Optional[str] = None,
-    user_id: str = Depends(get_current_user)
+    employer_filter: Optional[str] = None,
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user),
 ):
-    """Semantic search for jobs using natural language query, with text fallback."""
+    """Hybrid search for jobs (vector + FTS via RRF) with natural language query."""
+    creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
     jobs_table = get_or_create_jobs_table()
 
-    # --- Try semantic (vector) search first ---
-    try:
-        embeddings = get_embeddings_model()
-        query_vec = embeddings.embed_query(q)
+    # Truncate very long queries (e.g. pasted skill lists) to avoid zero-vector embeddings.
+    embed_q = q
+    if "," in q and len(q) > 300:
+        terms = [t.strip() for t in q.split(",") if t.strip()]
+        embed_q = ", ".join(terms[:20])
+        print(f"DEBUG: [match] Long query truncated to {len(terms[:20])} terms for embedding")
 
-        search = jobs_table.search(query_vec).metric("cosine")
+    # Build WHERE clause for level/category filters
+    filters = []
+    if job_level:
+        filters.append(f"job_level = '{job_level}'")
+    if job_category:
+        filters.append(f"job_category = '{job_category}'")
+    where_clause = " AND ".join(filters) if filters else None
 
-        filters = []
-        if job_level:
-            filters.append(f"job_level = '{job_level}'")
-        if job_category:
-            filters.append(f"job_category = '{job_category}'")
-        if filters:
-            search = search.where(" AND ".join(filters))
+    results = search_jobs_hybrid(
+        embed_q,
+        limit=limit,
+        api_key=creds["openrouter_key"],
+        where_clause=where_clause,
+        fetch_cap=limit,
+    )
 
-        results = search.limit(limit).to_list()
-
-        matches = []
-        for r in results:
-            dist = r.get("_distance", 1.0)
-            score = max(0.0, 1.0 - float(dist))
-            matches.append({"score": score, "job": _serialize_job(r)})
-
-        # Only return semantic results if scores are meaningful (not all zero vectors)
-        if matches and max(m["score"] for m in matches) > 0.05:
-            return matches
-
-        print("DEBUG: [match] Semantic search returned zero scores, falling back to text search")
-    except Exception as e:
-        print(f"DEBUG: [match] Semantic search failed: {e}, falling back to text search")
-
-    # --- Text-based keyword fallback ---
-    all_results = jobs_table.search().limit(1000).to_list()
-    q_lower = q.lower()
     matches = []
-    for r in all_results:
-        title = (r.get("title") or "").lower()
-        desc = (r.get("description") or "").lower()
-        employer = (r.get("employer_name") or "").lower()
-        skills = [s.lower() for s in (r.get("skills_required") or [])]
+    for r in results:
+        dist = r.get("_distance", None)
+        if dist is not None:
+            score = max(0.0, 1.0 - float(dist))
+        else:
+            # FTS-only row: use _score if present, else default
+            score = min(0.95, float(r.get("_score", 0.5)))
+        matches.append({"score": round(score, 3), "job": _serialize_job(r)})
 
-        if q_lower in title or q_lower in employer:
-            matches.append({"score": 1.0, "job": _serialize_job(r)})
-        elif any(q_lower in s for s in skills):
-            matches.append({"score": 0.85, "job": _serialize_job(r)})
-        elif q_lower in desc:
-            matches.append({"score": 0.7, "job": _serialize_job(r)})
-
+    if employer_filter:
+        matches = _apply_employer_filter(matches, employer_filter, jobs_table)
     return matches[:limit]
 
 
@@ -258,7 +279,7 @@ def _extract_skills_keywords(text: str) -> List[str]:
 
 async def _extract_skills_ai(text: str, creds: dict) -> List[str]:
     """Extract skills from resume text using AI, with keyword fallback."""
-    api_key = creds.get("openrouter_key") or os.getenv("OPEN_ROUTER_KEY")
+    api_key = creds.get("openrouter_key")
     if not api_key:
         return _extract_skills_keywords(text)
     try:
@@ -475,7 +496,7 @@ async def match_jobs_skills_stream(
             yield evt("MODULE   › app/routes/v1/match.py", "module")
             yield evt("FUNCTION › _extract_skills_ai()", "module")
 
-            api_key = creds.get("openrouter_key") or os.getenv("OPEN_ROUTER_KEY")
+            api_key = creds.get("openrouter_key")
             skills: List[str] = []
 
             if api_key:

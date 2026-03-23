@@ -32,6 +32,13 @@ yarn-error.log*
 .pnpm-debug.log*
 dist/
 dist-ssr/
+# Root-level package files (belong in frontend/)
+/package.json
+/package-lock.json
+
+# ---------- Playwright ----------
+test-results/
+playwright-report/
 
 # ---------- Environment / Secrets ----------
 .env
@@ -39,6 +46,8 @@ dist-ssr/
 .env.*.local
 backend/.env
 secrets.txt
+.secret_key
+backend/.secret_key
 
 # ---------- Data (runtime, not source) ----------
 data/raw_resumes/*.pdf

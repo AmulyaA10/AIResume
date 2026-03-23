@@ -22,24 +22,23 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [persona, setPersona] = useState<Persona>(null);
-    const [user, setUser] = useState<User | null>(null);
+    // Initialise synchronously from localStorage so ProtectedRoute never flashes /login
+    // on a fresh page.goto() when the token is already in storage.
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+        const token = localStorage.getItem('token');
+        const storedPersona = localStorage.getItem('persona');
+        const storedUser = localStorage.getItem('user');
+        return !!(token && storedPersona && storedUser);
+    });
+    const [persona, setPersona] = useState<Persona>(() => {
+        return (localStorage.getItem('persona') as Persona) ?? null;
+    });
+    const [user, setUser] = useState<User | null>(() => {
+        const raw = localStorage.getItem('user');
+        try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+    });
     const navigate = useNavigate();
     const location = useLocation();
-
-    // Load from localStorage on mount
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        const storedPersona = localStorage.getItem('persona') as Persona;
-        const storedUser = localStorage.getItem('user');
-
-        if (token && storedPersona && storedUser) {
-            setIsAuthenticated(true);
-            setPersona(storedPersona);
-            setUser(JSON.parse(storedUser));
-        }
-    }, []);
 
     // Handle OAuth Callback - Logic moved to AuthCallback page via handleOAuthCallback
     const handleOAuthCallback = React.useCallback((token: string, name: string, email?: string, linkedinConnected?: boolean, profileUrl?: string) => {
@@ -110,6 +109,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (method === 'manager') {
             newPersona = 'manager';
             newUser = { name: 'Hiring Lead', email: 'lead@company.com' };
+        } else if (method === 'jobseeker') {
+            newPersona = 'jobseeker';
+            newUser = { name: 'Job Seeker', email: 'lintojm@yahoo.com' };
         }
 
         // Persist mock session with distinct tokens for RBAC testing

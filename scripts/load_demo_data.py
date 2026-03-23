@@ -579,8 +579,9 @@ def insert_jobs():
     table = get_or_create_jobs_table()
 
     # Mirror create_job route: init embeddings once, fall back to zero vectors on failure
+    api_key = _get_openrouter_key()
     try:
-        embeddings = get_embeddings_model()
+        embeddings = get_embeddings_model(api_key=api_key)
         use_embeddings = True
     except Exception as e:
         print(f"  WARNING: Could not init embeddings ({e}). Jobs will use zero vectors.")

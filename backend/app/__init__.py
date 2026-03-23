@@ -31,6 +31,19 @@ def create_app() -> FastAPI:
     # Ensure upload directory exists
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+    # Eagerly initialise the encryption key at startup so it exists before any
+    # request arrives — avoids a race condition where two concurrent first-time
+    # requests each generate a different key.
+    from app.common.encryption import _ensure_key
+    _ensure_key()
+
+    # Remove resume_meta rows with no corresponding chunks (left over from failed/partial uploads).
+    try:
+        from services.db.lancedb_client import purge_dangling_meta
+        purge_dangling_meta()
+    except Exception as _purge_err:
+        print(f"DEBUG: [startup] purge_dangling_meta failed (non-fatal): {_purge_err}")
+
     # Import and include routers
     from app.routes import (
         auth_router,

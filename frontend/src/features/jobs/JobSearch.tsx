@@ -18,10 +18,12 @@ const formatSalary = (currency: string, min: number, max?: number): string => {
 };
 
 interface QueryIntent {
-    location: string | null;   // e.g. "california", "london"
-    topN: number | null;       // e.g. 5 from "top 5 jobs"
-    sortBySalary: boolean;     // true if "top paid", "highest salary", etc.
-    cleanQuery: string;        // query with intent tokens stripped
+    location: string | null;       // e.g. "california", "london"
+    locationAliases?: string[];    // substrings to match against location_name
+    companyFilter?: string[];      // employer name substrings (FANG, Big 4, etc.)
+    topN: number | null;           // e.g. 5 from "top 5 jobs"
+    sortBySalary: boolean;         // true if "top paid", "highest salary", etc.
+    cleanQuery: string;            // query with intent tokens stripped, acronyms expanded
 }
 
 
@@ -157,14 +159,19 @@ const JobSearch = () => {
                 locationAliasCache.current[searchQuery] = intent as any;
             }
 
-            const response = await matchApi.searchJobs(intent.cleanQuery || searchQuery);
+            const extraFilters: Record<string, string> = {};
+            if (intent.companyFilter && intent.companyFilter.length > 0) {
+                extraFilters.employer_filter = intent.companyFilter.join(',');
+            }
+            const response = await matchApi.searchJobs(intent.cleanQuery || searchQuery, 50, extraFilters);
             let data: any[] = response.data || [];
 
-            // Apply location filter using AI-resolved aliases
+            // Apply location filter using AI-resolved aliases + exclusions
             // Use word-boundary regex for short terms to avoid false matches (e.g. "ca" inside "canada")
             if (intent.location) {
                 const loc = intent.location.toLowerCase();
-                const aliases: string[] = (intent as any).locationAliases ?? [];
+                const aliases: string[] = intent.locationAliases ?? [];
+                const exclusions: string[] = (intent as any).locationExclusions ?? [];
                 const matchesTerm = (text: string, term: string) => {
                     if (term.length <= 3) {
                         return new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
@@ -173,15 +180,27 @@ const JobSearch = () => {
                 };
                 data = data.filter(r => {
                     const ln = (r.job.location_name || '').toLowerCase();
+                    if (exclusions.some(ex => ln.includes(ex))) return false;
                     return matchesTerm(ln, loc) || aliases.some((a: string) => matchesTerm(ln, a));
                 });
             }
 
-            // Apply salary sort
+            // Apply salary sort FIRST so company boost preserves salary order within the group
             if (intent.sortBySalary) {
                 data = [...data].sort((a, b) =>
                     (b.job.salary_max || b.job.salary_min || 0) - (a.job.salary_max || a.job.salary_min || 0)
                 );
+            }
+
+            // Apply company filter: strict — only show jobs at matching companies
+            if (intent.companyFilter && intent.companyFilter.length > 0) {
+                const filters = intent.companyFilter.map(c => c.toLowerCase());
+                const matchesCompany = (r: any) => {
+                    const employer = (r.job.employer_name || '').toLowerCase();
+                    return filters.some(f => employer.includes(f));
+                };
+                const filtered = data.filter(matchesCompany);
+                if (filtered.length > 0) data = filtered;
             }
 
             const totalAfterFilters = data.length;
@@ -267,6 +286,7 @@ const JobSearch = () => {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                         <input
                             type="text"
+                            data-testid="job-search-input"
                             placeholder="Skills extracted from your resume appear here — edit or type freely…"
                             className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900"
                             value={query}
@@ -494,6 +514,9 @@ const JobSearch = () => {
                                 exit={{ opacity: 0, scale: 0.9 }}
                                 transition={{ duration: 0.3, delay: idx * 0.05 }}
                                 className="glass-card p-6 bg-white border-slate-200 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/5 transition-all group cursor-pointer relative overflow-hidden"
+                                data-testid="job-card"
+                                data-employer={match.job.employer_name || ''}
+                                data-location={match.job.location_name || ''}
                             >
                                 <div className="absolute top-0 right-0">
                                     {activeIntent?.sortBySalary ? (
@@ -520,7 +543,7 @@ const JobSearch = () => {
                                         <h4 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1 pr-16">
                                             {match.job.title}
                                         </h4>
-                                        <p className="text-slate-500 font-medium text-sm mt-0.5">{match.job.employer_name}</p>
+                                        <p className="text-slate-500 font-medium text-sm mt-0.5" data-testid="job-employer">{match.job.employer_name}</p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3 text-xs text-slate-500 font-semibold uppercase tracking-wider">

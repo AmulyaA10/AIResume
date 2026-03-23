@@ -7,6 +7,8 @@
 #   make test-unit        Run unit tests only
 #   make test-integration Run integration tests only
 #   make test-verbose     Run all tests with verbose output
+#   make test-frontend    Run Vitest component unit tests
+#   make test-e2e         Run Playwright E2E tests (requires running app)
 #   make lint             Run Python linter (ruff)
 #   make build            Build the React frontend
 #   make dev              Start backend + frontend dev servers
@@ -23,7 +25,12 @@
 SHELL := /bin/bash
 
 # Detect Python
-PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+PYTHON := $(shell \
+  if [ -f "$(CURDIR)/.venv/bin/python3" ]; then \
+    echo "$(CURDIR)/.venv/bin/python3"; \
+  else \
+    command -v python3 2>/dev/null || command -v python 2>/dev/null; \
+  fi)
 PIP := $(PYTHON) -m pip
 PYTEST := $(PYTHON) -m pytest
 NPM := npm
@@ -41,7 +48,7 @@ CYAN := \033[0;36m
 NC := \033[0m  # No Color
 
 .PHONY: help install install-dev install-frontend test test-unit test-integration \
-        test-verbose lint build dev dev-backend dev-frontend synth-data demo demo-reset demo-wipe demo-wipe-all clean
+        test-verbose test-frontend test-e2e lint build dev dev-backend dev-frontend synth-data demo demo-reset demo-wipe demo-wipe-all clean
 
 # ── Help ────────────────────────────────────────────────────────────────────
 
@@ -69,9 +76,9 @@ install-frontend: ## Install Node.js frontend dependencies
 
 # ── Test ────────────────────────────────────────────────────────────────────
 
-test: ## Run ALL tests (unit + integration)
+test: ## Run ALL tests (unit + integration + system)
 	@echo "$(CYAN)Running all tests...$(NC)"
-	$(PYTEST) $(TESTS_DIR)/unit $(TESTS_DIR)/integration --tb=short -q
+	$(PYTEST) $(TESTS_DIR) --tb=short -q
 	@echo "$(GREEN)All tests complete.$(NC)"
 
 test-unit: ## Run unit tests only
@@ -79,13 +86,24 @@ test-unit: ## Run unit tests only
 	$(PYTEST) $(TESTS_DIR)/unit --tb=short -q
 	@echo ""
 
-test-integration: ## Run integration tests only
+test-integration: ## Run integration + system tests only
 	@echo "$(CYAN)Running integration tests...$(NC)"
-	$(PYTEST) $(TESTS_DIR)/integration --tb=short -q
+	$(PYTEST) $(TESTS_DIR)/integration $(TESTS_DIR)/test_*.py --tb=short -q
 	@echo ""
 
 test-verbose: ## Run all tests with verbose output
-	$(PYTEST) $(TESTS_DIR)/unit $(TESTS_DIR)/integration -v --tb=long
+	$(PYTEST) $(TESTS_DIR) -v --tb=long
+
+test-frontend: ## Run Vitest component unit tests
+	@echo "$(CYAN)Running frontend unit tests (Vitest)...$(NC)"
+	cd "$(FRONTEND_DIR)" && $(NPM) test
+	@echo "$(GREEN)Frontend unit tests complete.$(NC)"
+
+test-e2e: ## Run Playwright E2E tests (requires running app: make dev)
+	@echo "$(CYAN)Running Playwright E2E tests...$(NC)"
+	@echo "$(YELLOW)NOTE: App must be running on http://localhost:5173 (make dev)$(NC)"
+	cd "$(PROJECT_ROOT)" && npx playwright test
+	@echo "$(GREEN)E2E tests complete.$(NC)"
 
 # ── Lint ────────────────────────────────────────────────────────────────────
 
