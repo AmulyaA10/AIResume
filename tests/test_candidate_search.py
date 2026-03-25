@@ -432,26 +432,20 @@ async def test_db_exception_returns_error(app):
 
 
 @pytest.mark.asyncio
-async def test_llm_exception_returns_error(app):
-    """LLM chain raising an exception returns error payload instead of 500."""
-    mock_ch = MagicMock()
-    mock_ch.invoke.side_effect = TimeoutError("LLM request timed out")
-    mock_pr = MagicMock()
-    mock_pr.__or__ = MagicMock(return_value=mock_ch)
-
+async def test_search_returns_results_without_llm(app):
+    """Search now uses deterministic scoring — no LLM call; results are returned directly."""
     with (
         patch("app.routes.v1.search.resolve_credentials",
               new=AsyncMock(return_value={"openrouter_key": "sk-test", "llm_model": None})),
         patch("app.routes.v1.search.search_resumes_hybrid", return_value=_SAMPLE_DF),
-        patch("langchain_openai.ChatOpenAI", return_value=MagicMock()),
-        patch("langchain_core.prompts.PromptTemplate", return_value=mock_pr),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/v1/search", json={"query": "data scientist"}, headers=_AUTH)
 
     assert resp.status_code == 200
     body = resp.json()
-    assert "error" in body, f"expected 'error' key: {body}"
+    assert "results" in body, f"expected 'results' key: {body}"
+    assert len(body["results"]) > 0
 
 
 @pytest.mark.asyncio
@@ -561,36 +555,27 @@ async def test_auto_screen_selected_above_70(app):
 
 @pytest.mark.asyncio
 async def test_chunk_deduplication(app):
-    """Duplicate text chunks from the same file must be deduplicated before LLM call."""
+    """Duplicate text chunks from the same file must produce only one result entry."""
     dup_df = pd.DataFrame([
         {"id": "x1", "user_id": "u", "filename": "resume.pdf", "text": "Python expert"},
         {"id": "x2", "user_id": "u", "filename": "resume.pdf", "text": "Python expert"},   # duplicate
         {"id": "x3", "user_id": "u", "filename": "resume.pdf", "text": "FastAPI experience"},
     ])
-    mock_ch = MagicMock()
-    mock_ch.invoke.return_value = _llm_json([{"filename": "resume.pdf", "text": ""}])
-    mock_ch.__or__ = MagicMock(return_value=mock_ch)  # handle | StrOutputParser()
-    mock_pr = MagicMock()
-    mock_pr.__or__ = MagicMock(return_value=mock_ch)
 
     with (
         patch("app.routes.v1.search.resolve_credentials",
               new=AsyncMock(return_value={"openrouter_key": "sk-test", "llm_model": None})),
         patch("app.routes.v1.search.search_resumes_hybrid", return_value=dup_df),
-        patch("langchain_openai.ChatOpenAI", return_value=MagicMock()),
-        patch("langchain_core.prompts.PromptTemplate", return_value=mock_pr),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/v1/search", json={"query": "python"}, headers=_AUTH)
 
     assert resp.status_code == 200
-    # LLM should have been called once with deduplicated content
-    mock_ch.invoke.assert_called_once()
-    call_arg = mock_ch.invoke.call_args[0][0]
-    resumes_text = call_arg.get("resumes", "")
-    # "Python expert" should appear only once
-    assert resumes_text.count("Python expert") == 1, \
-        "duplicate chunk was not deduplicated before LLM call"
+    body = resp.json()
+    # All three rows are from the same file — should be aggregated into one result entry
+    filenames = [r["filename"] for r in body.get("results", [])]
+    assert filenames.count("resume.pdf") == 1, \
+        f"duplicate chunks were not aggregated into a single result: {filenames}"
 
 
 @pytest.mark.asyncio

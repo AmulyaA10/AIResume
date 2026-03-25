@@ -195,18 +195,31 @@ def get_or_create_job_applied_table():
 def apply_for_job(user_id: str, job_id: str, resume_id: str):
     from datetime import datetime
     table = get_or_create_job_applied_table()
-    
-    # Optional: check if already applied to prevent duplicates
+
     try:
         df = table.to_pandas()
         if not df.empty:
-            existing = df[(df['user_id'] == user_id) & (df['job_id'] == job_id) & (df['resume_id'] == resume_id)]
+            mask = (df['user_id'] == user_id) & (df['job_id'] == job_id) & (df['resume_id'] == resume_id)
+            existing = df[mask]
             if not existing.empty:
-                print(f"DEBUG: User {user_id} already applied to job {job_id} with resume {resume_id}")
-                return False
+                statuses = set(existing['applied_status'].tolist())
+                # Already formally applied — no-op
+                if statuses & {'applied', 'selected', 'rejected'}:
+                    print(f"DEBUG: User {user_id} already applied to job {job_id} with resume {resume_id}")
+                    return False
+                # Was auto_shortlisted — delete that record then fall through to add applied below
+                if 'auto_shortlisted' in statuses:
+                    safe_resume = resume_id.replace("'", "''")
+                    safe_job = job_id.replace("'", "''")
+                    safe_user = user_id.replace("'", "''")
+                    table.delete(
+                        f"user_id = '{safe_user}' AND job_id = '{safe_job}' "
+                        f"AND resume_id = '{safe_resume}' AND applied_status = 'auto_shortlisted'"
+                    )
+                    print(f"DEBUG: Deleted auto_shortlisted for job {job_id}, resume {resume_id}")
     except Exception as e:
         print(f"DEBUG: Error checking existing applications: {e}")
-        
+
     table.add([{
         "id": str(uuid4()),
         "user_id": user_id,

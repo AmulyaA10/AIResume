@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -500,14 +500,21 @@ _QUERY_LOCATION_SIGNALS: list[tuple[list[str], list[str]]] = [
     (["delhi", "noida", "gurgaon", "gurugram", "ncr"],
      ["delhi", "noida", "gurugram", "gurgaon", "haryana"]),
 
-    (["india"],
-     ["india"]),
+    # United States — full name and abbreviations (stored locations use "City, ST")
+    (["united states", "usa", "u.s.a.", "u.s.", "the us", "the usa"],
+     [", ca", ", ny", ", tx", ", wa", ", fl", ", ga", ", il", ", ma",
+      ", co", ", az", ", pa", ", oh", ", mi", ", nc", ", va", ", mn",
+      ", or", ", nj", ", tn", ", mo", ", wi", ", md", ", ct", ", ut",
+      ", in", ", nv", ", sc", ", al", ", ky", ", ok", ", la", ", dc"]),
+
+    (["india", "indian"],
+     ["india", "bangalore", "hyderabad", "mumbai", "delhi", "pune", "chennai", "kolkata"]),
+
+    (["canada", "canadian"],
+     ["canada", "toronto", "vancouver", "montreal", "calgary", "ottawa"]),
 
     (["singapore"],
      ["singapore"]),
-
-    (["toronto", "canada"],
-     ["toronto", "canada"]),
 
     (["remote"],
      ["remote"]),
@@ -549,34 +556,111 @@ _QUERY_LOCATION_SIGNALS: list[tuple[list[str], list[str]]] = [
      [", or"]),
 ]
 
-# Maps 2-letter US state codes (lowercase) to stored location keywords.
-# Used for queries like "executives from NY" where "NY" can't be matched by the
-# multi-word static map above (which requires len >= 3 in the generic fallback).
-_STATE_CODE_TO_LOC_KWS: dict[str, list[str]] = {
+# Common US state codes list used for US-wide queries ("from US", "from USA")
+_US_STATE_LOC_KWS = [
+    ", ca", ", ny", ", tx", ", wa", ", fl", ", ga", ", il", ", ma",
+    ", co", ", az", ", pa", ", oh", ", mi", ", nc", ", va", ", mn",
+    ", or", ", nj", ", tn", ", mo", ", wi", ", md", ", ct", ", ut",
+    ", in", ", nv", ", sc", ", al", ", ky", ", ok", ", la", ", dc",
+]
+
+# Maps 2-letter and common 2/3-letter codes to stored location keywords.
+# Handles queries like "from NY", "from CA", "from US", "from IN" (India),
+# "from CAN" (Canada), "from USA".
+_STATE_CODE_TO_LOC_KWS: dict[str, list[str] | None] = {
+    # US state codes
     "ny": ["new york", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken", ", ny"],
     "nj": ["new jersey", "hoboken", "jersey city"],
-    "wa": ["seattle", "bellevue", "redmond", "kirkland"],
-    "tx": ["austin", "dallas", "houston", "round rock"],
-    "il": ["chicago"],
-    "fl": ["miami", "orlando", "tampa"],
-    "ga": ["atlanta"],
-    "ma": ["boston"],
-    "co": ["denver", "boulder"],
-    "az": ["phoenix", "scottsdale"],
-    "pa": ["philadelphia", "pittsburgh"],
-    "oh": ["columbus", "cleveland"],
-    "mi": ["detroit", "ann arbor"],
-    "nc": ["charlotte", "raleigh"],
-    "va": ["virginia", "arlington"],
-    "mn": ["minneapolis"],
-    "or": ["portland"],
-    "in": None,  # reserved — "in" is a preposition, not a state here; skip indiana to avoid ambiguity
+    "wa": ["seattle", "bellevue", "redmond", "kirkland", ", wa"],
+    "tx": ["austin", "dallas", "houston", "round rock", ", tx"],
+    "il": ["chicago", ", il"],
+    "fl": ["miami", "orlando", "tampa", ", fl"],
+    "ga": ["atlanta", ", ga"],
+    "ma": ["boston", ", ma"],
+    "co": ["denver", "boulder", ", co"],
+    "az": ["phoenix", "scottsdale", ", az"],
+    "pa": ["philadelphia", "pittsburgh", ", pa"],
+    "oh": ["columbus", "cleveland", ", oh"],
+    "mi": ["detroit", "ann arbor", ", mi"],
+    "nc": ["charlotte", "raleigh", ", nc"],
+    "va": ["virginia", "arlington", ", va"],
+    "mn": ["minneapolis", ", mn"],
+    "or": ["portland", ", or"],
+    "ca": [", ca"],   # California state code
+    # US abbreviations — map to all state codes for US-wide search
+    "us": _US_STATE_LOC_KWS,
+    # Country codes
+    "in": ["india", "bangalore", "hyderabad", "mumbai", "delhi", "pune", "chennai"],  # India
+    "uk": ["london", "england", "united kingdom"],
+    "au": ["australia", "sydney", "melbourne", "brisbane"],
+    "de": ["germany", "berlin", "munich"],
+    "fr": ["france", "paris"],
+    "sg": ["singapore"],
+    "jp": ["japan", "tokyo"],
+    "cn": ["china", "beijing", "shanghai"],
+    "kr": ["south korea", "seoul"],
+}
+
+# 3-letter country/region codes → stored location keywords
+_COUNTRY_CODE_3_TO_LOC_KWS: dict[str, list[str]] = {
+    "usa": _US_STATE_LOC_KWS,
+    "can": ["canada", "toronto", "vancouver", "montreal", "calgary"],
+    "ind": ["india", "bangalore", "hyderabad", "mumbai", "delhi", "pune", "chennai"],
+    "aus": ["australia", "sydney", "melbourne", "brisbane"],
+    "gbr": ["london", "england", "united kingdom"],
+    "deu": ["germany", "berlin", "munich"],
+    "fra": ["france", "paris"],
+    "sgp": ["singapore"],
+    "jpn": ["japan", "tokyo"],
+    "chn": ["china", "beijing", "shanghai"],
+    "kor": ["south korea", "seoul"],
+    "mex": ["mexico", "mexico city"],
 }
 
 _RE_STATE_CODE = re.compile(
-    r'\b(?:from|based\s+in|located\s+in)\s+([A-Z]{2})\b',
+    r'\b(?:from|based\s+in|located\s+in|working\s+in|currently\s+in)\s+([A-Z]{2,3})\b',
     re.IGNORECASE,
 )
+# Matches additional "and/or CODE" after a primary location (e.g. "from US and UK")
+_RE_EXTRA_CODE = re.compile(r'\b(?:and|or)\s+([A-Z]{2,3})\b', re.IGNORECASE)
+
+
+def _get_loc_kws_for_code(code: str) -> list[str]:
+    """Return stored location keywords for a 2- or 3-letter country/state code."""
+    kws = _STATE_CODE_TO_LOC_KWS.get(code)
+    if kws:
+        return list(kws)
+    return list(_COUNTRY_CODE_3_TO_LOC_KWS.get(code) or [])
+
+
+def _collect_extra_loc_kws(query: str, q_lower: str, after_pos: int = 0) -> list[str]:
+    """
+    After a primary location is matched, scan for additional locations joined by "and"/"or".
+    Handles:
+      - Chained codes:     "from US and UK", "from NY or CA"
+      - Named countries:   "from US and India", "from USA and Canada"
+    Returns any additional location keywords found (empty if none).
+    """
+    extra: list[str] = []
+
+    # 1. Chained 2-3 letter codes: "and/or CODE"
+    for m in _RE_EXTRA_CODE.finditer(query, after_pos):
+        code = m.group(1).lower()
+        kws = _get_loc_kws_for_code(code)
+        if kws:
+            extra.extend(kws)
+
+    # 2. Named locations in the remaining text (check each _QUERY_LOCATION_SIGNALS entry)
+    remaining = q_lower[after_pos:]
+    for query_kws, loc_match_kws in _QUERY_LOCATION_SIGNALS:
+        for kw in query_kws:
+            if kw in remaining:
+                # Only add if the keywords aren't already covered (avoid duplication)
+                new_kws = [k for k in loc_match_kws if k not in extra]
+                extra.extend(new_kws)
+                break
+
+    return extra
 
 # Preposition + location stop-phrases to strip from query for semantic search
 _LOCATION_STRIP_PATTERNS = [
@@ -585,8 +669,9 @@ _LOCATION_STRIP_PATTERNS = [
     re.compile(r'\b(?:new york|nyc|manhattan|brooklyn|jersey city|\bNY\b)\b', re.I),
     re.compile(r'\b(?:seattle|bellevue|redmond)\b', re.I),
     re.compile(r'\b(?:london|england|berlin|germany)\b', re.I),
-    re.compile(r'\b(?:bangalore|bengaluru|hyderabad|mumbai|chennai|delhi|noida|gurugram|india)\b', re.I),
-    re.compile(r'\b(?:singapore|toronto|canada|remote)\b', re.I),
+    re.compile(r'\b(?:bangalore|bengaluru|hyderabad|mumbai|chennai|delhi|noida|gurugram|india|indian)\b', re.I),
+    re.compile(r'\b(?:singapore|toronto|canada|canadian|remote)\b', re.I),
+    re.compile(r'\b(?:united\s+states|usa|u\.s\.a\.|u\.s\.)\b', re.I),
     re.compile(r'\b(?:austin|texas|tx)\b', re.I),
     re.compile(r'\b(?:california|new\s+york\s+state|washington\s+state|illinois|florida|georgia|massachusetts|colorado|arizona|pennsylvania|ohio|michigan|north\s+carolina|virginia|minnesota|oregon)\b', re.I),
     re.compile(r'\b(?:candidate[s]?|developer[s]?|engineer[s]?)\b', re.I),  # generic noise in location queries
@@ -664,25 +749,55 @@ def _parse_location_from_query(query: str) -> tuple[list[str], str]:
     q_lower = query.lower()
     matched_loc_keywords: list[str] = []
     loc_phrase_extracted: str = ""
+    _has_multi_signal = " and " in q_lower or " or " in q_lower
 
     # Pass 1: static alias map
+    match_end_pos = 0
     for query_kws, loc_match_kws in _QUERY_LOCATION_SIGNALS:
         for kw in query_kws:
             if kw in q_lower:
-                matched_loc_keywords = loc_match_kws
+                matched_loc_keywords = list(loc_match_kws)
+                match_end_pos = q_lower.index(kw) + len(kw)
                 break
         if matched_loc_keywords:
             break
 
-    # Pass 1.5: 2-letter US state codes (e.g. "from NY", "based in WA")
+    # Pass 1 multi-location: if "and/or" present, collect extra locations after first match
+    if matched_loc_keywords and _has_multi_signal:
+        extra = _collect_extra_loc_kws(query, q_lower, after_pos=match_end_pos)
+        for kw in extra:
+            if kw not in matched_loc_keywords:
+                matched_loc_keywords.append(kw)
+
+    # Pass 1.5: 2- or 3-letter codes (e.g. "from NY", "from CA", "from US", "from CAN", "from IN")
     if not matched_loc_keywords:
         sm = _RE_STATE_CODE.search(query)
         if sm:
             code = sm.group(1).lower()
+            # Check 2-letter state/country codes first
             kws = _STATE_CODE_TO_LOC_KWS.get(code)
-            if kws:  # None sentinel means skip (e.g. "in" is ambiguous)
-                matched_loc_keywords = kws
+            if kws is None and code in _STATE_CODE_TO_LOC_KWS:
+                pass  # None means explicitly skip (reserved)
+            elif kws:
+                matched_loc_keywords = list(kws)
                 loc_phrase_extracted = sm.group(1)
+                # Multi-location: look for "and/or CODE" after the first code
+                if _has_multi_signal:
+                    extra = _collect_extra_loc_kws(query, q_lower, after_pos=sm.end())
+                    for kw in extra:
+                        if kw not in matched_loc_keywords:
+                            matched_loc_keywords.append(kw)
+            else:
+                # Try 3-letter country codes (e.g. USA, CAN, IND)
+                kws3 = _COUNTRY_CODE_3_TO_LOC_KWS.get(code)
+                if kws3:
+                    matched_loc_keywords = list(kws3)
+                    loc_phrase_extracted = sm.group(1)
+                    if _has_multi_signal:
+                        extra = _collect_extra_loc_kws(query, q_lower, after_pos=sm.end())
+                        for kw in extra:
+                            if kw not in matched_loc_keywords:
+                                matched_loc_keywords.append(kw)
 
     # Pass 2: generic regex extraction (any city not covered by the static map)
     if not matched_loc_keywords:
@@ -802,7 +917,7 @@ async def _parse_candidate_search_intent(query: str, api_key: Optional[str], llm
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
             max_tokens=300,
-        )
+        ).bind(response_format={"type": "json_object"})
         prompt = ChatPromptTemplate.from_messages([
             ("system",
              "You are a candidate/resume search query parser. Given a natural-language recruiter query, "
@@ -877,8 +992,18 @@ async def _parse_candidate_search_intent(query: str, api_key: Optional[str], llm
              '  "candidates from South Asia" → {{"locationAliases":["india","bangalore","hyderabad","mumbai","delhi","pune","chennai","kolkata","pakistan"],"companyFilter":[],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
              '  "candidates currently working in FANG" → {{"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
              '  "candidate working in microsoft" → {{"locationAliases":[],"companyFilter":["microsoft"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidate from apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidate from google" → {{"locationAliases":[],"companyFilter":["google"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidate from netflix" → {{"locationAliases":[],"companyFilter":["netflix"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "engineers at apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "apple software engineer" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":true,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "candidate working in apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":true,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer"}}\n'
+             '  "senior engineer from apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":true,"hasRoleSignal":true,"expLevel":"Senior","cleanQuery":"senior software engineer"}}\n'
              '  "candidates who worked in FANG" → {{"locationAliases":[],"companyFilter":["google","meta","amazon","apple","netflix","microsoft","facebook"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Google Meta Amazon Apple Netflix"}}\n'
              '  "candidate worked in apple" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple"}}\n'
+             '  "former apple employee" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple former"}}\n'
+             '  "ex apple engineer" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"engineer Apple former"}}\n'
+             '  "apple alumni" → {{"locationAliases":[],"companyFilter":["apple"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple alumni"}}\n'
              '  "candidate from apple and google" → {{"locationAliases":[],"companyFilter":["apple","google"],"strictCompany":false,"hasRoleSignal":false,"expLevel":null,"cleanQuery":"software engineer Apple Google"}}\n'
              '  "experts in ML or machine learning" → {{"locationAliases":[],"companyFilter":[],"strictCompany":false,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"machine learning expert"}}\n'
              '  "smart engineers in data science" → {{"locationAliases":[],"companyFilter":[],"strictCompany":false,"hasRoleSignal":true,"expLevel":null,"cleanQuery":"data science engineer"}}\n'
@@ -890,7 +1015,7 @@ async def _parse_candidate_search_intent(query: str, api_key: Optional[str], llm
         ])
         chain = prompt | llm | StrOutputParser()
         raw = await chain.ainvoke({"query": query})
-        parsed = _json.loads(raw.strip())
+        parsed = _json.loads(raw)  # JSON mode guarantees valid JSON — no repair needed
         result = {
             "locationAliases":    parsed.get("locationAliases")    or [],
             "locationExclusions": parsed.get("locationExclusions") or [],
@@ -1014,6 +1139,31 @@ _VALID_INDUSTRIES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# LRU caches for location LLM calls — keyed by raw location string
+# 300 resumes * 2 LLM calls = 600 calls without cache; most locations repeat.
+# ---------------------------------------------------------------------------
+from collections import OrderedDict as _OD
+
+_LOC_NORMALIZE_CACHE: _OD = _OD()
+_LOC_METRO_CACHE: _OD = _OD()
+_LOC_CACHE_MAX = 1024
+
+
+def _loc_cache_get(cache: _OD, key: str):
+    if key in cache:
+        cache.move_to_end(key)
+        return cache[key]
+    return None
+
+
+def _loc_cache_set(cache: _OD, key: str, value) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    if len(cache) > _LOC_CACHE_MAX:
+        cache.popitem(last=False)
+
+
 def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
     """
     Use an LLM to canonicalize a location string to city-level format.
@@ -1026,6 +1176,11 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
         return raw
 
     loc = raw.strip()
+
+    # Cache hit — skip LLM
+    cached = _loc_cache_get(_LOC_NORMALIZE_CACHE, loc)
+    if cached is not None:
+        return cached
 
     # Skip LLM entirely if no config/key provided (e.g. during demo ingest)
     if not llm_config:
@@ -1040,6 +1195,7 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
     )
     needs_ai = len(parts) >= 3 or bool(_SUBURB_HINTS.search(loc))
     if not needs_ai:
+        _loc_cache_set(_LOC_NORMALIZE_CACHE, loc, loc)
         return loc
 
     try:
@@ -1061,10 +1217,12 @@ def _ai_normalize_location(raw: str, llm_config: dict = None) -> str:
         result = response.content.strip().strip('"').strip("'")
         if result and len(result) < 80:
             print(f"DEBUG: [location-ai] '{raw}' → '{result}'")
+            _loc_cache_set(_LOC_NORMALIZE_CACHE, loc, result)
             return result
     except Exception as e:
         print(f"DEBUG: [location-ai] failed for '{raw}': {e}")
 
+    _loc_cache_set(_LOC_NORMALIZE_CACHE, loc, raw)
     return raw
 
 
@@ -1083,6 +1241,12 @@ def _ai_metro_for_location(location: str, llm_config: dict = None) -> Optional[s
         return None
     if not llm_config:
         return None
+
+    # Cache hit — skip LLM
+    cached = _loc_cache_get(_LOC_METRO_CACHE, location)
+    if cached is not None:
+        return cached
+
     try:
         from services.ai.common.llm_factory import get_llm
         prompt = (
@@ -1103,9 +1267,11 @@ def _ai_metro_for_location(location: str, llm_config: dict = None) -> Optional[s
         response = llm.invoke(prompt)
         result = response.content.strip().strip('"').strip("'")
         if result and len(result) < 60:
+            _loc_cache_set(_LOC_METRO_CACHE, location, result)
             return result
     except Exception as e:
         print(f"DEBUG: [metro-ai] failed for '{location}': {e}")
+    _loc_cache_set(_LOC_METRO_CACHE, location, None)
     return None
 
 
@@ -1348,7 +1514,7 @@ def _clean_metadata(meta: dict, llm_config: dict = None) -> dict:
     return cleaned
 
 
-def _llm_classify_batch(
+async def _llm_classify_batch(
     snippets: list[tuple[str, str]],
     llm_config: Optional[dict],
 ) -> dict[str, dict]:
@@ -1410,14 +1576,10 @@ def _llm_classify_batch(
         + payload
     )
     try:
-        llm = get_llm(llm_config, temperature=0)
-        response = llm.invoke(prompt)
-        content = response.content.strip()
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        return _json.loads(content.strip())
+        from services.ai.common.llm_factory import get_json_llm
+        llm = get_json_llm(llm_config, temperature=0)
+        response = await llm.ainvoke(prompt)
+        return _json.loads(response.content)
     except Exception as e:
         print(f"DEBUG: [classify] LLM batch failed: {e}")
         return {}
@@ -1724,6 +1886,10 @@ async def get_resume_database(
                     company_boost_set = set(co_filtered)
                     print(f"DEBUG: [search] company boost set: {len(company_boost_set)} resumes (will be ranked first)")
             else:
+                if strict_company:
+                    # Strict filter with no metadata matches → return empty rather than all candidates
+                    print(f"DEBUG: [search] company strict-filter had 0 matches — returning empty")
+                    return {"resumes": [], "total": 0}
                 print(f"DEBUG: [search] company filter had 0 current-company matches — relying on semantic search")
         if query_exp_level and not exp_level:
             # Only apply query exp_level if the dropdown filter isn't already set
@@ -1956,6 +2122,7 @@ async def get_resume_applied_jobs(
 
 @router.post("/upload")
 async def upload_resumes(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     store_db: str = Form("true"),
     run_validation: str = Form("true"),
@@ -2000,24 +2167,44 @@ async def upload_resumes(
 
             text = extract_text(file_path)
 
-            # --- AI Validation (same routine as analyze/generate paths) ---
-            validation = None
-            if validate_bool and text.strip():
+            # --- AI Validation + Metadata extraction in parallel ---
+            # validation and classification are independent — run concurrently to save
+            # one LLM round-trip per uploaded file.
+            import asyncio as _asyncio
+
+            async def _run_validation():
+                if not (validate_bool and text.strip()):
+                    return None
                 try:
-                    validation = run_resume_validation(
-                        file_name=safe_filename,
-                        file_type=file_ext,
-                        extracted_text=text,
-                        llm_config=llm_config
+                    loop = _asyncio.get_event_loop()
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: run_resume_validation(
+                            file_name=safe_filename,
+                            file_type=file_ext,
+                            extracted_text=text,
+                            llm_config=llm_config,
+                        )
                     )
-                    # If the validation graph itself errored, don't treat as valid classification
-                    if validation.get("error"):
-                        print(f"DEBUG: Validation graph errored for {safe_filename}: {validation.get('error')}")
+                    if result.get("error"):
+                        print(f"DEBUG: Validation graph errored for {safe_filename}: {result.get('error')}")
                     else:
-                        print(f"Validation complete: {safe_filename} -> {validation.get('classification', 'unknown')}")
+                        print(f"Validation complete: {safe_filename} -> {result.get('classification', 'unknown')}")
+                    return result
                 except Exception as e:
                     print(f"DEBUG: Validation failed for {safe_filename}: {e}")
-                    validation = {"error": str(e)}
+                    return {"error": str(e)}
+
+            async def _run_classify():
+                if not text.strip():
+                    return {}
+                try:
+                    return await _llm_classify_batch([(safe_filename, text)], llm_config)
+                except Exception as e:
+                    print(f"DEBUG: [upload] metadata extraction failed for {safe_filename}: {e}")
+                    return {}
+
+            validation, cls_result = await _asyncio.gather(_run_validation(), _run_classify())
 
             classification = (validation or {}).get("classification", "N/A")
 
@@ -2040,6 +2227,15 @@ async def upload_resumes(
                 print(f"Storing in DB: {safe_filename}")
                 store_resume(safe_filename, text, user_id, api_key=creds["openrouter_key"])
                 db_changed = True
+                # Auto-screen this resume against all open JDs in the background
+                from services.ai.auto_screening_agent import run_auto_screening
+                background_tasks.add_task(
+                    run_auto_screening,
+                    safe_filename,
+                    text,
+                    user_id,
+                    llm_config,
+                )
 
             # Quick text-based field presence check (no structured JSON needed)
             extracted_skills = extract_skills_from_text(text) if text.strip() else []
@@ -2058,15 +2254,13 @@ async def upload_resumes(
                 )),
             }
 
-            # --- Extract candidate metadata (name, role, company, etc.) ---
-            # Done at upload time so /database is a plain DB read — no LLM on query path.
+            # --- Extract candidate metadata from parallel classification result ---
             candidate_meta: dict = {}
-            if text.strip():
+            if text.strip() and cls_result:
                 try:
-                    cls_result = _llm_classify_batch([(safe_filename, text)], llm_config)
                     candidate_meta = _clean_metadata(cls_result.get(safe_filename, {}), llm_config)
                 except Exception as e:
-                    print(f"DEBUG: [upload] metadata extraction failed for {safe_filename}: {e}")
+                    print(f"DEBUG: [upload] metadata clean failed for {safe_filename}: {e}")
 
             # --- Persist validation + metadata ---
             if validation and not validation.get("error"):
@@ -2182,7 +2376,7 @@ async def update_resume_text(
         llm_config = build_llm_config(creds["openrouter_key"], creds.get("llm_model"))
         candidate_meta: dict = {}
         try:
-            cls_result = _llm_classify_batch([(filename, text)], llm_config)
+            cls_result = await _llm_classify_batch([(filename, text)], llm_config)
             candidate_meta = _clean_metadata(cls_result.get(filename, {}), llm_config)
             print(f"DEBUG: [update] Re-extracted metadata for '{filename}': {list(candidate_meta.keys())}")
         except Exception as e:

@@ -8,7 +8,7 @@ import { Login, AuthCallback } from './features/auth';
 import { MyApplications } from './features/dashboard';
 import { Dashboard, JobDefinitions, JobForm, ResumeDatabase } from './features/dashboard';
 import { ResumeUpload, ResumeGenerator, LinkedInScraper } from './features/resumes';
-import { QualityScoring, SkillGap, AutoScreening } from './features/analysis';
+import { QualityScoring, SkillGap, AutoScreening, AgentDashboard } from './features/analysis';
 import AISearch from './features/analysis/AISearch';
 import JobSearch from './features/jobs/JobSearch';
 import { Settings } from './features/settings';
@@ -71,6 +71,12 @@ function App() {
             <Route path="/screen" element={
                 <ProtectedRoute>
                     <AutoScreening />
+                </ProtectedRoute>
+            } />
+
+            <Route path="/agent" element={
+                <ProtectedRoute>
+                    <AgentDashboard />
                 </ProtectedRoute>
             } />
 

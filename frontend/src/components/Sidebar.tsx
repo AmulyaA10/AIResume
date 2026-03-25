@@ -13,7 +13,8 @@ import {
     LogOut,
     Linkedin,
     Upload,
-    Home
+    Home,
+    Bot
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,9 +46,7 @@ const Sidebar = () => {
         ],
         manager: [
             { path: '/resumes', label: 'Resume Database', icon: Upload },
-            { path: '/scoring', label: 'Active Rankings', icon: BarChart3 },
-            { path: '/skill-gap', label: 'Skill Analysis', icon: Cpu },
-            { path: '/screen', label: 'Auto Screening', icon: ShieldCheck },
+            { path: '/agent', label: 'Autonomous Recruiter', icon: Bot },
             { path: '/jd', label: 'Job Definitions', icon: Briefcase },
             { path: '/settings', label: 'Settings', icon: Settings },
         ]

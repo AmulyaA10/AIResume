@@ -8,6 +8,20 @@ DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 
+def get_json_llm(config: Optional[dict] = None, temperature: float = 0) -> ChatOpenAI:
+    """LLM bound to JSON output mode.
+
+    Uses ``response_format={"type": "json_object"}`` so the model is guaranteed
+    to return valid JSON — eliminates the need for ``repair_json`` / ``safe_parse_json``.
+    Falls back to a plain LLM if the underlying model does not support JSON mode.
+    """
+    llm = get_llm(config, temperature)
+    try:
+        return llm.bind(response_format={"type": "json_object"})
+    except Exception:
+        return llm  # model doesn't support JSON mode — caller uses safe_parse_json
+
+
 def get_llm(config: Optional[dict] = None, temperature: float = 0.7) -> ChatOpenAI:
     """Initialise a ChatOpenAI instance from *config*.
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Briefcase, Plus, MapPin, Trash2, Users, Sparkles, Star, UserCheck, Pencil, Search, X, Loader2 } from 'lucide-react';
+import { Briefcase, Plus, MapPin, Trash2, Users, Sparkles, Star, UserCheck, Pencil, Search, X, Loader2, Bot } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../common';
 import { jobsApi } from '../../api';
@@ -24,6 +24,7 @@ const JobDefinitions = () => {
     const [selectedJobForCandidates, setSelectedJobForCandidates] = useState<{ id: string, title: string, skills: string[] } | null>(null);
     const [selectedJobForMatches, setSelectedJobForMatches] = useState<{ id: string, title: string, skills: string[] } | null>(null);
     const [selectedJobForShortlisted, setSelectedJobForShortlisted] = useState<{ id: string, title: string, skills: string[] } | null>(null);
+    const [selectedJobForAiScreened, setSelectedJobForAiScreened] = useState<{ id: string, title: string, skills: string[] } | null>(null);
     const [selectedJobForSelected, setSelectedJobForSelected] = useState<{ id: string, title: string, skills: string[] } | null>(null);
     const [selectedJobForRejected, setSelectedJobForRejected] = useState<{ id: string, title: string, skills: string[] } | null>(null);
     const [selectedJobForDetail, setSelectedJobForDetail] = useState<any | null>(null);
@@ -74,8 +75,17 @@ const JobDefinitions = () => {
                     }
                 }
                 apiParams.search = intent.cleanQuery || raw;
-                if (intent.locationAliases?.length && !params.filterLocation) {
+                // AI-parsed location from text query always takes precedence over the
+                // dropdown filter — prevents "Job in Los Angeles" returning SF results
+                // when the dropdown still holds a previous SF selection.
+                if (intent.locationAliases?.length) {
                     apiParams.location_aliases = intent.locationAliases.join(',');
+                    delete apiParams.location;   // drop dropdown filter when text query has location
+                } else if (intent.location) {
+                    // LLM found a location but returned no aliases — use the location name itself
+                    // as a keyword so the backend alias filter still applies
+                    apiParams.location_aliases = intent.location.toLowerCase();
+                    delete apiParams.location;
                 }
                 if (intent.companyFilter?.length) {
                     apiParams.employer_filter = intent.companyFilter.join(',');
@@ -115,7 +125,7 @@ const JobDefinitions = () => {
     const modalClosedRef = useRef(false);
     React.useEffect(() => {
         if (!modalClosedRef.current) { modalClosedRef.current = true; return; }
-        if (!selectedJobForCandidates && !selectedJobForShortlisted && !selectedJobForSelected && !selectedJobForRejected) {
+        if (!selectedJobForCandidates && !selectedJobForShortlisted && !selectedJobForSelected && !selectedJobForRejected && !selectedJobForAiScreened) {
             fetchJobs(filterRef.current);
         }
     }, [selectedJobForCandidates, selectedJobForShortlisted, selectedJobForSelected, selectedJobForRejected]);
@@ -396,6 +406,14 @@ const JobDefinitions = () => {
                                         <Star size={9} />{job.shortlisted_count} Shortlisted
                                     </button>
                                 )}
+                                {job.ai_screened_count > 0 && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedJobForAiScreened({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
+                                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 transition-colors"
+                                    >
+                                        <Bot size={9} />{job.ai_screened_count} AI Screened
+                                    </button>
+                                )}
                                 {job.applied_count > 0 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setSelectedJobForCandidates({ id: job.job_id, title: job.title, skills: job.skills_required || [] }); }}
@@ -461,6 +479,16 @@ const JobDefinitions = () => {
                     jobSkills={selectedJobForShortlisted.skills}
                     statusFilter="shortlisted"
                     onClose={() => setSelectedJobForShortlisted(null)}
+                />
+            )}
+
+            {selectedJobForAiScreened && (
+                <JobCandidatesModal
+                    jobId={selectedJobForAiScreened.id}
+                    jobTitle={selectedJobForAiScreened.title}
+                    jobSkills={selectedJobForAiScreened.skills}
+                    statusFilter="ai_screened"
+                    onClose={() => setSelectedJobForAiScreened(null)}
                 />
             )}
 

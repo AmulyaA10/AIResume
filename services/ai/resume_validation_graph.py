@@ -1,9 +1,10 @@
 # services/ai/resume_validation_graph.py
+import json
 from typing import TypedDict, Optional
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 
-from services.ai.common import get_llm, safe_parse_json
+from services.ai.common import get_json_llm, safe_parse_json
 
 
 # ---------- State ----------
@@ -40,7 +41,7 @@ def _classify_by_score(total: int, is_resume: bool) -> str:
 
 # ---------- Agent ----------
 def validation_agent(state: ResumeValidationState):
-    llm = get_llm(state.get("config"), temperature=0)
+    llm = get_json_llm(state.get("config"), temperature=0)
 
     prompt = PromptTemplate(
         input_variables=["file_name", "file_type", "extracted_text", "target_role"],
@@ -137,7 +138,10 @@ Return ONLY valid JSON:
             target_role=state.get("target_role") or "Not specified"
         ))
 
-        result = safe_parse_json(response.content)
+        try:
+            result = json.loads(response.content)
+        except Exception:
+            result = safe_parse_json(response.content)  # fallback for models without JSON mode
 
         # --- Python-side validation to prevent LLM hallucinations ---
         scores = result.get("scores", {})
