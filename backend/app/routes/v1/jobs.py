@@ -14,11 +14,233 @@ from app.models import JobCreate, JobResponse
 from app.config import UPLOAD_DIR
 from app.routes.v1.resumes import _normalize_location, _city_to_metro, _classify_region, _METRO_TO_SUBSTRINGS, _suburb_to_metro, _ai_metro_for_location
 from app.common.skill_utils import canonicalize_skill
+from app.common import build_llm_config
 from services.db.lancedb_client import get_or_create_jobs_table, get_embeddings_model, get_or_create_job_applied_table, search_jobs_hybrid
 from services.resume_parser import extract_text
 from services.ai.common import clean_json_output
 
 router = APIRouter(tags=["v1 — Jobs"])
+
+
+async def _screen_all_resumes_for_job(
+    job_dict: dict,
+    manager_user_id: str,
+    llm_config: dict,
+) -> None:
+    """Background task: when a new JD is created, screen all existing resumes against it."""
+    try:
+        from services.db.lancedb_client import (
+            get_or_create_resume_meta_table,
+            get_or_create_job_applied_table,
+            get_user_settings,
+        )
+        from services.ai.screening_graph import build_screening_graph
+        from services.email_service import send_candidate_shortlisted
+        from services.resume_parser import extract_text, to_ats_text
+        import asyncio
+        from datetime import datetime
+
+        cfg = get_user_settings(manager_user_id) or {}
+        threshold = int(cfg.get("agent_threshold", 70))
+        max_resumes = int(cfg.get("agent_max_jds", 20))  # reuse same cap setting
+
+        job_id = job_dict.get("job_id", "")
+        job_title = job_dict.get("title", "")
+        employer_name = job_dict.get("employer_name", "")
+        jd_text = "\n".join(filter(None, [
+            job_title and f"Job Title: {job_title}",
+            employer_name and f"Company: {employer_name}",
+            job_dict.get("description"),
+        ]))
+
+        if not jd_text.strip():
+            print(f"DEBUG: [jd-screen] No JD text for {job_id} — skipping")
+            return
+
+        # Load all resume metadata (user_id + filename + email)
+        meta_table = get_or_create_resume_meta_table()
+        meta_df = meta_table.to_pandas()
+        if meta_df.empty:
+            print(f"DEBUG: [jd-screen] No resumes found — skipping for job {job_id}")
+            return
+
+        # Deduplicate by filename, take most recent, cap count
+        meta_df = meta_df.drop_duplicates(subset=["filename"], keep="last").head(max_resumes)
+        print(f"DEBUG: [jd-screen] Screening {len(meta_df)} resumes against new JD '{job_title}'")
+
+        graph = build_screening_graph()
+
+        async def _screen_one(row):
+            filename = str(row.get("filename", ""))
+            candidate_user_id = str(row.get("user_id", ""))
+            resume_text = ""
+            try:
+                file_path = os.path.join(UPLOAD_DIR, filename)
+                if os.path.exists(file_path):
+                    resume_text = to_ats_text(extract_text(file_path))
+            except Exception:
+                pass
+            if not resume_text.strip():
+                return None
+            try:
+                result = await graph.ainvoke({
+                    "resume_text": resume_text,
+                    "jd_text": jd_text,
+                    "threshold": threshold,
+                    "score": None,
+                    "decision": None,
+                    "config": llm_config,
+                })
+                selected = (result.get("decision") or {}).get("selected", False)
+                if not selected:
+                    return None
+                return {
+                    "user_id": candidate_user_id,
+                    "filename": filename,
+                    "email": str(row.get("email") or ""),
+                    "name": str(row.get("candidate_name") or ""),
+                }
+            except Exception as e:
+                print(f"DEBUG: [jd-screen] screening {filename} failed: {e}")
+                return None
+
+        results = await asyncio.gather(*[_screen_one(row) for _, row in meta_df.iterrows()])
+        shortlisted = [r for r in results if r]
+
+        if not shortlisted:
+            print(f"DEBUG: [jd-screen] No matches for job '{job_title}'")
+            return
+
+        # Persist auto_shortlisted records
+        applied_table = get_or_create_job_applied_table()
+        rows_to_add = []
+        for r in shortlisted:
+            rows_to_add.append({
+                "id": str(__import__("uuid").uuid4()),
+                "user_id": r["user_id"],
+                "job_id": job_id,
+                "resume_id": r["filename"],
+                "applied_status": "auto_shortlisted",
+                "timestamp": datetime.now().isoformat(),
+                "notified": False,
+                "notified_at": "",
+            })
+        import pandas as pd
+        applied_table.add(pd.DataFrame(rows_to_add))
+        print(f"DEBUG: [jd-screen] {len(shortlisted)} resumes shortlisted for '{job_title}'")
+
+        # Email each shortlisted candidate
+        for r in shortlisted:
+            if r["email"]:
+                send_candidate_shortlisted(
+                    candidate_email=r["email"],
+                    candidate_name=r["name"],
+                    job_title=job_title,
+                    employer_name=employer_name,
+                )
+
+    except Exception as e:
+        print(f"DEBUG: [jd-screen] background task failed: {e}")
+
+
+async def _auto_screen_application(
+    user_id: str,
+    job_id: str,
+    resume_id: str,
+    resume_text: str,
+    job_ref: dict,
+    llm_config: dict,
+) -> None:
+    """Background task: screen a candidate application and notify them of the decision."""
+    try:
+        from services.ai.screening_graph import build_screening_graph
+        from services.db.lancedb_client import (
+            get_or_create_job_applied_table,
+            get_or_create_resume_meta_table,
+            get_user_settings,
+        )
+        from services.email_service import send_candidate_decision
+        from datetime import datetime
+
+        # Read agent threshold from user settings (manager/recruiter config)
+        cfg = get_user_settings(user_id) or {}
+        threshold = int(cfg.get("agent_threshold", 70))
+
+        jd_text = "\n".join(filter(None, [
+            job_ref.get("title") and f"Job Title: {job_ref['title']}",
+            job_ref.get("employer_name") and f"Company: {job_ref['employer_name']}",
+            job_ref.get("description"),
+        ]))
+
+        graph = build_screening_graph()
+        result = await graph.ainvoke({
+            "resume_text": resume_text,
+            "jd_text": jd_text,
+            "threshold": threshold,
+            "score": None,
+            "decision": None,
+            "config": llm_config,
+        })
+
+        score = (result.get("score") or {}).get("overall", 0)
+        selected = (result.get("decision") or {}).get("selected", False)
+        reason = (result.get("decision") or {}).get("reason", "")
+        new_status = "selected" if selected else "rejected"
+
+        # Update applied_status in DB
+        applied_table = get_or_create_job_applied_table()
+        try:
+            df = applied_table.to_pandas()
+            if not df.empty:
+                mask = (df["user_id"] == user_id) & (df["job_id"] == job_id) & (df["resume_id"] == resume_id)
+                if mask.any():
+                    applied_table.delete(
+                        f"user_id = '{user_id}' AND job_id = '{job_id}' AND resume_id = '{resume_id}'"
+                    )
+            applied_table.add([{
+                "id": str(__import__("uuid").uuid4()),
+                "user_id": user_id,
+                "job_id": job_id,
+                "resume_id": resume_id,
+                "applied_status": new_status,
+                "timestamp": datetime.now().isoformat(),
+                "notified": False,
+                "notified_at": "",
+            }])
+        except Exception as e:
+            print(f"DEBUG: [apply-screen] Failed to update status: {e}")
+
+        # Look up candidate email
+        candidate_email = ""
+        candidate_name = ""
+        try:
+            meta_table = get_or_create_resume_meta_table()
+            rows = meta_table.search().where(
+                f"filename = '{resume_id}' AND user_id = '{user_id}'"
+            ).limit(1).to_list()
+            if rows:
+                candidate_email = str(rows[0].get("email") or "")
+                candidate_name = str(rows[0].get("candidate_name") or "")
+        except Exception:
+            pass
+
+        if candidate_email:
+            send_candidate_decision(
+                candidate_email=candidate_email,
+                candidate_name=candidate_name,
+                job_title=job_ref.get("title", ""),
+                employer_name=job_ref.get("employer_name", ""),
+                selected=selected,
+                score=score,
+                reason=reason,
+            )
+        else:
+            print(f"DEBUG: [apply-screen] No email for {resume_id} — skipping candidate notification")
+
+        print(f"DEBUG: [apply-screen] {resume_id} → {new_status} (score={score}%, threshold={threshold}%)")
+
+    except Exception as e:
+        print(f"DEBUG: [apply-screen] background screening failed: {e}")
 
 def _serialize_job(row: dict) -> dict:
     """Convert LanceDB row to JSON-serializable dict."""
@@ -244,8 +466,20 @@ async def parse_job_upload(
             base_url="https://openrouter.ai/api/v1"
         )
 
-        chain = prompt | llm | StrOutputParser()
-        raw_res = chain.invoke({"text": text[:10000]})
+        import asyncio as _asyncio
+        from services.ai.jd_quality_graph import check_jd_quality
+
+        llm_config = {"api_key": creds["openrouter_key"], "model": creds["llm_model"] or "gpt-4o-mini"}
+
+        # Run JD structuring and quality check concurrently
+        async def _parse_jd():
+            chain = prompt | llm | StrOutputParser()
+            return await chain.ainvoke({"text": text[:10000]})
+
+        raw_res, quality_report = await _asyncio.gather(
+            _parse_jd(),
+            check_jd_quality(text[:8000], llm_config),
+        )
 
         clean_res = clean_json_output(raw_res)
         structured = json.loads(clean_res)
@@ -276,7 +510,9 @@ async def parse_job_upload(
                 )
             )
 
-        return _normalize_job_fields(structured)
+        normalized = _normalize_job_fields(structured)
+        normalized["jd_quality"] = quality_report
+        return normalized
 
     except HTTPException:
         raise
@@ -314,6 +550,32 @@ def _job_intent_cache_set(key: tuple, value: dict) -> None:
         _JOB_INTENT_CACHE.popitem(last=False)
 
 
+_KNOWN_JOB_COMPANY_TERMS: dict[str, list[str]] = {
+    "apple": ["apple"],
+    "google": ["google"],
+    "microsoft": ["microsoft"],
+    "amazon": ["amazon"],
+    "meta": ["meta"],
+    "facebook": ["meta"],
+    "netflix": ["netflix"],
+    "nvidia": ["nvidia"],
+    "openai": ["openai"],
+    "fang": ["google", "meta", "amazon", "netflix"],
+    "faang": ["google", "meta", "amazon", "apple", "netflix"],
+    "faang+": ["google", "meta", "amazon", "apple", "netflix", "microsoft", "nvidia"],
+    "big tech": ["google", "microsoft", "amazon", "apple", "meta"],
+}
+
+
+def _extract_job_company_filter(query: str) -> list[str]:
+    """Extract company names from a query string using keyword matching."""
+    q = query.lower()
+    for key, companies in _KNOWN_JOB_COMPANY_TERMS.items():
+        if key in q:
+            return companies
+    return []
+
+
 @router.post("/parse-query-intent")
 async def parse_query_intent(
     body: dict,
@@ -344,7 +606,7 @@ async def parse_query_intent(
         return {
             "location": None,
             "locationAliases": [],
-            "companyFilter": [],
+            "companyFilter": _extract_job_company_filter(query),
             "topN": None,
             "sortBySalary": False,
             "cleanQuery": query,
@@ -362,7 +624,7 @@ async def parse_query_intent(
         api_key=creds["openrouter_key"],
         base_url="https://openrouter.ai/api/v1",
         timeout=15,
-    )
+    ).bind(response_format={"type": "json_object"})
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "You are a job search query parser. Given a natural-language query, extract structured intent.\n\n"
@@ -400,10 +662,10 @@ async def parse_query_intent(
          "{{\n"
          '  "location": <canonical region/location name in lowercase, or null>,\n'
          '  "locationAliases": <array of lowercase substrings a job location must contain at least one of. '
-         "For broad US regions use the state abbreviation (', ca', ', ny') so ANY city in that state matches — "
-         "do NOT enumerate individual cities for large regions, that will miss lesser-known cities. "
-         "For sub-regions (Southern California, Bay Area) use the state abbreviation as the catch-all "
-         "plus a few anchor cities, and rely on locationExclusions to remove the opposite sub-region.>,\n"
+         "RULE: For a specific CITY query (Los Angeles, Seattle, Austin) use ONLY the city name and its metro keywords — "
+         "do NOT include the state abbreviation (', ca', ', wa') because that would match ALL cities in the state. "
+         "For a broad STATE or REGION query (California, West Coast) use the state abbreviation (', ca') to match any city in the state. "
+         "For sub-regions (Southern California, Bay Area) use the state abbreviation plus exclusions to remove the opposite sub-region.>,\n"
          '  "locationExclusions": <array of lowercase substrings — any job whose location contains one of these '
          "is excluded. Use for sub-region searches to remove the opposite sub-region. "
          "E.g. SoCal: exclude NorCal cities. Bay Area: exclude LA/San Diego.>,\n"
@@ -420,6 +682,9 @@ async def parse_query_intent(
          '  "google jobs in North America" → {{"location":"north america","locationAliases":["usa","canada","toronto","vancouver","mexico",", ca",", ny",", tx"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
          '  "google jobs in midwest USA" → {{"location":"midwest usa","locationAliases":["chicago","detroit","minneapolis","cleveland","columbus",", il",", mi",", oh",", mn"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
          '  "google jobs in west coast" → {{"location":"west coast","locationAliases":[", ca",", wa",", or"],"locationExclusions":[],"companyFilter":["google"],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in Los Angeles" → {{"location":"los angeles","locationAliases":["los angeles","santa monica","culver city","burbank","long beach","anaheim","irvine","orange county"],"locationExclusions":[],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in Seattle" → {{"location":"seattle","locationAliases":["seattle","bellevue","redmond","kirkland",", wa"],"locationExclusions":[],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
+         '  "jobs in Austin" → {{"location":"austin","locationAliases":["austin","round rock",", tx"],"locationExclusions":["dallas","houston"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
          '  "jobs in southern california" → {{"location":"southern california","locationAliases":[", ca"],"locationExclusions":["san francisco","bay area","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","oakland","berkeley","cupertino","sacramento","fresno","stockton"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
          '  "jobs in socal" → {{"location":"southern california","locationAliases":[", ca"],"locationExclusions":["san francisco","bay area","palo alto","mountain view","sunnyvale","san jose","santa clara","menlo park","oakland","berkeley","cupertino","sacramento","fresno","stockton"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
          '  "jobs in northern california" → {{"location":"northern california","locationAliases":[", ca"],"locationExclusions":["los angeles","san diego","irvine","anaheim","riverside","long beach","santa monica","burbank","orange county","chula vista","san bernardino","oxnard"],"companyFilter":[],"topN":null,"sortBySalary":false,"cleanQuery":"software engineer"}}\n'
@@ -438,7 +703,7 @@ async def parse_query_intent(
     chain = prompt | llm | StrOutputParser()
     try:
         raw = await chain.ainvoke({"query": query})
-        result = json.loads(raw.strip())
+        result = json.loads(raw)  # JSON mode guarantees valid JSON — no repair needed
         # Ensure required fields with safe defaults
         result.setdefault("location", None)
         result.setdefault("locationAliases", [])
@@ -452,7 +717,7 @@ async def parse_query_intent(
             "location": None,
             "locationAliases": [],
             "locationExclusions": [],
-            "companyFilter": [],
+            "companyFilter": _extract_job_company_filter(query),
             "topN": None,
             "sortBySalary": False,
             "cleanQuery": query,
@@ -558,6 +823,7 @@ async def get_job_locations(user_id: str = Depends(get_current_user), role: str 
 @router.post("", response_model=JobResponse)
 async def create_job(
     job: JobCreate,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None),
@@ -592,6 +858,20 @@ async def create_job(
         job_dict["vector"] = [0.0] * 1536
     
     table.add([job_dict])
+
+    # Trigger autonomous recruiter: screen all existing resumes against this new JD (if enabled)
+    from services.db.lancedb_client import get_user_settings as _get_user_settings
+    agent_cfg = _get_user_settings(user_id) or {}
+    jd_enabled = agent_cfg.get("agent_jd_enabled", "true").lower() == "true"
+    if jd_enabled:
+        llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+        background_tasks.add_task(
+            _screen_all_resumes_for_job,
+            job_dict=job_dict,
+            manager_user_id=user_id,
+            llm_config=llm_config,
+        )
+
     return _serialize_job(job_dict)
 
 
@@ -722,7 +1002,8 @@ async def list_jobs(
     jobs = [_serialize_job(r) for r in results]
 
     # --- State-level metro location post-filter ---
-    if location_metro_substrings:
+    # Skip when location_aliases present: text-query location wins over dropdown.
+    if location_metro_substrings and not location_aliases:
         subs_lower = [s.lower() for s in location_metro_substrings]
         jobs = [
             j for j in jobs
@@ -731,7 +1012,8 @@ async def list_jobs(
         ]
 
     # --- City-level location post-filter ---
-    if location_city_filter:
+    # Skip when location_aliases is present: text-query location takes precedence over dropdown.
+    if location_city_filter and not location_aliases:
         city_lower = location_city_filter.lower()
         city_name_only = city_lower.split(",")[0].strip()
         def _job_city_matches(j: dict) -> bool:
@@ -770,9 +1052,10 @@ async def list_jobs(
             for job in jobs:
                 jdf = applied_df[applied_df['job_id'] == job['job_id']]
                 job["applied_count"] = int(len(jdf[jdf['applied_status'].isin(['applied', 'selected', 'rejected'])]))
-                job["shortlisted_count"] = int(len(jdf[jdf['applied_status'].isin(['shortlisted', 'invited'])]))
+                job["shortlisted_count"] = int(len(jdf[jdf['applied_status'].isin(['shortlisted', 'invited', 'auto_shortlisted'])]))
                 job["selected_count"] = int(len(jdf[jdf['applied_status'] == 'selected']))
                 job["rejected_count"] = int(len(jdf[jdf['applied_status'] == 'rejected']))
+                job["ai_screened_count"] = int(len(jdf[jdf['applied_status'].isin(['auto_shortlisted', 'auto_rejected'])]))
     except Exception as e:
         print(f"DEBUG: Error calculating applied_counts: {e}")
 
@@ -787,8 +1070,8 @@ async def list_jobs(
         elif status == "in_progress":
             jobs = [j for j in jobs if not _filled(j)]
 
-    # --- Soft geo matching via location aliases (when no exact location filter set) ---
-    if location_aliases and not location:
+    # --- Soft geo matching via location aliases (text-query location takes precedence over dropdown) ---
+    if location_aliases:
         aliases = [a.strip().lower() for a in location_aliases.split(",") if a.strip()]
         if aliases:
             def _alias_match(loc_str: str) -> bool:
@@ -836,7 +1119,7 @@ async def list_jobs(
                 all_employer_jobs = [j for j in all_employer_jobs if _job_city_matches(j)]
 
             # Apply location alias filter to the full-table scan results too
-            if location_aliases and not location:
+            if location_aliases:
                 loc_aliases = [a.strip().lower() for a in location_aliases.split(",") if a.strip()]
                 def _loc_alias_match(j: dict) -> bool:
                     loc_lower = (j.get("location_name") or "").lower()
@@ -876,19 +1159,25 @@ async def get_applied_jobs(user_id: str = Depends(get_current_user)):
     if not applied_records:
         return []
 
-    # Retrieve job details for each applied record
+    # De-duplicate: for same (job_id, resume_id), prefer applied/selected/rejected over auto_shortlisted
+    STATUS_PRIORITY = {"selected": 0, "rejected": 1, "applied": 2, "shortlisted": 3, "invited": 3, "auto_shortlisted": 4, "auto_rejected": 5}
+    deduped: dict = {}
+    for rec in applied_records:
+        key = (rec.get('job_id', ''), rec.get('resume_id', ''))
+        existing = deduped.get(key)
+        if existing is None or STATUS_PRIORITY.get(rec.get('applied_status', ''), 99) < STATUS_PRIORITY.get(existing.get('applied_status', ''), 99):
+            deduped[key] = rec
+
+    # Retrieve job details for each de-duplicated record
     jobs_table = get_or_create_jobs_table()
     result = []
-    for rec in applied_records:
+    for rec in deduped.values():
         job_id = rec.get('job_id')
         job_rows = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
-        
         if job_rows:
             job = job_rows[0]
-            # Serialize job without vector
             job_serialized = {k: v for k, v in job.items() if k != 'vector'}
-            # Combine with applied info
-            combined = {
+            result.append({
                 "job_id": job_id,
                 "title": job_serialized.get('title'),
                 "company": job_serialized.get('employer_name'),
@@ -896,17 +1185,14 @@ async def get_applied_jobs(user_id: str = Depends(get_current_user)):
                 "posted_date": job_serialized.get('posted_date'),
                 "resume_id": rec.get('resume_id'),
                 "applied_at": rec.get('timestamp'),
-                "applied_status": rec.get('applied_status', 'applied')
-            }
-            result.append(combined)
+                "applied_status": rec.get('applied_status', 'applied'),
+            })
     return result
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, user_id: str = Depends(get_current_user), role: str = Depends(get_user_role)):
     table = get_or_create_jobs_table()
-    is_recruiter = role in ("recruiter", "manager")
-    where = f"job_id = '{job_id}'" if is_recruiter else f"job_id = '{job_id}' AND user_id = '{user_id}'"
-    results = table.search().where(where).limit(1).to_list()
+    results = table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
     if not results:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -918,9 +1204,10 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user), role: s
         if not applied_df.empty:
             jdf = applied_df[applied_df['job_id'] == job_id]
             job_dict["applied_count"] = len(jdf[jdf['applied_status'].isin(['applied', 'selected', 'rejected'])])
-            job_dict["shortlisted_count"] = len(jdf[jdf['applied_status'].isin(['shortlisted', 'invited'])])
+            job_dict["shortlisted_count"] = len(jdf[jdf['applied_status'].isin(['shortlisted', 'invited', 'auto_shortlisted'])])
             job_dict["selected_count"] = int(len(jdf[jdf['applied_status'] == 'selected']))
             job_dict["rejected_count"] = int(len(jdf[jdf['applied_status'] == 'rejected']))
+            job_dict["ai_screened_count"] = int(len(jdf[jdf['applied_status'].isin(['auto_shortlisted', 'auto_rejected'])]))
     except Exception as e:
         print(f"DEBUG: Error calculating applied_count for {job_id}: {e}")
         
@@ -1005,8 +1292,11 @@ async def get_job_candidates(job_id: str, status: str = None, user_id: str = Dep
     applied_table = get_or_create_job_applied_table()
     applied_records_all = applied_table.search().where(f"job_id = '{job_id}'").to_list()
     if status == 'shortlisted':
-        # Proactive pipeline: shortlisted + invited
-        applied_records = [r for r in applied_records_all if r.get('applied_status') in ('shortlisted', 'invited')]
+        # Proactive pipeline: shortlisted + invited + auto_shortlisted
+        applied_records = [r for r in applied_records_all if r.get('applied_status') in ('shortlisted', 'invited', 'auto_shortlisted')]
+    elif status == 'ai_screened':
+        # All autonomous agent results
+        applied_records = [r for r in applied_records_all if r.get('applied_status') in ('auto_shortlisted', 'auto_rejected')]
     elif status == 'applied':
         # Full applied pool: applied + selected + rejected
         applied_records = [r for r in applied_records_all if r.get('applied_status') in ('applied', 'selected', 'rejected')]
@@ -1139,36 +1429,57 @@ async def shortlist_candidate(
 
 
 @router.post("/{job_id}/apply")
-async def apply_job(job_id: str, background_tasks: BackgroundTasks, resume_id: str = Query(...), user_id: str = Depends(get_current_user)):
+async def apply_job(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    resume_id: str = Query(...),
+    x_openrouter_key: Optional[str] = Header(None),
+    x_llm_model: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user),
+):
     from services.db.lancedb_client import apply_for_job, get_or_create_jobs_table, get_or_create_table
     from services.email_service import send_employer_notification
     try:
         success = apply_for_job(user_id, job_id, resume_id)
-        if success:
-            # Fetch job details to get employer_email
-            jobs_table = get_or_create_jobs_table()
-            job_results = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
-            if job_results and job_results[0].get("employer_email"):
-                job_ref = job_results[0]
-                employer_email = job_ref["employer_email"]
-                job_title = job_ref.get("title", "Unknown Job Title")
-
-                # Fetch resume text
-                resumes_table = get_or_create_table()
-                resume_results = resumes_table.search().where(f"filename = '{resume_id}' AND user_id = '{user_id}'").to_pandas()
-                
-                resume_text = ""
-                if not resume_results.empty:
-                    # Chunks are stored, concatenate them
-                    resume_text = "\n".join(resume_results['text'].tolist())
-
-                # Queue the email notification in the background
-                if employer_email:
-                    background_tasks.add_task(send_employer_notification, employer_email, job_title, user_id, resume_id, resume_text)
-
-            return {"message": "Successfully applied for job"}
-        else:
+        if not success:
             return {"message": "Already applied for job"}
+
+        # Fetch job details
+        jobs_table = get_or_create_jobs_table()
+        job_results = jobs_table.search().where(f"job_id = '{job_id}'").limit(1).to_list()
+        job_ref = job_results[0] if job_results else {}
+        job_title = job_ref.get("title", "Unknown Job Title")
+        employer_name = job_ref.get("employer_name", "")
+        employer_email = job_ref.get("employer_email", "")
+
+        # Fetch resume text (concatenated chunks)
+        resumes_table = get_or_create_table()
+        resume_results = resumes_table.search().where(
+            f"filename = '{resume_id}' AND user_id = '{user_id}'"
+        ).to_pandas()
+        resume_text = "\n".join(resume_results['text'].tolist()) if not resume_results.empty else ""
+
+        # Notify employer
+        if employer_email and resume_text:
+            background_tasks.add_task(
+                send_employer_notification, employer_email, job_title, user_id, resume_id, resume_text
+            )
+
+        # Auto-screen the application and notify candidate
+        if resume_text and job_ref:
+            creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
+            llm_config = build_llm_config(creds["openrouter_key"], creds["llm_model"])
+            background_tasks.add_task(
+                _auto_screen_application,
+                user_id=user_id,
+                job_id=job_id,
+                resume_id=resume_id,
+                resume_text=resume_text,
+                job_ref=job_ref,
+                llm_config=llm_config,
+            )
+
+        return {"message": "Successfully applied for job"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

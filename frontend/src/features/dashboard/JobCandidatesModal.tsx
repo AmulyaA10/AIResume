@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
     X, Users, Star, ChevronDown, ChevronUp, Mail, Phone, Loader2, Send,
-    FileText, CheckCircle, XCircle, Copy, Check, UserCheck, UserX, ShieldCheck, Zap
+    FileText, CheckCircle, XCircle, Copy, Check, UserCheck, UserX, ShieldCheck, Zap, Bot
 } from 'lucide-react';
 import api, { jobsApi, resumesApi } from '../../api';
 
@@ -37,11 +37,13 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
     const [copied, setCopied] = useState<string | null>(null);
     const [screeningResults, setScreeningResults] = useState<Record<string, any>>({});
     const [screeningLoading, setScreeningLoading] = useState<string | null>(null);
+    const [screeningError, setScreeningError] = useState<string | null>(null);
     const [jdText, setJdText] = useState<string>('');
 
     const isShortlistedView = statusFilter === 'shortlisted';
     const isSelectedView = statusFilter === 'selected';
     const isRejectedView = statusFilter === 'rejected';
+    const isAiScreenedView = statusFilter === 'ai_screened';
 
     useEffect(() => { fetchCandidates(); }, [jobId]);
 
@@ -155,6 +157,7 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
 
     const runAutoScreen = async (candidate: Candidate) => {
         setScreeningLoading(candidate.resume_id);
+        setScreeningError(null);
         try {
             // Ensure resume text is loaded
             let resumeText = resumeTexts[candidate.resume_id];
@@ -179,8 +182,10 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
             const res = await api.post('/analyze/screen', { resume_text: resumeText, jd_text: jd, threshold: 75 });
             setScreeningResults(prev => ({ ...prev, [candidate.resume_id]: res.data }));
             setExpandedRow(candidate.resume_id);
-        } catch (e) {
+        } catch (e: any) {
             console.error('Auto screening failed:', e);
+            const msg = e?.response?.data?.detail || e?.message || 'Auto screening failed. Please try again.';
+            setScreeningError(msg);
         } finally {
             setScreeningLoading(null);
         }
@@ -203,11 +208,13 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
 
     const getStatusTheme = (status: string) => {
         switch (status.toLowerCase()) {
-            case 'selected':    return 'bg-green-100 text-green-700 border-green-200';
-            case 'rejected':    return 'bg-red-100 text-red-700 border-red-200';
-            case 'shortlisted': return 'bg-purple-100 text-purple-700 border-purple-200';
-            case 'invited':     return 'bg-amber-100 text-amber-700 border-amber-200';
-            default:            return 'bg-blue-100 text-blue-700 border-blue-200';
+            case 'selected':          return 'bg-green-100 text-green-700 border-green-200';
+            case 'rejected':          return 'bg-red-100 text-red-700 border-red-200';
+            case 'shortlisted':       return 'bg-purple-100 text-purple-700 border-purple-200';
+            case 'invited':           return 'bg-amber-100 text-amber-700 border-amber-200';
+            case 'auto_shortlisted':  return 'bg-violet-100 text-violet-700 border-violet-200';
+            case 'auto_rejected':     return 'bg-rose-100 text-rose-600 border-rose-200';
+            default:                  return 'bg-blue-100 text-blue-700 border-blue-200';
         }
     };
 
@@ -259,6 +266,14 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
                         ? <Loader2 size={14} className="text-slate-400 animate-spin shrink-0" />
                         : isExpanded ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
                 </div>
+
+                {/* Screening error banner */}
+                {screeningError && expandedRow === candidate.resume_id && (
+                    <div className="mx-6 mt-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                        <span>{screeningError}</span>
+                        <button onClick={() => setScreeningError(null)} className="shrink-0 text-red-400 hover:text-red-600"><X size={13} /></button>
+                    </div>
+                )}
 
                 {/* Expanded detail */}
                 {isExpanded && (
@@ -481,12 +496,12 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
                 {/* Header */}
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-20 rounded-t-2xl">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isShortlistedView ? 'bg-amber-50 text-amber-600' : isSelectedView ? 'bg-green-50 text-green-700' : isRejectedView ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-600'}`}>
-                            {isShortlistedView ? <Star size={20} /> : isSelectedView ? <UserCheck size={20} /> : isRejectedView ? <UserX size={20} /> : <Users size={20} />}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isAiScreenedView ? 'bg-violet-50 text-violet-600' : isShortlistedView ? 'bg-amber-50 text-amber-600' : isSelectedView ? 'bg-green-50 text-green-700' : isRejectedView ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-600'}`}>
+                            {isAiScreenedView ? <Bot size={20} /> : isShortlistedView ? <Star size={20} /> : isSelectedView ? <UserCheck size={20} /> : isRejectedView ? <UserX size={20} /> : <Users size={20} />}
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-900">
-                                {isShortlistedView ? 'Shortlisted Candidates' : isSelectedView ? 'Selected Candidates' : isRejectedView ? 'Rejected Candidates' : 'Applied Candidates'}
+                                {isAiScreenedView ? 'AI Pre-Screened' : isShortlistedView ? 'Shortlisted Candidates' : isSelectedView ? 'Selected Candidates' : isRejectedView ? 'Rejected Candidates' : 'Applied Candidates'}
                             </h2>
                             <p className="text-sm text-slate-500">{jobTitle}</p>
                         </div>
@@ -518,13 +533,15 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
                     ) : candidates.length === 0 ? (
                         <div className="py-20 text-center glass-card bg-slate-50/50 border-dashed border-slate-200 m-6">
                             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                                {isShortlistedView ? <Star size={32} /> : <Users size={32} />}
+                                {isAiScreenedView ? <Bot size={32} /> : isShortlistedView ? <Star size={32} /> : <Users size={32} />}
                             </div>
                             <h4 className="text-slate-900 font-bold text-lg">
-                                {isShortlistedView ? 'No Shortlisted Candidates' : isSelectedView ? 'No Selected Candidates' : isRejectedView ? 'No Rejected Candidates' : 'No Candidates Yet'}
+                                {isAiScreenedView ? 'No AI Screened Results' : isShortlistedView ? 'No Shortlisted Candidates' : isSelectedView ? 'No Selected Candidates' : isRejectedView ? 'No Rejected Candidates' : 'No Candidates Yet'}
                             </h4>
                             <p className="text-slate-500 max-w-xs mx-auto text-sm mt-1">
-                                {isShortlistedView
+                                {isAiScreenedView
+                                    ? 'Upload resumes to trigger automatic screening against this job.'
+                                    : isShortlistedView
                                     ? 'Use "Find Matches" to discover and shortlist candidates.'
                                     : isSelectedView
                                     ? 'Select candidates from the Applied view to see them here.'
@@ -547,7 +564,9 @@ const JobCandidatesModal: React.FC<JobCandidatesModalProps> = ({ jobId, jobTitle
                     <div className="px-6 py-3 border-t border-slate-100 text-xs text-slate-400 flex justify-between bg-slate-50/50 rounded-b-2xl">
                         <span>{candidates.length} candidate{candidates.length !== 1 ? 's' : ''}</span>
                         <span>
-                            {isShortlistedView
+                            {isAiScreenedView
+                                ? 'AI pre-screened · violet = shortlisted · rose = rejected'
+                                : isShortlistedView
                                 ? 'Click row to preview resume and skill gap'
                                 : 'Click row to expand · Select or Reject'}
                         </span>

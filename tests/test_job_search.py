@@ -462,6 +462,15 @@ SCENARIOS: list[tuple[str, dict, any]] = [
     # "react engineer in new york last 30 days"
     ("combo_react_ny_30d",          {"search": "react engineer", "location_aliases": "new york,manhattan", "date_range": 30},
                                                                                  _ok_and_list()),
+    # "top 10 paid jobs in usa" (nation-wide, salary-sorted)
+    ("combo_top10_paid_usa",        {"sort_by_salary": True, "top_n": 10, "limit": 10},
+                                                                                 _top_n_cap(10)),
+    # "highest paying remote jobs"
+    ("combo_best_paying_remote_10", {"location_aliases": "remote", "sort_by_salary": True, "top_n": 10, "limit": 10},
+                                                                                 _top_n_cap(10)),
+    # "best paid senior engineer jobs"
+    ("combo_best_paid_senior_eng",  {"search": "senior engineer", "job_level": "SENIOR", "sort_by_salary": True, "top_n": 10, "limit": 10},
+                                                                                 _top_n_cap(10)),
 
     # ── Edge cases ────────────────────────────────────────────────────────────
     ("edge_all_filters",            {"search": "engineer", "job_level": "SENIOR", "status": "in_progress",
@@ -490,8 +499,8 @@ SCENARIOS: list[tuple[str, dict, any]] = [
                                                                                  _ok_and_list()),
 ]
 
-# Sanity-check exactly 100 scenarios
-assert len(SCENARIOS) == 100, f"Expected 100 scenarios, got {len(SCENARIOS)}"
+# Sanity-check exactly 103 scenarios
+assert len(SCENARIOS) == 103, f"Expected 103 scenarios, got {len(SCENARIOS)}"
 
 
 # ---------------------------------------------------------------------------
@@ -1360,4 +1369,53 @@ async def test_jobs_in_apple_california_salary_sorted(app):
     salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
     assert salaries == sorted(salaries, reverse=True), (
         f"Results not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_top_10_paid_jobs_in_usa(app):
+    """
+    'top 10 paid jobs in usa' → sort_by_salary=True, top_n=10, no location filter.
+    Returns at most 10 results, all salary-sorted descending.
+    Highest-salary jobs: j31=$280k, g08=$260k, j32=$250k, g14=$240k — all must appear;
+    very low-salary India jobs (j11=$60k, j13=$30k) must NOT be in the top 10.
+    """
+    high_salary_ids = {"j31", "g08", "j32", "g14"}  # salary_max ≥ $240k — definitely in top 10
+    low_salary_ids  = {"j11", "j12", "j13"}          # India ≤ $60k — must not reach top 10
+
+    with (
+        patch("app.routes.v1.jobs.get_or_create_jobs_table", return_value=_make_mock_table()),
+        patch("app.routes.v1.jobs.get_or_create_job_applied_table", return_value=_make_applied_table()),
+        patch("app.routes.v1.jobs.get_embeddings_model", return_value=_mock_embeddings()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/jobs",
+                params={
+                    "sort_by_salary": True,
+                    "top_n": 10,
+                    "limit": 10,
+                },
+                headers={"Authorization": "Bearer mock-recruiter-token-123"},
+            )
+
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) <= 10, f"Expected at most 10 jobs, got {len(jobs)}"
+    assert len(jobs) > 0, "Expected at least some results for top 10 paid jobs"
+
+    returned = {j["job_id"] for j in jobs}
+
+    # High-salary jobs must appear in the top 10
+    for jid in high_salary_ids:
+        assert jid in returned, f"High-salary job {jid} missing from top 10 paid"
+
+    # Very low-salary jobs should not crowd out the top 10
+    for jid in low_salary_ids:
+        assert jid not in returned, f"Low-salary job {jid} should not appear in top 10 paid"
+
+    # Results must be salary-sorted descending
+    salaries = [max(j.get("salary_max") or 0, j.get("salary_min") or 0) for j in jobs]
+    assert salaries == sorted(salaries, reverse=True), (
+        f"Top 10 paid jobs not salary-sorted: {list(zip([j['job_id'] for j in jobs], salaries))}"
     )

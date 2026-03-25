@@ -120,4 +120,16 @@ export const systemApi = {
     saveSettings: (data: Record<string, string>) => api.put('/user/system/settings', data),
 };
 
+export const agentsApi = {
+    getStats: () => api.get('/agents/screening/stats'),
+    getHistory: (params?: { limit?: number; job_id?: string }) =>
+        api.get('/agents/screening/history', { params }),
+    getConfig: () => api.get('/agents/screening/config'),
+    saveConfig: (data: { threshold?: number; max_jds?: number; enabled?: boolean }) =>
+        api.put('/agents/screening/config', data),
+    run: (resume_id: string, job_id?: string) =>
+        api.post('/agents/screening/run', { resume_id, job_id }),
+    runAll: () => api.post('/agents/screening/run-all'),
+};
+
 export default api;

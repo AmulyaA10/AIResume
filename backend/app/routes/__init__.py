@@ -13,6 +13,7 @@ from app.routes.v1 import (
     jobs_router,
     match_router,
     validate_router,
+    agents_router,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "jobs_router",
     "match_router",
     "validate_router",
+    "agents_router",
 ]

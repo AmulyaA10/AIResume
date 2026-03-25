@@ -23,6 +23,21 @@ Queries covered (mirrors the E2E Playwright tests):
   13. candidate from apple and google     (multi-company LLM expansion + boost)
   14. candidate worked in apple           (single-company past-tense + boost)
   15. java developer from apple           (role+company → hasRoleSignal, no company boost, semantic-first)
+  16. candidate from google               (strictCompany=True → current Google employees only)
+  17. candidate from netflix              (strictCompany=True → current Netflix employee only)
+  18. candidate from amazon               (strictCompany=True → current Amazon employee only)
+  19. senior engineer at microsoft        (strictCompany=True + expLevel=Senior → senior MS employees)
+  20. candidate from meta                 (strictCompany=True → current Meta employee only)
+
+Apple phrasing variations:
+  21. candidate working in apple          (present-tense "working in" → strictCompany=True)
+  22. candidate worked for apple          (past-tense "worked for" → strictCompany=False)
+  23. former apple employee               (past-tense "former" → strictCompany=False)
+  24. ex apple engineer                   (past-tense "ex" → strictCompany=False)
+  25. engineers at apple                  (present-tense "at" → strictCompany=True)
+  26. apple software engineer             (implicit current → strictCompany=True)
+  27. senior engineer from apple          (strictCompany=True + expLevel=Senior → senior Apple only)
+  28. apple alumni                        (past-tense "alumni" → strictCompany=False)
 """
 
 from __future__ import annotations
@@ -344,12 +359,85 @@ _QUERY_INTENTS: dict[str, dict] = {
         "expLevel": None,
         "cleanQuery": "software engineer Apple Google",
     },
+    "candidate from apple": {
+        # Present-tense strict filter → ONLY current Apple employees returned
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
     "candidate worked in apple": {
         "locationAliases": [],
         "companyFilter": ["apple"],
         "strictCompany": False,
         "expLevel": None,
         "cleanQuery": "software engineer Apple experience",
+    },
+    # ── Apple phrasing variations ──────────────────────────────────────────────
+    "candidate working in apple": {
+        # Present-tense "working in" → same as "from" → strictCompany=True
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "candidate worked for apple": {
+        # Past-tense alt "worked for" → boost + semantic, strictCompany=False
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": False,
+        "expLevel": None,
+        "cleanQuery": "software engineer Apple experience",
+    },
+    "former apple employee": {
+        # "former" → past-tense, strictCompany=False
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": False,
+        "expLevel": None,
+        "cleanQuery": "software engineer Apple former",
+    },
+    "ex apple engineer": {
+        # "ex" prefix → past-tense, strictCompany=False
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": False,
+        "expLevel": None,
+        "cleanQuery": "engineer Apple former",
+    },
+    "engineers at apple": {
+        # "at" → present-tense, strictCompany=True
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "apple software engineer": {
+        # Implicit current employment → strictCompany=True
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "senior engineer from apple": {
+        # strictCompany=True + expLevel=Senior → only senior Apple employees
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": True,
+        "expLevel": "Senior",
+        "cleanQuery": "senior software engineer",
+    },
+    "apple alumni": {
+        # "alumni" → past-tense / ever worked there, strictCompany=False
+        "locationAliases": [],
+        "companyFilter": ["apple"],
+        "strictCompany": False,
+        "expLevel": None,
+        "cleanQuery": "software engineer Apple alumni",
     },
     "candidates from SF metro area or 50 mile radius": {
         "locationAliases": ["san francisco", "oakland", "palo alto", "san jose", "berkeley"],
@@ -432,6 +520,41 @@ _QUERY_INTENTS: dict[str, dict] = {
                             "brisbane", "auckland", "perth"],
         "companyFilter": [], "strictCompany": False, "hasRoleSignal": False,
         "expLevel": None, "cleanQuery": "software engineer",
+    },
+    "candidate from google": {
+        "locationAliases": [],
+        "companyFilter": ["google"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "candidate from netflix": {
+        "locationAliases": [],
+        "companyFilter": ["netflix"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "candidate from amazon": {
+        "locationAliases": [],
+        "companyFilter": ["amazon"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
+    },
+    "senior engineer at microsoft": {
+        "locationAliases": [],
+        "companyFilter": ["microsoft"],
+        "strictCompany": True,
+        "expLevel": "Senior",
+        "cleanQuery": "senior software engineer",
+    },
+    "candidate from meta": {
+        "locationAliases": [],
+        "companyFilter": ["meta"],
+        "strictCompany": True,
+        "expLevel": None,
+        "cleanQuery": "software engineer",
     },
     # hasRoleSignal=true → company boost is skipped; semantic search ranks by role
     "java developer from apple": {
@@ -541,12 +664,83 @@ SEARCH_SCENARIOS = [
         ["raj_microsoft_pm.pdf", "sara_microsoft_swe.pdf", "paul_ai_nlp.pdf"],
     ),
     (
+        "candidate from apple",
+        # strictCompany=True → ONLY current Apple employees; victor_apple_java included
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf", "victor_apple_java.pdf"],
+    ),
+    (
         "candidate from apple and google",
         ["nora_apple_eng.pdf", "omar_apple_design.pdf", "priya_google_infra.pdf",
          "iris_google_swe.pdf"],
     ),
     (
+        "candidate from google",
+        # strictCompany=True → ONLY current Google employees
+        ["iris_google_swe.pdf", "priya_google_infra.pdf"],
+    ),
+    (
+        "candidate from netflix",
+        # strictCompany=True → ONLY current Netflix employee
+        ["lee_netflix_arch.pdf"],
+    ),
+    (
+        "candidate from amazon",
+        # strictCompany=True → ONLY current Amazon employee
+        ["kim_amazon_sde.pdf"],
+    ),
+    (
+        "senior engineer at microsoft",
+        # strictCompany=True + expLevel=Senior → senior MS employees (raj=Senior, paul=Senior@MS)
+        ["raj_microsoft_pm.pdf", "paul_ai_nlp.pdf"],
+    ),
+    (
+        "candidate from meta",
+        # strictCompany=True → ONLY current Meta employee
+        ["jack_meta_ml.pdf"],
+    ),
+    (
         "candidate worked in apple",
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf"],
+    ),
+    # ── Apple phrasing variations ─────────────────────────────────────────────
+    (
+        "candidate working in apple",
+        # Present-tense "working in" → strictCompany=True → all 3 current Apple employees
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf", "victor_apple_java.pdf"],
+    ),
+    (
+        "candidate worked for apple",
+        # Past-tense alt phrasing → strictCompany=False; boosts current Apple employees
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf"],
+    ),
+    (
+        "former apple employee",
+        # "former" → past-tense boost → current Apple employees surface first
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf"],
+    ),
+    (
+        "ex apple engineer",
+        # "ex" prefix → past-tense boost → current Apple employees surface first
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf"],
+    ),
+    (
+        "engineers at apple",
+        # Present-tense "at" → strictCompany=True → all 3 current Apple employees
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf", "victor_apple_java.pdf"],
+    ),
+    (
+        "apple software engineer",
+        # Implicit current → strictCompany=True → all 3 current Apple employees
+        ["nora_apple_eng.pdf", "omar_apple_design.pdf", "victor_apple_java.pdf"],
+    ),
+    (
+        "senior engineer from apple",
+        # strictCompany=True + expLevel=Senior → nora (Senior); omar/victor are Mid-level
+        ["nora_apple_eng.pdf"],
+    ),
+    (
+        "apple alumni",
+        # "alumni" → past-tense boost → current Apple employees surface first
         ["nora_apple_eng.pdf", "omar_apple_design.pdf"],
     ),
     (

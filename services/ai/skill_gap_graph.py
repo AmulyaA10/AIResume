@@ -1,10 +1,19 @@
 # services/ai/skill_gap_graph.py
+import asyncio
+import json
 from typing import TypedDict, List, Optional
 
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
+from pydantic import BaseModel, Field
 
-from services.ai.common import get_llm, safe_parse_json, extract_skills_from_text
+from services.ai.common import get_llm, get_json_llm, safe_parse_json, extract_skills_from_text
+
+
+class _CombinedSkillsOutput(BaseModel):
+    resume_skills: List[str] = Field(default_factory=list)
+    jd_skills: List[str] = Field(default_factory=list)
+
 
 class SkillGapState(TypedDict):
     resume_text: str
@@ -14,76 +23,63 @@ class SkillGapState(TypedDict):
     gaps: Optional[dict]
     config: Optional[dict]
 
-def resume_skill_agent(state: SkillGapState):
-    llm = get_llm(state.get("config"))
+
+def _augment_with_keywords(skills: list, text: str) -> list:
+    """Augment LLM skill list with keyword fallback if too few returned."""
+    if len(skills) < 3:
+        extracted = extract_skills_from_text(text)
+        existing_lower = {s.lower() for s in skills}
+        for s in extracted:
+            if s.lower() not in existing_lower:
+                skills.append(s)
+                existing_lower.add(s.lower())
+    return skills
+
+
+async def combined_skill_agent(state: SkillGapState):
+    """Single async LLM call that extracts skills from both resume and JD at once.
+
+    Replaces the original two sequential calls (resume_skill_agent + jd_skill_agent),
+    cutting LLM round-trips in half.
+    """
+    llm = get_json_llm(state.get("config"))
     prompt = PromptTemplate(
-        input_variables=["resume"],
+        input_variables=["resume", "jd"],
         template="""
-Extract technical and professional skills from the resume.
+Extract technical and professional skills from the resume AND the job description.
 
 Resume:
 {resume}
 
-Return ONLY valid JSON:
-{{
-  "skills": ["Python", "AWS", "Docker"]
-}}
-"""
-    )
-
-    response = llm.invoke(prompt.format(resume=state["resume_text"]))
-    try:
-        skills = safe_parse_json(response.content).get("skills", [])
-    except Exception as e:
-        print(f"Error parsing resume skills: {e}")
-        skills = []
-
-    # Keyword fallback: augment if LLM returned few/no skills
-    if len(skills) < 3:
-        extracted = extract_skills_from_text(state["resume_text"])
-        existing_lower = {s.lower() for s in skills}
-        for s in extracted:
-            if s.lower() not in existing_lower:
-                skills.append(s)
-                existing_lower.add(s.lower())
-
-    return {"resume_skills": skills}
-
-
-def jd_skill_agent(state: SkillGapState):
-    llm = get_llm(state.get("config"))
-    prompt = PromptTemplate(
-        input_variables=["jd"],
-        template="""
-Extract required skills from the job description.
-
 Job Description:
 {jd}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with two lists:
 {{
-  "skills": ["Kubernetes", "Terraform", "CI/CD"]
+  "resume_skills": ["Python", "AWS", "Docker"],
+  "jd_skills": ["Kubernetes", "Terraform", "CI/CD"]
 }}
 """
     )
 
-    response = llm.invoke(prompt.format(jd=state["jd_text"]))
     try:
-        skills = safe_parse_json(response.content).get("skills", [])
+        response = await llm.ainvoke(prompt.format(
+            resume=state["resume_text"],
+            jd=state["jd_text"],
+        ))
+        parsed = json.loads(response.content)
+        resume_skills = parsed.get("resume_skills", [])
+        jd_skills = parsed.get("jd_skills", [])
     except Exception as e:
-        print(f"Error parsing JD skills: {e}")
-        skills = []
+        print(f"Error parsing combined skill extraction: {e}")
+        resume_skills, jd_skills = [], []
 
-    # Keyword fallback: augment if LLM returned few/no skills
-    if len(skills) < 3:
-        extracted = extract_skills_from_text(state["jd_text"])
-        existing_lower = {s.lower() for s in skills}
-        for s in extracted:
-            if s.lower() not in existing_lower:
-                skills.append(s)
-                existing_lower.add(s.lower())
+    # Keyword fallback for either list that came back thin
+    resume_skills = _augment_with_keywords(resume_skills, state["resume_text"])
+    jd_skills = _augment_with_keywords(jd_skills, state["jd_text"])
 
-    return {"jd_skills": skills}
+    return {"resume_skills": resume_skills, "jd_skills": jd_skills}
+
 
 def skill_gap_agent(state: SkillGapState):
     resume_skills = set(s.lower() for s in state["resume_skills"])
@@ -95,23 +91,19 @@ def skill_gap_agent(state: SkillGapState):
     return {
         "gaps": {
             "missing_skills": missing,
-            "recommended": recommended
+            "recommended": recommended,
         }
     }
-
 
 
 def build_skill_gap_graph():
     graph = StateGraph(SkillGapState)
 
-    graph.add_node("resume_skills", resume_skill_agent)
-    graph.add_node("jd_skills", jd_skill_agent)
+    graph.add_node("extract_skills", combined_skill_agent)
     graph.add_node("compare", skill_gap_agent)
 
-    graph.set_entry_point("resume_skills")
-
-    graph.add_edge("resume_skills", "jd_skills")
-    graph.add_edge("jd_skills", "compare")
+    graph.set_entry_point("extract_skills")
+    graph.add_edge("extract_skills", "compare")
     graph.add_edge("compare", END)
 
     return graph.compile()

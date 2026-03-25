@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
         jobs_router,
         match_router,
         validate_router,
+        agents_router,
     )
 
     # --- API v1 routes ---
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["v1 — Jobs"])
     app.include_router(match_router, prefix="/api/v1/match", tags=["v1 — Matching"])
     app.include_router(validate_router, prefix="/api/v1/validate", tags=["v1 — Validation"])
+    app.include_router(agents_router, prefix="/api/v1/agents", tags=["v1 — Agents"])
     app.include_router(health_router, tags=["Health"])
 
     # --- Root route: serve built frontend or show API info ---

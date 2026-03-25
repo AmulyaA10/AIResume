@@ -2,7 +2,8 @@ from typing import TypedDict, Optional
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
 
-from services.ai.common import get_llm, safe_parse_json
+import json
+from services.ai.common import get_json_llm
 
 class ScreeningState(TypedDict):
     resume_text: str
@@ -13,7 +14,7 @@ class ScreeningState(TypedDict):
     threshold: int
 
 def screening_agent(state: ScreeningState):
-    llm = get_llm(state.get("config"))
+    llm = get_json_llm(state.get("config"), temperature=0)
     prompt = PromptTemplate(
         input_variables=["resume", "jd", "threshold"],
         template="""
@@ -30,7 +31,7 @@ Selection Threshold: {threshold}%
 TASK:
 1. Evaluate if the candidate is a match for the job.
 2. Provide a score (0-100) based on skills, experience, and relevance.
-3. Decision: 
+3. Decision:
    - If the score is GREATER THAN OR EQUAL TO the threshold ({threshold}%), set "selected": true.
    - Otherwise, set "selected": false.
 4. Provide a brief reason for the decision, mentioning the score and how it compares to the threshold.
@@ -47,14 +48,14 @@ Return ONLY valid JSON:
 }}
 """
     )
-    
+
     try:
         response = llm.invoke(prompt.format(
-            resume=state["resume_text"], 
+            resume=state["resume_text"],
             jd=state["jd_text"],
             threshold=state.get("threshold", 75)
         ))
-        result = safe_parse_json(response.content)
+        result = json.loads(response.content)
         
         score_val = result.get("score", {}).get("overall", 0)
         threshold_val = state.get("threshold", 75)

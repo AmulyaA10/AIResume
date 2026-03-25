@@ -920,7 +920,7 @@ const ResumeDatabase: React.FC = () => {
                                                     {r.role || <span className="text-slate-300 italic font-normal">Role unknown</span>}
                                                     {r.role && r.current_company && <span className="text-slate-300 font-normal">·</span>}
                                                     {r.current_company && (
-                                                        <span className="text-slate-500 font-normal flex items-center gap-0.5 truncate">
+                                                        <span className="text-slate-500 font-normal flex items-center gap-0.5 truncate" data-testid="card-company">
                                                             <Building2 size={9} className="shrink-0" />{r.current_company}
                                                         </span>
                                                     )}
