@@ -1220,11 +1220,20 @@ async def update_job(
     user_id: str = Depends(get_current_user),
     x_openrouter_key: Optional[str] = Header(None),
     x_llm_model: Optional[str] = Header(None),
+    role: str = Depends(get_user_role),
 ):
     table = get_or_create_jobs_table()
     creds = await resolve_credentials(user_id, x_openrouter_key, x_llm_model)
-    existing = table.search().where(f"job_id = '{job_id}' AND user_id = '{user_id}'").limit(1).to_list()
+
+    # Allow managers and recruiters to update any job. Others must be the owner.
+    is_recruiter = role in ("recruiter", "manager")
+    where_clause = f"job_id = '{job_id}'" if is_recruiter else f"job_id = '{job_id}' AND user_id = '{user_id}'"
+    
+    print(f"DEBUG: [update_job] user_id={user_id}, role={role}, job_id={job_id}, where='{where_clause}'")
+
+    existing = table.search().where(where_clause).limit(1).to_list()
     if not existing:
+        print(f"DEBUG: [update_job] Job {job_id} not found or not owned by {user_id}")
         raise HTTPException(status_code=404, detail="Job not found")
 
     updated = job.model_dump()
@@ -1257,10 +1266,15 @@ async def update_job(
     return _serialize_job(updated)
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str, user_id: str = Depends(get_current_user)):
+async def delete_job(job_id: str, user_id: str = Depends(get_current_user), role: str = Depends(get_user_role)):
     table = get_or_create_jobs_table()
     safe_jid = job_id.replace("'", "''")
-    existing = table.search().where(f"job_id = '{safe_jid}' AND user_id = '{user_id}'").limit(1).to_list()
+    
+    # Allow managers and recruiters to delete any job. Others must be the owner.
+    is_recruiter = role in ("recruiter", "manager")
+    where_clause = f"job_id = '{safe_jid}'" if is_recruiter else f"job_id = '{safe_jid}' AND user_id = '{user_id}'"
+    
+    existing = table.search().where(where_clause).limit(1).to_list()
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
 

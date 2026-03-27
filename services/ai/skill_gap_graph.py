@@ -36,7 +36,7 @@ def _augment_with_keywords(skills: list, text: str) -> list:
     return skills
 
 
-async def combined_skill_agent(state: SkillGapState):
+def combined_skill_agent(state: SkillGapState):
     """Single async LLM call that extracts skills from both resume and JD at once.
 
     Replaces the original two sequential calls (resume_skill_agent + jd_skill_agent),
@@ -63,7 +63,7 @@ Return ONLY valid JSON with two lists:
     )
 
     try:
-        response = await llm.ainvoke(prompt.format(
+        response = llm.invoke(prompt.format(
             resume=state["resume_text"],
             jd=state["jd_text"],
         ))
